@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Kiosk — open a store, take payments",
-    template: "%s · Kiosk",
+    default: "Tender — open a store, take payments",
+    template: "%s · Tender",
   },
   description:
     "A multi-tenant marketplace. Sign up, open a store, list products and take " +

@@ -15,7 +15,7 @@ export default function StoreNotFound() {
           href="/"
           className="mt-6 inline-block text-sm font-medium underline underline-offset-4"
         >
-          Browse stores on Kiosk
+          Browse stores on Tender
         </Link>
       </div>
     </div>

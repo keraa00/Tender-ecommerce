@@ -57,7 +57,7 @@ export type SeedStore = {
   discounts: SeedDiscount[];
 };
 
-export const SEED_PASSWORD = "kiosk-demo-2026";
+export const SEED_PASSWORD = "tender-demo-2026";
 
 export const PLATFORM_ADMIN = {
   email: "admin@example.com",

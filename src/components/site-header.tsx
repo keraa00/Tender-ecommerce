@@ -17,7 +17,7 @@ export async function SiteHeader() {
           >
             K
           </span>
-          Kiosk
+          Tender
         </Link>
 
         <nav className="ml-auto flex items-center gap-1 text-sm">

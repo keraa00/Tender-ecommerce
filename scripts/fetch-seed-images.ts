@@ -20,7 +20,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { SEED_STORES } from "../prisma/seed-catalog";
 
 const API = "https://api.openverse.org/v1/images/";
-const USER_AGENT = "kiosk-seed-script/1.0 (portfolio project)";
+const USER_AGENT = "tender-seed-script/1.0 (portfolio project)";
 
 const REQUEST_SPACING_MS = 3_400;
 const MAX_ATTEMPTS = 3;

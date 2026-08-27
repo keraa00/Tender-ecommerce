@@ -17,7 +17,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           >
             K
           </span>
-          Kiosk
+          Tender
         </Link>
       </header>
 

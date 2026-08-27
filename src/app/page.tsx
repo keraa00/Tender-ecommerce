@@ -38,7 +38,7 @@ export default async function HomePage() {
             Open a store. Take real payments. Keep 95%.
           </h1>
           <p className="mt-5 max-w-xl text-lg text-muted text-pretty">
-            Kiosk gives every seller an isolated storefront, their own catalogue
+            Tender gives every seller an isolated storefront, their own catalogue
             and their own Stripe account. The platform takes a 5% commission at
             the moment of the charge — nothing else.
           </p>
@@ -79,7 +79,7 @@ export default async function HomePage() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">
-                Stores on Kiosk
+                Stores on Tender
               </h2>
               <p className="mt-1 text-sm text-muted">
                 Every store below is a separate tenant. None can see
@@ -115,7 +115,7 @@ export default async function HomePage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-6xl px-4 py-8 text-sm text-muted sm:px-6">
-          Kiosk — a multi-tenant marketplace built on Next.js, Postgres and
+          Tender — a multi-tenant marketplace built on Next.js, Postgres and
           Stripe Connect.
         </div>
       </footer>

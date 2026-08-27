@@ -1,4 +1,4 @@
-# Kiosk — a multi-tenant e-commerce platform
+# Tender — a multi-tenant e-commerce platform
 
 Anyone can sign up, open a store, list products and take real payments. Each
 store is an isolated tenant with its own catalogue, its own orders and its own
@@ -86,7 +86,7 @@ in the request body. Everything downstream receives an already-verified
 
 ## Tenancy model
 
-Three layers, because any one of them alone is a single point of failure.
+Four layers, because any one of them alone is a single point of failure.
 
 **1. Schema.** Every root entity carries `storeId`, and every uniqueness
 constraint a tenant can influence is composite with it:
@@ -116,8 +116,25 @@ three legitimate callers; everything store-scoped goes through
 A cannot read B's orders, edit B's products, apply B's discount code, or see B's
 revenue.
 
-> Postgres Row-Level Security via Supabase is a planned stretch — defence in
-> depth, not a substitute for application-layer scoping.
+**4. The Supabase Data API is closed.** Supabase publishes every table in
+`public` through PostgREST, and its stock grants give `anon` and `authenticated`
+full DML on each one. `anon` is the role behind `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+which ships to every browser that loads the app — so the default posture leaves
+orders, carts and users readable and writable by anyone who reads the page
+source, on a route that never runs the application code enforcing `storeId`.
+
+The migration `20260827080543_revoke_data_api_access` closes it outright rather
+than modelling it with policies: the table, sequence and function grants are
+revoked from both roles, so are the default privileges that would re-grant them
+on the next `CREATE TABLE`, and RLS is enabled with no policies on all fifteen
+tables as a deny-all backstop. Nothing here needs the Data API — `supabase-js`
+is called only for `auth.*`, and every read and write goes through Prisma on the
+direct connection. `service_role` is left intact: it is server-only and the seed
+depends on it.
+
+> RLS here is a backstop, not the tenancy mechanism. Prisma connects as the
+> table owner, which bypasses it. Per-tenant RLS policies — scoping enforced in
+> the database rather than above it — remain a stretch goal.
 
 ---
 
@@ -184,8 +201,11 @@ That prints `DATABASE_URL` and `SHADOW_DATABASE_URL`. Copy `.env.example` to
 `.env` and paste them in.
 
 **2. Supabase** (needed for auth; storefronts work without it). Create a project
-at [supabase.com](https://supabase.com), then from Project Settings → API copy
-the URL, the anon key and the service-role key into `.env`.
+at [supabase.com](https://supabase.com), then from Project Settings → API Keys
+copy the project URL, the *publishable* key (`sb_publishable_…`) and a *secret*
+key (`sb_secret_…`) into `.env`. Supabase renamed these: publishable was the
+anon key, secret was the service-role key. The variable names in `.env.example`
+keep the old spelling — only the values changed.
 
 Set the redirect URLs under Authentication → URL Configuration:
 
@@ -193,6 +213,15 @@ Set the redirect URLs under Authentication → URL Configuration:
 http://localhost:3000/auth/confirm
 http://localhost:3000/auth/callback
 ```
+
+If you point `DATABASE_URL` at Supabase rather than a local database, append
+`?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`. The pooler serves a
+certificate signed by Supabase's own root CA, which the driver behind
+`@prisma/adapter-pg` rejects when the system trust store is all it has. That
+path is resolved against the process working directory, so every entry point —
+dev server, seed, scripts — has to be launched from the repo root.
+`.env.example` carries the long version, including why the session pooler is the
+one to use.
 
 **3. Migrate and seed.**
 
@@ -210,7 +239,7 @@ in Supabase Auth so you can log in as them:
 | `rosewater@example.com` | owns `/s/rosewater-ceramics` |
 | `admin@example.com` | platform admin |
 
-Password: `kiosk-demo-2026`. Demo fixtures — never reuse these anywhere real.
+Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 
 **4. Run.**
 
@@ -226,7 +255,8 @@ npm run dev
 | `npm run build` | Generate Prisma client, then production build |
 | `npm test` | Vitest |
 | `npm run typecheck` | `tsc --noEmit` (run `npm run build` first — Next generates route types) |
-| `npm run db:migrate` | Create and apply a migration |
+| `npm run db:migrate` | Create and apply a migration (local `prisma dev` database) |
+| `npm run db:deploy` | Apply existing migrations — hosted Postgres, CI, production |
 | `npm run db:seed` | Seed the demo stores (idempotent) |
 | `npm run seed:images` | Refresh seed photography from Openverse |
 

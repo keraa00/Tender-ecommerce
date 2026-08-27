@@ -89,7 +89,7 @@ export function AuthForm({ mode, action, next, initialError }: Props) {
       </Button>
 
       <p className="text-center text-sm text-muted">
-        {isSignup ? "Already have an account? " : "New to Kiosk? "}
+        {isSignup ? "Already have an account? " : "New to Tender? "}
         <Link
           href={isSignup ? "/login" : "/signup"}
           className="font-medium text-foreground underline underline-offset-4"

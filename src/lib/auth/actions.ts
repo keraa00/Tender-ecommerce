@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeRedirectPath } from "./redirect";
 
 export type AuthState = {
   formError?: string;
@@ -30,16 +31,6 @@ const signInSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Enter your password."),
 });
-
-/**
- * Only ever redirect to a path on this origin. An open redirect here would let
- * a phishing link bounce a freshly authenticated user to an attacker's page.
- */
-function safeRedirectPath(raw: FormDataEntryValue | null): string | null {
-  const value = typeof raw === "string" ? raw : "";
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
-}
 
 const NOT_CONFIGURED =
   "Authentication isn't configured yet. Add your Supabase keys to .env — " +

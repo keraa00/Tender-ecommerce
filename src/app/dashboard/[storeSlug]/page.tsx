@@ -76,7 +76,7 @@ export default async function StoreOverviewPage(
       <div className="mt-8 rounded-xl border border-border bg-surface-subtle p-5">
         <h3 className="text-sm font-medium">Commission</h3>
         <p className="mt-1 text-sm text-muted text-pretty">
-          Kiosk takes{" "}
+          Tender takes{" "}
           <span className="tabular font-medium text-foreground">
             {(store.commissionBps / 100).toFixed(2)}%
           </span>{" "}

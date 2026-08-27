@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { AuthForm } from "@/components/auth/auth-form";
 import { signInAction } from "@/lib/auth/actions";
+import { safeRedirectPath } from "@/lib/auth/redirect";
 import { getCurrentUser } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Log in" };
@@ -16,11 +17,10 @@ const LINK_ERRORS: Record<string, string> = {
 export default async function LoginPage(props: PageProps<"/login">) {
   const searchParams = await props.searchParams;
 
-  const nextParam = searchParams.next;
-  const next = typeof nextParam === "string" ? nextParam : undefined;
+  const next = safeRedirectPath(searchParams.next) ?? undefined;
 
   if (await getCurrentUser()) {
-    redirect(next?.startsWith("/") ? next : "/dashboard");
+    redirect(next ?? "/dashboard");
   }
 
   const errorParam = searchParams.error;

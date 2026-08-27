@@ -15,7 +15,7 @@ export default function NotFound() {
           href="/"
           className="mt-6 inline-block text-sm font-medium underline underline-offset-4"
         >
-          Back to Kiosk
+          Back to Tender
         </Link>
       </div>
     </div>

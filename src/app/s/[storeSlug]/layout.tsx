@@ -75,7 +75,7 @@ export default async function StorefrontLayout({
             href="/"
             className="ml-auto text-sm text-muted underline-offset-4 hover:underline"
           >
-            Kiosk
+            Tender
           </Link>
         </div>
       </header>
@@ -95,7 +95,7 @@ export default async function StorefrontLayout({
         <div className="mx-auto w-full max-w-6xl px-4 py-8 text-sm text-muted sm:px-6">
           {store.name} · Powered by{" "}
           <Link href="/" className="underline underline-offset-4">
-            Kiosk
+            Tender
           </Link>
         </div>
       </footer>
