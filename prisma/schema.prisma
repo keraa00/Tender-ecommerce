@@ -1,0 +1,439 @@
+// Multi-tenant e-commerce platform.
+//
+// Tenancy invariant: every root entity carries `storeId`, and every uniqueness
+// constraint that a tenant can influence is composite with it. Two stores may
+// both own a product at `/p/black-tee` and both define the code `WELCOME10`.
+//
+// Money is always integer cents. Never floats.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PlatformRole {
+  USER
+  PLATFORM_ADMIN
+
+  @@map("platform_role")
+}
+
+enum StoreStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+
+  @@map("store_status")
+}
+
+enum StoreMemberRole {
+  OWNER
+  STAFF
+
+  @@map("store_member_role")
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@map("product_status")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  CANCELLED
+
+  @@map("order_status")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+
+  @@map("discount_type")
+}
+
+enum DiscountAppliesTo {
+  ALL
+  COLLECTION
+  PRODUCT
+
+  @@map("discount_applies_to")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// Mirrors `auth.users` from Supabase Auth. `id` is the Supabase user id, kept
+/// identical so Prisma relations line up with the JWT subject. Rows are created
+/// by a Postgres trigger on `auth.users` (see migration `supabase_auth_sync`).
+model User {
+  id           String       @id @db.Uuid
+  email        String       @unique
+  name         String?
+  platformRole PlatformRole @default(USER) @map("platform_role")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  ownedStores Store[]              @relation("StoreOwner")
+  memberships StoreMember[]
+  carts       Cart[]
+  orders      Order[]
+  redemptions DiscountRedemption[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Store {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  slug        String  @unique
+  name        String
+  description String?
+  logoUrl     String? @map("logo_url")
+  bannerUrl   String? @map("banner_url")
+  /// Hex colour driving the storefront accent. Stores must look like different
+  /// businesses, not one template with the name swapped out.
+  accentColor String? @map("accent_color")
+
+  ownerId String @map("owner_id") @db.Uuid
+
+  /// Connected Stripe account (Connect Standard). Unique so an inbound Connect
+  /// webhook's `account` field resolves to exactly one store in a single lookup.
+  stripeAccountId          String? @unique @map("stripe_account_id")
+  stripeOnboardingComplete Boolean @default(false) @map("stripe_onboarding_complete")
+  stripeChargesEnabled     Boolean @default(false) @map("stripe_charges_enabled")
+  stripePayoutsEnabled     Boolean @default(false) @map("stripe_payouts_enabled")
+
+  /// Platform commission in basis points. 500 = 5.00%.
+  commissionBps Int         @default(500) @map("commission_bps")
+  status        StoreStatus @default(PENDING)
+
+  /// Monotonic counter backing the per-store human-readable order number.
+  /// Incremented inside the order-creation transaction.
+  orderSequence Int @default(0) @map("order_sequence")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner       User          @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members     StoreMember[]
+  products    Product[]
+  variants    Variant[]
+  collections Collection[]
+  carts       Cart[]
+  orders      Order[]
+  discounts   Discount[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("stores")
+}
+
+model StoreMember {
+  id        String          @id @default(uuid(7)) @db.Uuid
+  storeId   String          @map("store_id") @db.Uuid
+  userId    String          @map("user_id") @db.Uuid
+  role      StoreMemberRole @default(STAFF)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, userId])
+  @@index([userId])
+  @@map("store_members")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Product {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  storeId     String        @map("store_id") @db.Uuid
+  title       String
+  slug        String
+  description String?
+  status      ProductStatus @default(DRAFT)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  store       Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  images      ProductImage[]
+  variants    Variant[]
+  collections ProductOnCollection[]
+
+  @@unique([storeId, slug])
+  @@index([storeId, status, createdAt])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  url       String
+  altText   String? @map("alt_text")
+  position  Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, position])
+  @@map("product_images")
+}
+
+/// `storeId` is denormalised here on purpose. A variant id is the one catalog
+/// identifier a client hands us raw (add-to-cart, checkout lines), so it is the
+/// prime IDOR surface. Carrying the tenant key locally turns "does this variant
+/// belong to this store?" into one indexed predicate instead of a two-hop join.
+model Variant {
+  id                  String  @id @default(uuid(7)) @db.Uuid
+  storeId             String  @map("store_id") @db.Uuid
+  productId           String  @map("product_id") @db.Uuid
+  title               String
+  sku                 String?
+  priceCents          Int     @map("price_cents")
+  compareAtPriceCents Int?    @map("compare_at_price_cents")
+  inventoryQty        Int     @default(0) @map("inventory_qty")
+  position            Int     @default(0)
+
+  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartLines  CartLine[]
+  orderLines OrderLine[]
+
+  @@unique([storeId, sku])
+  @@index([productId, position])
+  @@index([storeId])
+  @@map("variants")
+}
+
+model Collection {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  title       String
+  slug        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  store    Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products ProductOnCollection[]
+
+  @@unique([storeId, slug])
+  @@map("collections")
+}
+
+model ProductOnCollection {
+  productId    String @map("product_id") @db.Uuid
+  collectionId String @map("collection_id") @db.Uuid
+  position     Int    @default(0)
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+  @@index([collectionId, position])
+  @@map("product_collections")
+}
+
+// ---------------------------------------------------------------------------
+// Cart
+// ---------------------------------------------------------------------------
+
+/// One cart per (store, session). There is deliberately no cross-store cart:
+/// a single payment cannot be split across multiple connected accounts without
+/// a materially harder settlement design. See README "Out of scope".
+model Cart {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  sessionId String   @map("session_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lines CartLine[]
+
+  @@unique([storeId, sessionId])
+  @@index([storeId, userId])
+  @@map("carts")
+}
+
+model CartLine {
+  id        String @id @default(uuid(7)) @db.Uuid
+  cartId    String @map("cart_id") @db.Uuid
+  variantId String @map("variant_id") @db.Uuid
+  quantity  Int    @default(1)
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+  @@map("cart_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+/// `platformFeeCents` and `sellerNetCents` are stored, never recomputed. The
+/// store's commission rate may change; a settled order must not.
+model Order {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  storeId     String      @map("store_id") @db.Uuid
+  orderNumber Int         @map("order_number")
+  userId      String?     @map("user_id") @db.Uuid
+  email       String
+  status      OrderStatus @default(PENDING)
+
+  subtotalCents    Int @map("subtotal_cents")
+  discountCents    Int @default(0) @map("discount_cents")
+  shippingCents    Int @default(0) @map("shipping_cents")
+  totalCents       Int @map("total_cents")
+  platformFeeCents Int @map("platform_fee_cents")
+  sellerNetCents   Int @map("seller_net_cents")
+
+  discountId String? @map("discount_id") @db.Uuid
+
+  stripePaymentIntentId String? @unique @map("stripe_payment_intent_id")
+  stripeAccountId       String? @map("stripe_account_id")
+
+  shippingAddress Json @map("shipping_address") @db.JsonB
+
+  paidAt      DateTime? @map("paid_at")
+  fulfilledAt DateTime? @map("fulfilled_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  store       Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  user        User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  discount    Discount?            @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  lines       OrderLine[]
+  redemptions DiscountRedemption[]
+
+  @@unique([storeId, orderNumber])
+  @@index([storeId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([email])
+  @@map("orders")
+}
+
+/// Snapshots title and price. An order is a historical record, not a join.
+/// `variantId` goes null rather than blocking catalog deletion.
+model OrderLine {
+  id                   String  @id @default(uuid(7)) @db.Uuid
+  orderId              String  @map("order_id") @db.Uuid
+  variantId            String? @map("variant_id") @db.Uuid
+  titleSnapshot        String  @map("title_snapshot")
+  variantTitleSnapshot String  @map("variant_title_snapshot")
+  skuSnapshot          String? @map("sku_snapshot")
+  imageUrlSnapshot     String? @map("image_url_snapshot")
+  unitPriceCents       Int     @map("unit_price_cents")
+  quantity             Int
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Discounts
+// ---------------------------------------------------------------------------
+
+/// `value` is an integer whose meaning depends on `type`:
+///   PERCENTAGE     -> basis points (1000 = 10.00%)
+///   FIXED_AMOUNT   -> cents off
+///   FREE_SHIPPING  -> ignored
+/// `code = null` means the discount applies automatically when conditions hold.
+model Discount {
+  id      String  @id @default(uuid(7)) @db.Uuid
+  storeId String  @map("store_id") @db.Uuid
+  code    String?
+  title   String
+
+  type  DiscountType
+  value Int
+
+  minSubtotalCents Int?              @map("min_subtotal_cents")
+  appliesTo        DiscountAppliesTo @default(ALL) @map("applies_to")
+  /// Collection id when appliesTo = COLLECTION, product id when = PRODUCT.
+  targetId         String?           @map("target_id") @db.Uuid
+
+  usageLimit       Int? @map("usage_limit")
+  usageCount       Int  @default(0) @map("usage_count")
+  perCustomerLimit Int? @map("per_customer_limit")
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  active   Boolean   @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store       Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders      Order[]
+  redemptions DiscountRedemption[]
+
+  @@unique([storeId, code])
+  @@index([storeId, active])
+  @@map("discounts")
+}
+
+/// `email` is carried alongside `userId` so the per-customer limit is
+/// enforceable for guest checkouts, which have no user row.
+model DiscountRedemption {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  discountId String   @map("discount_id") @db.Uuid
+  orderId    String   @map("order_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  email      String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  discount Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, discountId])
+  @@index([discountId, userId])
+  @@index([discountId, email])
+  @@map("discount_redemptions")
+}
+
+// ---------------------------------------------------------------------------
+// Stripe
+// ---------------------------------------------------------------------------
+
+/// Exists solely for webhook idempotency. Stripe retries; a replayed event must
+/// not decrement inventory or increment discount usage twice.
+model WebhookEvent {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  stripeEventId String   @unique @map("stripe_event_id")
+  type          String
+  /// Connect webhooks carry the connected account id; null for platform events.
+  accountId     String?  @map("account_id")
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  @@index([type])
+  @@map("webhook_events")
+}
