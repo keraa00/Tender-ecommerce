@@ -1,4 +1,5 @@
 import { ButtonLink } from "@/components/ui/button";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { StoreCard } from "@/components/store-card";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -26,17 +27,38 @@ export default async function HomePage() {
   ]);
 
   return (
-    <>
-      <SiteHeader />
+    // `theme-home` re-points the colour tokens at the blue palette for this
+    // page only — see globals.css. The dashboard keeps the neutral chrome.
+    <div className="theme-home relative isolate flex flex-1 flex-col bg-background">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[42rem] bg-linear-to-b from-home-sky via-home-mist to-background"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 -right-32 -z-10 h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,var(--home-glow),transparent_70%)] opacity-40 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-24 -left-40 -z-10 h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle,var(--home-glow),transparent_70%)] opacity-25 blur-3xl"
+      />
+
+      <SiteHeader fullBleed />
 
       <main className="flex-1">
         <section className="mx-auto w-full max-w-6xl px-4 pt-16 pb-14 sm:px-6 sm:pt-24">
-          <p className="text-sm font-medium text-muted">
+          <p className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm font-medium text-muted shadow-sm backdrop-blur">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
             Multi-tenant commerce
           </p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-            Open a store. Take real payments. Keep 95%.
+
+          <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
+            Open a store. Take real payments.{" "}
+            <span className="bg-linear-to-r from-primary to-accent bg-clip-text text-transparent">
+              Keep 95%.
+            </span>
           </h1>
+
           <p className="mt-5 max-w-xl text-lg text-muted text-pretty">
             Tender gives every seller an isolated storefront, their own catalogue
             and their own Stripe account. The platform takes a 5% commission at
@@ -59,14 +81,20 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className="border-y border-border bg-surface-subtle">
-          <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3 sm:px-6">
+        <section className="border-y border-border bg-linear-to-br from-home-mist via-home-veil to-home-sky">
+          <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-14 sm:grid-cols-3 sm:px-6">
             {STEPS.map((step, index) => (
-              <div key={step.title}>
-                <span className="text-sm font-semibold text-muted tabular">
+              <div
+                key={step.title}
+                className="rounded-2xl border border-border bg-surface/70 p-5 shadow-sm backdrop-blur transition-colors hover:border-border-strong hover:bg-surface"
+              >
+                <span
+                  aria-hidden
+                  className="grid h-8 w-8 place-items-center rounded-lg bg-linear-to-br from-primary to-accent text-xs font-semibold text-primary-foreground tabular"
+                >
                   0{index + 1}
                 </span>
-                <h2 className="mt-2 font-medium tracking-tight">{step.title}</h2>
+                <h2 className="mt-3 font-medium tracking-tight">{step.title}</h2>
                 <p className="mt-1.5 text-sm text-muted text-pretty">
                   {step.body}
                 </p>
@@ -89,7 +117,7 @@ export default async function HomePage() {
           </div>
 
           {stores.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-dashed border-border-strong px-6 py-14 text-center">
+            <div className="mt-6 rounded-2xl border border-dashed border-border-strong bg-surface/60 px-6 py-14 text-center backdrop-blur">
               <p className="font-medium">No stores yet</p>
               <p className="mx-auto mt-1 max-w-sm text-sm text-muted text-pretty">
                 Run <code className="font-mono text-xs">npm run db:seed</code>{" "}
@@ -113,12 +141,7 @@ export default async function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t border-border">
-        <div className="mx-auto w-full max-w-6xl px-4 py-8 text-sm text-muted sm:px-6">
-          Tender — a multi-tenant marketplace built on Next.js, Postgres and
-          Stripe Connect.
-        </div>
-      </footer>
-    </>
+      <SiteFooter />
+    </div>
   );
 }

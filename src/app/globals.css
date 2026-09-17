@@ -30,6 +30,13 @@
   --danger: #b91c1c;
 
   --ring: #0c0a09;
+
+  /* Gradient stops for the marketing page, light → lighter blue. */
+  --home-sky: #d8e9fe;
+  --home-mist: #eaf3ff;
+  --home-veil: #f7fbff;
+  --home-glow: #93c5fd;
+  --home-deep: #1e40af;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -56,6 +63,66 @@
     --danger: #f87171;
 
     --ring: #fafaf9;
+
+    --home-sky: #0e2138;
+    --home-mist: #0b192b;
+    --home-veil: #091320;
+    --home-glow: #1d4ed8;
+    --home-deep: #bfdbfe;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Home page skin.
+
+   Every colour utility resolves back to the variables above at the point of
+   use (that is what `@theme inline` buys us), so re-declaring them on a
+   wrapper re-skins everything inside it — buttons, cards, borders — while the
+   dashboard and the storefronts keep the neutral chrome. Same specificity as
+   `:root`, so these win purely by coming later in the file.
+   --------------------------------------------------------------------------- */
+
+.theme-home {
+  --background: #f6faff;
+  --foreground: #0a1c33;
+
+  --surface: #ffffff;
+  --surface-subtle: #eaf3ff;
+  --surface-hover: #dceafd;
+
+  --border: #cfe2fa;
+  --border-strong: #a8caf2;
+
+  --muted: #4e6a8d;
+
+  --primary: #1d4ed8;
+  --primary-foreground: #f8fbff;
+
+  --accent: #0284c7;
+
+  --ring: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-home {
+    --background: #07121f;
+    --foreground: #e7f0fb;
+
+    --surface: #0f1f33;
+    --surface-subtle: #0c1a2b;
+    --surface-hover: #16293f;
+
+    --border: #1e3a5f;
+    --border-strong: #2d5280;
+
+    --muted: #9db4cf;
+
+    --primary: #60a5fa;
+    --primary-foreground: #06101d;
+
+    --accent: #38bdf8;
+
+    --ring: #60a5fa;
   }
 }
 
@@ -82,6 +149,12 @@
   --color-danger: var(--danger);
 
   --color-ring: var(--ring);
+
+  --color-home-sky: var(--home-sky);
+  --color-home-mist: var(--home-mist);
+  --color-home-veil: var(--home-veil);
+  --color-home-glow: var(--home-glow);
+  --color-home-deep: var(--home-deep);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

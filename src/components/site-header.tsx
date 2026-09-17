@@ -2,15 +2,52 @@ import Link from "next/link";
 
 import { signOutAction } from "@/lib/auth/actions";
 import { getCurrentUser } from "@/lib/auth/session";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 
-export async function SiteHeader() {
+function SignOutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M15 3h3.5A1.5 1.5 0 0 1 20 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15" />
+      <path d="m10 16 4-4-4-4" />
+      <path d="M14 12H4" />
+    </svg>
+  );
+}
+
+export async function SiteHeader({
+  /**
+   * Pins the brand to the window's left edge instead of to the centred content
+   * column. The home page uses it; the dashboard stays aligned with its own
+   * content.
+   */
+  fullBleed = false,
+}: {
+  fullBleed?: boolean;
+} = {}) {
   const user = await getCurrentUser();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+      <div
+        className={cn(
+          "flex h-14 w-full items-center gap-4 px-4 sm:px-6",
+          fullBleed ? "lg:px-8" : "mx-auto max-w-6xl",
+        )}
+      >
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-semibold tracking-tight"
+        >
           <span
             aria-hidden
             className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground"
@@ -27,9 +64,16 @@ export async function SiteHeader() {
                 Dashboard
               </ButtonLink>
               <form action={signOutAction}>
-                <Button type="submit" variant="ghost" size="sm">
+                {/* Deliberately not the shared ghost button: the red hover has
+                    to beat its `hover:text-foreground`, and `cn` is a plain
+                    joiner that does not resolve Tailwind conflicts. */}
+                <button
+                  type="submit"
+                  className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:text-danger"
+                >
+                  <SignOutIcon className="h-4 w-4" />
                   Sign out
-                </Button>
+                </button>
               </form>
             </>
           ) : (
