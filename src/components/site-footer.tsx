@@ -66,7 +66,7 @@ export function SiteFooter() {
                 aria-hidden
                 className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground"
               >
-                K
+                T
               </span>
               Tender
             </Link>

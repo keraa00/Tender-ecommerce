@@ -52,7 +52,7 @@ export async function SiteHeader({
             aria-hidden
             className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground"
           >
-            K
+            T
           </span>
           Tender
         </Link>
@@ -69,7 +69,7 @@ export async function SiteHeader({
                     joiner that does not resolve Tailwind conflicts. */}
                 <button
                   type="submit"
-                  className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:text-danger"
+                  className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:text-danger cursor-pointer"
                 >
                   <SignOutIcon className="h-4 w-4" />
                   Sign out
