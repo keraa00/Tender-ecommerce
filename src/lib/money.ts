@@ -62,3 +62,12 @@ export function parseMoneyToCents(input: string): number | null {
 
   return cents + (roundUp ? 1 : 0);
 }
+
+/**
+ * Cents as a plain decimal string for a price input — no currency symbol and no
+ * grouping separators, both of which a `type="text"` price field would have to
+ * strip back out before `parseMoneyToCents` could read it.
+ */
+export function centsToInputValue(cents: number): string {
+  return (cents / 100).toFixed(2);
+}

@@ -18,7 +18,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "seed:images": "tsx scripts/fetch-seed-images.ts"
+    "seed:images": "tsx scripts/fetch-seed-images.ts",
+    "storage:setup": "tsx scripts/setup-storage.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

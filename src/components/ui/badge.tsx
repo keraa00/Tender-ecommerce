@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { StoreStatus } from "@/lib/db/types";
+import { ProductStatus, StoreStatus } from "@/lib/db/types";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -45,4 +45,22 @@ const storeStatusLabel: Record<StoreStatus, string> = {
 
 export function StoreStatusBadge({ status }: { status: StoreStatus }) {
   return <Badge tone={storeStatusTone[status]}>{storeStatusLabel[status]}</Badge>;
+}
+
+const productStatusTone: Record<ProductStatus, Tone> = {
+  [ProductStatus.DRAFT]: "neutral",
+  [ProductStatus.ACTIVE]: "success",
+  [ProductStatus.ARCHIVED]: "warning",
+};
+
+const productStatusLabel: Record<ProductStatus, string> = {
+  [ProductStatus.DRAFT]: "Draft",
+  [ProductStatus.ACTIVE]: "Published",
+  [ProductStatus.ARCHIVED]: "Archived",
+};
+
+export function ProductStatusBadge({ status }: { status: ProductStatus }) {
+  return (
+    <Badge tone={productStatusTone[status]}>{productStatusLabel[status]}</Badge>
+  );
 }

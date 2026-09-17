@@ -5,8 +5,8 @@ store is an isolated tenant with its own catalogue, its own orders and its own
 Stripe account; the platform takes a commission at the moment of the charge.
 
 > **Status: in active development.** Schema, tenancy, auth, store creation, slug
-> routing and seed data are in. Stripe Connect, checkout, the discount engine and
-> the admin surfaces are next — see [Roadmap](#roadmap).
+> routing, product management and seed data are in. Stripe Connect, checkout, the
+> discount engine and the admin surfaces are next — see [Roadmap](#roadmap).
 
 ---
 
@@ -19,6 +19,7 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `/dashboard/[storeSlug]` — membership-gated setup checklist |
+| Product management | `/dashboard/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived |
 | Seed | Two stores, 30 products, 56 variants, 6 collections, 6 discounts — idempotent |
 
 ---
@@ -38,19 +39,49 @@ Stripe account; the platform takes a commission at the moment of the charge.
 
 ### Why Connect **Standard**
 
-Three account types were on the table:
+Account type is the payments decision that is expensive to reverse. It fixes who
+owns identity verification, who absorbs a chargeback, and how much onboarding UI
+becomes the platform's problem.
 
-- **Standard** — sellers onboard through a Stripe OAuth link. Stripe owns KYC,
-  disputes and the seller's dashboard. Least code, least liability.
-- **Express** — more control over onboarding UX via Account Links, at the cost
-  of building and maintaining that UX, plus more platform-side liability.
-- **Custom** — the platform owns the entire seller experience including
-  compliance. Weeks of work and a regulatory surface this project has no
-  business taking on.
+| | Standard | Express | Custom |
+|---|---|---|---|
+| KYC | Stripe | Stripe, in a flow you trigger | The platform |
+| Onboarding | Stripe OAuth redirect | Account Links, lightly branded | Built from scratch |
+| Seller dashboard | Full Stripe Dashboard | Cut-down Express dashboard | Built from scratch |
+| Disputes, negative balances | Seller | Usually the platform | Platform |
+| Pre-existing Stripe account | Reusable | No | No |
+| Per-account monthly fee | None | Yes | Yes |
 
-Standard was chosen. At this scope the differentiator is *where the risk sits*,
-not the UI: Standard puts identity verification and payout disputes with Stripe,
-which is where a project this size wants them.
+**Standard was chosen.** At this scope the differentiator is *where the risk
+sits*, not the onboarding UI. Identity verification and payout disputes belong
+with Stripe, and a seller who already has a Stripe account keeps it. The price
+is an onboarding hop that visibly leaves the app and looks like Stripe, plus
+sellers handling disputes in Stripe's dashboard rather than this one — a cheap
+trade when [refunds are out of scope](#out-of-scope) anyway.
+
+**Express** would be right if onboarding conversion were the business. Here it
+would buy branding in exchange for Account Link plumbing: link expiry, resume-
+setup states, polling `charges_enabled` before the seller is allowed to sell.
+**Custom** means owning KYC and a regulatory surface this project has no
+business taking on.
+
+What that choice commits the code to:
+
+- **Direct charges.** The Checkout Session is created *on* the connected
+  account — `{ stripeAccount: store.stripeAccountId }` — with commission taken
+  as `application_fee_amount`. Stripe's processing fee comes out of the
+  seller's side, not the platform's.
+- **The buyer's card statement shows the seller,** not the platform. Correct
+  for a marketplace, and worth knowing before the first "what is this charge"
+  email.
+- **Connect webhooks are their own endpoint.** Connect events carry an
+  `account` field identifying the seller and are signed with a different secret
+  than the platform's own events.
+- **This database is the source of truth for orders.** Charges live on the
+  connected account and aren't queryable from the platform account by default.
+- **A store cannot sell until Stripe says so.** `stripeChargesEnabled` is set
+  from `account.updated`, and publishing and checkout are gated on it — a row
+  with a `stripeAccountId` is not the same thing as a store that can take money.
 
 ---
 
@@ -128,13 +159,25 @@ than modelling it with policies: the table, sequence and function grants are
 revoked from both roles, so are the default privileges that would re-grant them
 on the next `CREATE TABLE`, and RLS is enabled with no policies on all fifteen
 tables as a deny-all backstop. Nothing here needs the Data API — `supabase-js`
-is called only for `auth.*`, and every read and write goes through Prisma on the
-direct connection. `service_role` is left intact: it is server-only and the seed
-depends on it.
+is called only for `auth.*` and Storage, and every database read and write goes
+through Prisma on the direct connection. `service_role` is left intact: it is
+server-only, and the seed and product image uploads depend on it.
 
 > RLS here is a backstop, not the tenancy mechanism. Prisma connects as the
 > table owner, which bypasses it. Per-tenant RLS policies — scoping enforced in
 > the database rather than above it — remain a stretch goal.
+
+**Product images** are the one thing that lives outside Postgres. They go to the
+`product-images` Storage bucket under a `<storeId>/` prefix, written server-side
+with `service_role` after `getStoreContext()` has already tied the store to the
+session — so the tenant prefix is never taken from anything a client sent. No
+storage policies are created, which leaves `anon` able to read (storefront photos
+are public by definition, and `next/image` cannot optimise what it cannot fetch)
+and unable to upload, list or delete. Verified against the live project.
+
+> Supabase's `remove()` reports no error when a policy filters the object out, so
+> a delete that did nothing looks like a delete that worked. The object surviving
+> is the thing to assert, not the absent error.
 
 ---
 
@@ -214,6 +257,29 @@ http://localhost:3000/auth/confirm
 http://localhost:3000/auth/callback
 ```
 
+Then, under Authentication → Emails → Templates, change **Confirm signup** to
+send the token hash:
+
+```html
+<h2>Confirm your signup</h2>
+<p>
+  <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup"
+    >Confirm your email</a
+  >
+</p>
+```
+
+This is worth doing even though `/auth/confirm` also accepts the stock
+`{{ .ConfirmationURL }}` template. That default sends the user through
+Supabase's own verify endpoint, which hands back a PKCE code redeemable only in
+the browser that signed up — so confirming from a phone, or from webmail in a
+second browser, fails. A token hash carries no such tie and works anywhere.
+
+Appending to `{{ .RedirectTo }}` rather than rebuilding the URL from
+`{{ .SiteURL }}` is what preserves the `next` path the app put on
+`emailRedirectTo`, so a user confirming from a deep link still lands where they
+were headed.
+
 If you point `DATABASE_URL` at Supabase rather than a local database, append
 `?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`. The pooler serves a
 certificate signed by Supabase's own root CA, which the driver behind
@@ -223,7 +289,16 @@ dev server, seed, scripts — has to be launched from the repo root.
 `.env.example` carries the long version, including why the session pooler is the
 one to use.
 
-**3. Migrate and seed.**
+**3. Product image storage.**
+
+```bash
+npm run storage:setup
+```
+
+Creates the public `product-images` bucket that seller uploads go to. Idempotent,
+and safe to re-run after changing the limits in `scripts/setup-storage.ts`.
+
+**4. Migrate and seed.**
 
 ```bash
 npm run db:migrate
@@ -241,7 +316,7 @@ in Supabase Auth so you can log in as them:
 
 Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 
-**4. Run.**
+**5. Run.**
 
 ```bash
 npm run dev
@@ -267,7 +342,7 @@ npm run dev
 | Milestone | Ships | |
 |---|---|---|
 | Foundation | Scaffold, multi-tenant schema, auth, store creation, slug routing, seed | ✅ |
-| Data layer | Scoped data-access layer + isolation tests, product CRUD with images and variants | |
+| Data layer | Product CRUD with images and variants ✅; scoped data-access layer + isolation tests still to come | ◐ |
 | Storefront | Listing, search, filters, detail, cart | |
 | Connect | Stripe Connect onboarding, `account.updated` webhook, activation gating | |
 | Checkout | Direct charges with application fee, `payment_intent.succeeded`, inventory, emails | |

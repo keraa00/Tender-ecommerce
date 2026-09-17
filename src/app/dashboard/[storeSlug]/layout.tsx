@@ -40,6 +40,26 @@ export default async function StoreAdminLayout({
         <StoreStatusBadge status={store.status} />
       </div>
 
+      {/*
+        Plain links rather than an active-state nav: the segment a request is on
+        is already obvious from the page heading, and a client component here
+        would opt the whole seller admin into hydration for two anchors.
+      */}
+      <nav className="mt-4 flex gap-4 text-sm">
+        <Link
+          href={`/dashboard/${store.slug}`}
+          className="text-muted underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Overview
+        </Link>
+        <Link
+          href={`/dashboard/${store.slug}/products`}
+          className="text-muted underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Products
+        </Link>
+      </nav>
+
       {children}
     </div>
   );

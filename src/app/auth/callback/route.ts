@@ -1,30 +1,20 @@
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { confirmEmailLink } from "@/lib/auth/confirmation";
 
 /**
- * Handles Supabase links that use the PKCE `code` exchange — the default for
- * OAuth providers and for the stock `{{ .ConfirmationURL }}` email template.
+ * The path OAuth providers are pointed at, and the one older confirmation
+ * emails may still name. It shares `/auth/confirm`'s implementation so that a
+ * link arriving at either path resolves identically.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
-  const code = searchParams.get("code");
-  const rawNext = searchParams.get("next") ?? "/dashboard";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//")
-    ? rawNext
-    : "/dashboard";
+  const result = await confirmEmailLink(request.nextUrl.searchParams);
 
-  if (!code) {
-    redirect("/login?error=confirmation-link-invalid");
+  // Outside any try/catch: `redirect` signals by throwing.
+  if (result.status === "failed") {
+    redirect(`/login?error=${result.error}`);
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error) {
-    redirect("/login?error=confirmation-link-expired");
-  }
-
-  redirect(next);
+  redirect(result.next);
 }

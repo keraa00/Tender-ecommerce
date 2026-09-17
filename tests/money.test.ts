@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculatePlatformFee,
+  centsToInputValue,
   formatMoney,
   parseMoneyToCents,
 } from "@/lib/money";
@@ -62,5 +63,23 @@ describe("formatMoney", () => {
     expect(formatMoney(2_499)).toBe("$24.99");
     expect(formatMoney(0)).toBe("$0.00");
     expect(formatMoney(100_000)).toBe("$1,000.00");
+  });
+});
+
+describe("centsToInputValue", () => {
+  it("renders cents as a plain two-decimal string", () => {
+    expect(centsToInputValue(2_499)).toBe("24.99");
+    expect(centsToInputValue(500)).toBe("5.00");
+    expect(centsToInputValue(0)).toBe("0.00");
+  });
+
+  it("does not group thousands, which a price input would have to strip again", () => {
+    expect(centsToInputValue(1_234_567)).toBe("12345.67");
+  });
+
+  it("round-trips through parseMoneyToCents", () => {
+    for (const cents of [1, 99, 100, 2_499, 1_234_567]) {
+      expect(parseMoneyToCents(centsToInputValue(cents)), String(cents)).toBe(cents);
+    }
   });
 });

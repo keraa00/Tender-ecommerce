@@ -1,0 +1,469 @@
+"use client";
+
+import Image from "next/image";
+import { useActionState, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
+import { centsToInputValue } from "@/lib/money";
+import type { ProductFormState } from "@/lib/products/actions";
+import {
+  IMAGE_ACCEPT_ATTRIBUTE,
+  MAX_IMAGE_MB,
+  MAX_IMAGES_PER_UPLOAD,
+  MAX_VARIANTS,
+  PRODUCT_STATUS_OPTIONS,
+  imageRejectionReason,
+} from "@/lib/products/constants";
+import { slugify } from "@/lib/slug";
+
+/**
+ * Variants and images post as parallel repeated fields (`variantTitle` ×N and
+ * so on) rather than indexed names, which is what lets `formData.getAll()` on
+ * the server line the columns up by position. See `lib/products/form.ts`.
+ */
+
+type ExistingImage = { id: string; url: string; altText: string | null };
+
+type ExistingVariant = {
+  id: string;
+  title: string;
+  sku: string | null;
+  priceCents: number;
+  compareAtPriceCents: number | null;
+  inventoryQty: number;
+};
+
+export type ProductFormProduct = {
+  title: string;
+  slug: string;
+  description: string | null;
+  status: string;
+  images: ExistingImage[];
+  variants: ExistingVariant[];
+};
+
+type VariantRow = {
+  /** Stable React key. Not submitted — `id` is what the server matches on. */
+  key: string;
+  id: string | null;
+  title: string;
+  sku: string;
+  price: string;
+  compareAt: string;
+  stock: string;
+};
+
+let rowCounter = 0;
+function nextKey() {
+  rowCounter += 1;
+  return `row-${rowCounter}`;
+}
+
+function blankRow(): VariantRow {
+  return {
+    key: nextKey(),
+    id: null,
+    title: "",
+    sku: "",
+    price: "",
+    compareAt: "",
+    stock: "0",
+  };
+}
+
+function rowsFrom(product?: ProductFormProduct): VariantRow[] {
+  if (!product || product.variants.length === 0) {
+    return [{ ...blankRow(), title: "Default" }];
+  }
+
+  return product.variants.map((variant) => ({
+    key: nextKey(),
+    id: variant.id,
+    title: variant.title,
+    sku: variant.sku ?? "",
+    price: centsToInputValue(variant.priceCents),
+    compareAt:
+      variant.compareAtPriceCents === null
+        ? ""
+        : centsToInputValue(variant.compareAtPriceCents),
+    stock: String(variant.inventoryQty),
+  }));
+}
+
+export function ProductForm({
+  action,
+  product,
+  submitLabel,
+}: {
+  action: (state: ProductFormState, formData: FormData) => Promise<ProductFormState>;
+  product?: ProductFormProduct;
+  submitLabel: string;
+}) {
+  const [state, formAction, pending] = useActionState<ProductFormState, FormData>(
+    action,
+    {},
+  );
+
+  const [title, setTitle] = useState(product?.title ?? "");
+  const [slug, setSlug] = useState(product?.slug ?? "");
+  // Once the seller edits the address, stop rewriting it from the title.
+  const [slugEdited, setSlugEdited] = useState(Boolean(product));
+  const [rows, setRows] = useState<VariantRow[]>(() => rowsFrom(product));
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const effectiveSlug = slugEdited ? slug : slugify(title);
+  const rowErrors = state.fieldErrors?.variantRows ?? {};
+
+  function updateRow(key: string, patch: Partial<VariantRow>) {
+    setRows((current) =>
+      current.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function toggleRemoved(id: string) {
+    setRemoved((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <form action={formAction} className="space-y-8" noValidate>
+      <FormError>{state.formError}</FormError>
+
+      {state.notice ? (
+        <p
+          role="status"
+          className="rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-sm text-success"
+        >
+          {state.notice}
+        </p>
+      ) : null}
+
+      <section className="space-y-5">
+        <Field
+          label="Title"
+          htmlFor="title"
+          error={state.fieldErrors?.title}
+          hint="What buyers see on the product card."
+        >
+          <Input
+            id="title"
+            name="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Stoneware mug"
+            autoComplete="off"
+            required
+            aria-invalid={Boolean(state.fieldErrors?.title)}
+          />
+        </Field>
+
+        <Field
+          label="Address"
+          htmlFor="slug"
+          error={state.fieldErrors?.slug}
+          hint="The product's URL within your storefront."
+        >
+          <div className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground">
+            <span className="pl-3 text-sm text-muted select-none">/p/</span>
+            <Input
+              id="slug"
+              name="slug"
+              value={effectiveSlug}
+              onChange={(event) => {
+                setSlugEdited(true);
+                setSlug(slugify(event.target.value));
+              }}
+              placeholder="stoneware-mug"
+              autoComplete="off"
+              className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+              aria-invalid={Boolean(state.fieldErrors?.slug)}
+            />
+          </div>
+        </Field>
+
+        <Field
+          label="Description"
+          htmlFor="description"
+          error={state.fieldErrors?.description}
+          hint="Optional. What it is, what it is made of, how big it is."
+        >
+          <Textarea
+            id="description"
+            name="description"
+            rows={4}
+            defaultValue={product?.description ?? ""}
+            placeholder="Thrown by hand in Lisbon and glazed in a matte oatmeal."
+          />
+        </Field>
+
+        <fieldset className="space-y-2">
+          <legend className="block text-sm font-medium text-foreground">
+            Visibility
+          </legend>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {PRODUCT_STATUS_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border-strong bg-surface px-3 py-2.5 has-checked:border-foreground"
+              >
+                <input
+                  type="radio"
+                  name="status"
+                  value={option.value}
+                  defaultChecked={(product?.status ?? "DRAFT") === option.value}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{option.label}</span>
+                  <span className="block text-xs text-muted">{option.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-medium tracking-tight">Options</h2>
+          <p className="text-sm text-muted">Each one has its own price and stock.</p>
+        </div>
+
+        {state.fieldErrors?.variants ? (
+          <p className="text-sm text-danger" role="alert">
+            {state.fieldErrors.variants}
+          </p>
+        ) : null}
+
+        <ul className="space-y-3">
+          {rows.map((row, index) => (
+            <li
+              key={row.key}
+              className="rounded-xl border border-border bg-surface p-4"
+            >
+              <div className="grid gap-3 sm:grid-cols-12">
+                {row.id ? (
+                  <input type="hidden" name="variantId" value={row.id} />
+                ) : (
+                  // Keeps the id column aligned with the other repeated fields
+                  // for rows that have no id yet.
+                  <input type="hidden" name="variantId" value="" />
+                )}
+
+                <div className="sm:col-span-4">
+                  <Label htmlFor={`${row.key}-title`}>Name</Label>
+                  <Input
+                    id={`${row.key}-title`}
+                    name="variantTitle"
+                    value={row.title}
+                    onChange={(event) =>
+                      updateRow(row.key, { title: event.target.value })
+                    }
+                    placeholder="Small"
+                    autoComplete="off"
+                    className="mt-1"
+                    aria-invalid={Boolean(rowErrors[index])}
+                  />
+                </div>
+
+                <div className="sm:col-span-3">
+                  <Label htmlFor={`${row.key}-sku`}>SKU</Label>
+                  <Input
+                    id={`${row.key}-sku`}
+                    name="variantSku"
+                    value={row.sku}
+                    onChange={(event) =>
+                      updateRow(row.key, { sku: event.target.value })
+                    }
+                    placeholder="Optional"
+                    autoComplete="off"
+                    className="mt-1"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Label htmlFor={`${row.key}-price`}>Price</Label>
+                  <Input
+                    id={`${row.key}-price`}
+                    name="variantPrice"
+                    value={row.price}
+                    onChange={(event) =>
+                      updateRow(row.key, { price: event.target.value })
+                    }
+                    placeholder="24.99"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="mt-1 tabular"
+                    aria-invalid={Boolean(rowErrors[index])}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Label htmlFor={`${row.key}-compare`}>Compare at</Label>
+                  <Input
+                    id={`${row.key}-compare`}
+                    name="variantCompareAt"
+                    value={row.compareAt}
+                    onChange={(event) =>
+                      updateRow(row.key, { compareAt: event.target.value })
+                    }
+                    placeholder="—"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="mt-1 tabular"
+                  />
+                </div>
+
+                <div className="sm:col-span-1">
+                  <Label htmlFor={`${row.key}-stock`}>Stock</Label>
+                  <Input
+                    id={`${row.key}-stock`}
+                    name="variantStock"
+                    value={row.stock}
+                    onChange={(event) =>
+                      updateRow(row.key, { stock: event.target.value })
+                    }
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="mt-1 tabular"
+                    aria-invalid={Boolean(rowErrors[index])}
+                  />
+                </div>
+              </div>
+
+              {rowErrors[index] ? (
+                <p className="mt-2 text-sm text-danger" role="alert">
+                  {rowErrors[index]}
+                </p>
+              ) : null}
+
+              {rows.length > 1 ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setRows((current) =>
+                        current.filter((candidate) => candidate.key !== row.key),
+                      )
+                    }
+                  >
+                    Remove option
+                  </Button>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+
+        {rows.length < MAX_VARIANTS ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setRows((current) => [...current, blankRow()])}
+          >
+            Add another option
+          </Button>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium tracking-tight">Photos</h2>
+
+        {state.fieldErrors?.images || fileError ? (
+          <p className="text-sm text-danger" role="alert">
+            {fileError ?? state.fieldErrors?.images}
+          </p>
+        ) : null}
+
+        {product && product.images.length > 0 ? (
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {product.images.map((image) => {
+              const markedForRemoval = removed.has(image.id);
+
+              return (
+                <li key={image.id} className="space-y-2">
+                  <input type="hidden" name="existingImageId" value={image.id} />
+
+                  <div
+                    className={
+                      markedForRemoval
+                        ? "relative aspect-square overflow-hidden rounded-xl bg-surface-subtle opacity-40"
+                        : "relative aspect-square overflow-hidden rounded-xl bg-surface-subtle"
+                    }
+                  >
+                    <Image
+                      src={image.url}
+                      alt={image.altText ?? ""}
+                      fill
+                      sizes="(max-width: 640px) 50vw, 25vw"
+                      className="object-cover"
+                    />
+                  </div>
+
+                  <Input
+                    name="existingImageAlt"
+                    defaultValue={image.altText ?? ""}
+                    placeholder="Alt text"
+                    aria-label="Alt text"
+                    className="h-8 text-xs"
+                  />
+
+                  <label className="flex items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      name="removeImageId"
+                      value={image.id}
+                      checked={markedForRemoval}
+                      onChange={() => toggleRemoved(image.id)}
+                    />
+                    Remove on save
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+
+        <Field
+          label={product ? "Add more photos" : "Photos"}
+          htmlFor="imageFile"
+          hint={`JPEG, PNG, WebP or AVIF. Up to ${MAX_IMAGES_PER_UPLOAD} at a time, ${MAX_IMAGE_MB}MB each.`}
+        >
+          <input
+            id="imageFile"
+            name="imageFile"
+            type="file"
+            multiple
+            accept={IMAGE_ACCEPT_ATTRIBUTE}
+            onChange={(event) => {
+              // Caught here so an oversized file is reported before the upload
+              // is attempted rather than after it has been sent.
+              const files = Array.from(event.target.files ?? []);
+              if (files.length > MAX_IMAGES_PER_UPLOAD) {
+                setFileError(`Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.`);
+                return;
+              }
+              setFileError(files.map(imageRejectionReason).find(Boolean) ?? null);
+            }}
+            className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-surface-hover"
+          />
+        </Field>
+      </section>
+
+      <div className="flex items-center gap-3 border-t border-border pt-6">
+        <Button type="submit" size="lg" disabled={pending || fileError !== null}>
+          {pending ? "Saving…" : submitLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}

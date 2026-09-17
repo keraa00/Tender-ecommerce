@@ -45,3 +45,50 @@ export function priceRange(product: StorefrontProduct) {
 export function isSoldOut(product: StorefrontProduct): boolean {
   return product.variants.every((variant) => variant.inventoryQty <= 0);
 }
+
+/**
+ * Seller-admin catalogue: every status, newest first. The storefront list above
+ * is deliberately separate — it filters to ACTIVE, and merging the two behind a
+ * flag is how a draft ends up visible to buyers.
+ */
+export async function listStoreProducts(storeId: string) {
+  return rootDb.product.findMany({
+    where: { storeId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      images: { orderBy: { position: "asc" }, take: 1 },
+      variants: {
+        orderBy: { position: "asc" },
+        select: { id: true, priceCents: true, inventoryQty: true },
+      },
+    },
+  });
+}
+
+export type StoreProduct = Awaited<ReturnType<typeof listStoreProducts>>[number];
+
+/**
+ * One product for editing. `storeId` is part of the filter rather than checked
+ * afterwards, so a guessed product id from another tenant returns null instead
+ * of leaking a row.
+ */
+export async function getStoreProduct(storeId: string, productId: string) {
+  return rootDb.product.findFirst({
+    where: { id: productId, storeId },
+    include: {
+      images: { orderBy: { position: "asc" } },
+      variants: { orderBy: { position: "asc" } },
+    },
+  });
+}
+
+export type EditableProduct = NonNullable<
+  Awaited<ReturnType<typeof getStoreProduct>>
+>;
+
+/** Total stock across a product's options, for the catalogue list. */
+export function totalInventory(product: {
+  variants: { inventoryQty: number }[];
+}): number {
+  return product.variants.reduce((sum, variant) => sum + variant.inventoryQty, 0);
+}

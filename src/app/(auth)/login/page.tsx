@@ -12,6 +12,9 @@ const LINK_ERRORS: Record<string, string> = {
   "confirmation-link-invalid": "That confirmation link was malformed.",
   "confirmation-link-expired":
     "That confirmation link has expired. Sign in to have a new one sent.",
+  "confirmation-link-other-browser":
+    "Open that confirmation link in the browser you signed up from, or sign " +
+    "in here to have a new one sent.",
 };
 
 export default async function LoginPage(props: PageProps<"/login">) {

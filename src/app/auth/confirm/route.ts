@@ -1,37 +1,20 @@
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
-import type { EmailOtpType } from "@supabase/supabase-js";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { confirmEmailLink } from "@/lib/auth/confirmation";
 
 /**
- * Handles Supabase email links that use the `{{ .TokenHash }}` template — the
- * shape recommended for server-side rendered apps. See `/auth/callback` for the
- * PKCE-code variant; which one fires depends on the project's email templates,
- * so both are wired up.
+ * Where `emailRedirectTo` points. Accepts both Supabase link shapes — see
+ * `lib/auth/confirmation.ts` — so the route does not depend on which email
+ * template the project is configured with.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
-  const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
-  const rawNext = searchParams.get("next") ?? "/dashboard";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//")
-    ? rawNext
-    : "/dashboard";
+  const result = await confirmEmailLink(request.nextUrl.searchParams);
 
-  if (!tokenHash || !type) {
-    redirect("/login?error=confirmation-link-invalid");
+  // Outside any try/catch: `redirect` signals by throwing.
+  if (result.status === "failed") {
+    redirect(`/login?error=${result.error}`);
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.verifyOtp({
-    type,
-    token_hash: tokenHash,
-  });
-
-  if (error) {
-    redirect("/login?error=confirmation-link-expired");
-  }
-
-  redirect(next);
+  redirect(result.next);
 }
