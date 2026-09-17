@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
+import { storeAdminUrl } from "@/lib/admin/links";
 import { requireUser } from "@/lib/auth/session";
 import { rootDb } from "@/lib/db/root";
 import { Prisma, StoreMemberRole } from "@/lib/db/types";
@@ -98,7 +99,12 @@ export async function createStoreAction(
   revalidatePath("/dashboard");
   // redirect() throws a control-flow signal — it must sit outside the try block
   // or the catch above would swallow it.
-  redirect(`/dashboard/${createdSlug}`);
+
+  // Absolute, because this form is served from the platform host and the new
+  // store's admin is not. Going via a relative path would work — the proxy
+  // would bounce it — but it would cost the seller an extra round trip on the
+  // one screen where they are waiting to see something appear.
+  redirect(storeAdminUrl(createdSlug));
 }
 
 export type SlugAvailability =

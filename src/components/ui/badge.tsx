@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { ProductStatus, StoreStatus } from "@/lib/db/types";
+import {
+  DISCOUNT_STATE_LABELS,
+  type DiscountState,
+} from "@/lib/discounts/format";
+import { OrderStatus, ProductStatus, StoreStatus } from "@/lib/db/types";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -62,5 +66,44 @@ const productStatusLabel: Record<ProductStatus, string> = {
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
   return (
     <Badge tone={productStatusTone[status]}>{productStatusLabel[status]}</Badge>
+  );
+}
+
+const orderStatusTone: Record<OrderStatus, Tone> = {
+  [OrderStatus.PENDING]: "warning",
+  [OrderStatus.PAID]: "success",
+  [OrderStatus.FULFILLED]: "success",
+  [OrderStatus.CANCELLED]: "danger",
+};
+
+const orderStatusLabel: Record<OrderStatus, string> = {
+  [OrderStatus.PENDING]: "Unpaid",
+  [OrderStatus.PAID]: "Paid",
+  [OrderStatus.FULFILLED]: "Fulfilled",
+  [OrderStatus.CANCELLED]: "Cancelled",
+};
+
+export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+  return <Badge tone={orderStatusTone[status]}>{orderStatusLabel[status]}</Badge>;
+}
+
+/**
+ * Discount state is derived rather than stored — see `discountState()`. Only
+ * "Active" is good news; "Limit reached" is the one a seller may want to act
+ * on, so it is the only other one that carries colour.
+ */
+const discountStateTone: Record<DiscountState, Tone> = {
+  active: "success",
+  scheduled: "neutral",
+  expired: "neutral",
+  exhausted: "warning",
+  disabled: "neutral",
+};
+
+export function DiscountStateBadge({ state }: { state: DiscountState }) {
+  return (
+    <Badge tone={discountStateTone[state]}>
+      {DISCOUNT_STATE_LABELS[state]}
+    </Badge>
   );
 }

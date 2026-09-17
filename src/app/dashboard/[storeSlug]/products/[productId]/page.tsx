@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AdminPage } from "@/components/admin/page-shell";
 import { ProductForm } from "@/components/products/product-form";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
 import { deleteProductAction, updateProductAction } from "@/lib/products/actions";
 import { getStoreProduct } from "@/lib/products/queries";
 import { getStoreContext } from "@/lib/stores/context";
@@ -34,27 +36,26 @@ export default async function EditProductPage(
   const destroy = deleteProductAction.bind(null, storeSlug, product.id);
 
   return (
-    <div className="py-8">
-      <Link
-        href={`/dashboard/${storeSlug}/products`}
-        className="text-sm text-muted underline-offset-4 hover:underline"
-      >
-        ← Products
-      </Link>
-
-      <div className="mt-4 mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="text-lg font-medium tracking-tight">{product.title}</h2>
-        <ProductStatusBadge status={product.status} />
-        {product.status === "ACTIVE" ? (
-          <Link
-            href={`/s/${storeSlug}/p/${product.slug}`}
-            className="text-sm text-muted underline-offset-4 hover:underline tabular"
-          >
-            /s/{storeSlug}/p/{product.slug} ↗
-          </Link>
-        ) : null}
-      </div>
-
+    <AdminPage
+      title={product.title}
+      back={{
+        href: storeAdminPath(storeSlug, "products"),
+        label: "Products",
+      }}
+      description={
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <ProductStatusBadge status={product.status} />
+          {product.status === "ACTIVE" ? (
+            <Link
+              href={`${storefrontUrl(storeSlug)}/p/${product.slug}`}
+              className="text-muted underline-offset-4 hover:underline tabular"
+            >
+              /s/{storeSlug}/p/{product.slug} ↗
+            </Link>
+          ) : null}
+        </span>
+      }
+    >
       <ProductForm
         action={action}
         submitLabel="Save changes"
@@ -98,6 +99,6 @@ export default async function EditProductPage(
           </Button>
         </form>
       </details>
-    </div>
+    </AdminPage>
   );
 }

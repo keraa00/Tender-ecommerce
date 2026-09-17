@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { AdminPage } from "@/components/admin/page-shell";
 import { ProductForm } from "@/components/products/product-form";
+import { storeAdminPath } from "@/lib/admin/links";
 import { createProductAction } from "@/lib/products/actions";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -19,20 +20,15 @@ export default async function NewProductPage(
   const action = createProductAction.bind(null, storeSlug);
 
   return (
-    <div className="py-8">
-      <Link
-        href={`/dashboard/${storeSlug}/products`}
-        className="text-sm text-muted underline-offset-4 hover:underline"
-      >
-        ← Products
-      </Link>
-
-      <h2 className="mt-4 text-lg font-medium tracking-tight">New product</h2>
-      <p className="mt-1 mb-6 text-sm text-muted">
-        Save it as a draft while you work, then publish when it is ready.
-      </p>
-
+    <AdminPage
+      title="New product"
+      description="Save it as a draft while you work, then publish when it is ready."
+      back={{
+        href: storeAdminPath(storeSlug, "products"),
+        label: "Products",
+      }}
+    >
       <ProductForm action={action} submitLabel="Save product" />
-    </div>
+    </AdminPage>
   );
 }

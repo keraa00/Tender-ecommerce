@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
+import { AdminPage, EmptyState, Rows } from "@/components/admin/page-shell";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
+import { storeAdminPath } from "@/lib/admin/links";
 import { formatMoney } from "@/lib/money";
 import {
   listStoreProducts,
@@ -30,40 +32,41 @@ export default async function ProductsPage(
   const products = await listStoreProducts(store.id);
 
   return (
-    <div className="py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-medium tracking-tight">Products</h2>
-          <p className="mt-1 text-sm text-muted">
-            {products.length === 0
-              ? "Your catalogue is empty."
-              : `${products.length} ${products.length === 1 ? "product" : "products"} in your catalogue.`}
-          </p>
-        </div>
-        {products.length > 0 ? (
-          <ButtonLink href={`/dashboard/${storeSlug}/products/new`} size="sm">
+    <AdminPage
+      title="Products"
+      description={
+        products.length === 0
+          ? "Your catalogue is empty."
+          : `${products.length} ${products.length === 1 ? "product" : "products"} in your catalogue.`
+      }
+      action={
+        products.length > 0 ? (
+          <ButtonLink
+            href={storeAdminPath(store.slug, "products/new")}
+            size="sm"
+          >
             New product
           </ButtonLink>
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       {products.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-border-strong px-6 py-16 text-center">
-          <h3 className="font-medium">Nothing to sell yet</h3>
-          <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted text-pretty">
-            Add a product with a photo, a price and some stock. You can save it
-            as a draft and publish it when you are ready.
-          </p>
-          <ButtonLink
-            href={`/dashboard/${storeSlug}/products/new`}
-            className="mt-6"
-            size="lg"
-          >
-            Add your first product
-          </ButtonLink>
-        </div>
+        <EmptyState
+          title="Nothing to sell yet"
+          action={
+            <ButtonLink
+              href={storeAdminPath(store.slug, "products/new")}
+              size="lg"
+            >
+              Add your first product
+            </ButtonLink>
+          }
+        >
+          Add a product with a photo, a price and some stock. You can save it as
+          a draft and publish it when you are ready.
+        </EmptyState>
       ) : (
-        <ul className="mt-6 divide-y divide-border overflow-hidden rounded-xl border border-border">
+        <Rows>
           {products.map((product) => {
             const image = product.images[0];
             const price = priceRange(product);
@@ -72,7 +75,7 @@ export default async function ProductsPage(
             return (
               <li key={product.id}>
                 <Link
-                  href={`/dashboard/${storeSlug}/products/${product.id}`}
+                  href={storeAdminPath(store.slug, `products/${product.id}`)}
                   className="flex items-center gap-4 bg-surface px-4 py-3 transition-colors hover:bg-surface-hover"
                 >
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-surface-subtle">
@@ -109,8 +112,8 @@ export default async function ProductsPage(
               </li>
             );
           })}
-        </ul>
+        </Rows>
       )}
-    </div>
+    </AdminPage>
   );
 }

@@ -18,8 +18,8 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | Storefronts | `/s/nordhavn-supply`, `/s/rosewater-ceramics` — branded per store, 15 products each |
 | Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
-| Seller admin | `/dashboard/[storeSlug]` — membership-gated setup checklist |
-| Product management | `/dashboard/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived |
+| Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
+| Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived |
 | Seed | Two stores, 30 products, 56 variants, 6 collections, 6 discounts — idempotent |
 
 ---
@@ -90,7 +90,7 @@ What that choice commits the code to:
 ```mermaid
 flowchart TB
     Buyer[Buyer] --> SF["/s/[storeSlug]<br/>storefront"]
-    Seller[Seller] --> DASH["/dashboard/[storeSlug]<br/>seller admin"]
+    Seller[Seller] --> DASH["admin.host/[storeSlug]<br/>seller admin"]
     Admin[Platform admin] --> PADM["/admin<br/>cross-store"]
 
     SF --> RESOLVE["getStoreBySlug(slug)"]
@@ -112,6 +112,37 @@ The important edge is `getStoreContext`. Seller-admin requests resolve their
 tenant from the **URL slug plus the authenticated session**, never from a field
 in the request body. Everything downstream receives an already-verified
 `store.id`.
+
+### The admin subdomain
+
+The seller admin is served from `admin.<host>`; the platform — landing page,
+login, storefronts, the store list — stays on the root host. `src/proxy.ts`
+rewrites `admin.tender.com/acme/orders` onto the internal route
+`/dashboard/acme/orders`, and redirects each host's traffic to whichever one
+owns it, so every page has exactly one canonical URL.
+
+Internally the route tree kept its old shape. That is the point: route files,
+`getStoreContext()` and `revalidatePath()` all still speak `/dashboard/…`, so
+moving the admin onto a subdomain did not become a rename of every route in the
+app. The rules live in `src/lib/admin/routing.ts` as pure functions with tests —
+a proxy is exactly where an untested branch becomes a redirect loop.
+
+Three consequences worth knowing:
+
+- **The host proves nothing.** A request arriving on `admin.` is no more trusted
+  than one arriving anywhere else. Membership is still proved by
+  `getStoreContext()`, which 404s — not 403s — for non-members.
+- **`redirect()` and `revalidatePath()` diverge.** They take strings that look
+  identical and are not: `revalidatePath` names an internal route and keeps the
+  `/dashboard` prefix, while `redirect` names a URL a browser will visit and
+  goes through `src/lib/admin/links.ts`.
+- **One session spans both hosts.** The Supabase auth cookie is written with
+  `Domain=<root hostname>` rather than host-only. Without that, a cookie set at
+  login on the root host is never sent to the admin subdomain.
+
+Setting `NEXT_PUBLIC_ADMIN_HOST` to the same host as `NEXT_PUBLIC_APP_URL`
+switches the whole split off, and `/dashboard/<slug>` paths work exactly as they
+did before — useful anywhere wildcard DNS is not available.
 
 ---
 
@@ -321,6 +352,18 @@ Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 ```bash
 npm run dev
 ```
+
+Two hosts, one dev server:
+
+| | |
+|---|---|
+| `http://localhost:3000` | Landing page, login, storefronts, your store list |
+| `http://admin.localhost:3000` | The seller admin — open a store from the list to land here |
+
+`*.localhost` resolves to 127.0.0.1 in Chrome, Firefox and Safari without an
+`/etc/hosts` entry. If yours does not, or you would rather not run the split
+locally, set `NEXT_PUBLIC_ADMIN_HOST="localhost:3000"` in `.env` and everything
+stays on one host under `/dashboard/<slug>`.
 
 ### Scripts
 

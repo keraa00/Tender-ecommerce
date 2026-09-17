@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { requireSupabaseConfig } from "./config";
+import { authCookieOptions, requireSupabaseConfig } from "./config";
 
 /**
  * Supabase client for Server Components, Server Actions and Route Handlers.
@@ -8,10 +8,11 @@ import { requireSupabaseConfig } from "./config";
  * one user's session leaks into another's request.
  */
 export async function createSupabaseServerClient() {
-  const { url, anonKey } = requireSupabaseConfig();
+  const config = requireSupabaseConfig();
   const cookieStore = await cookies();
 
-  return createServerClient(url, anonKey, {
+  return createServerClient(config.url, config.anonKey, {
+    cookieOptions: authCookieOptions(config),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -23,7 +24,7 @@ export async function createSupabaseServerClient() {
           }
         } catch {
           // Server Components cannot write cookies. Token refresh is handled by
-          // `middleware.ts`, so ignoring this is safe.
+          // `proxy.ts`, so ignoring this is safe.
         }
       },
     },

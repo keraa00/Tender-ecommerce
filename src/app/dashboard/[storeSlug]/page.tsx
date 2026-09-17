@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import {
+  AdminPage,
+  Stat,
+  StatGrid,
+} from "@/components/admin/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
+import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
+import { getStoreTotals } from "@/lib/analytics/queries";
 import { rootDb } from "@/lib/db/root";
+import { formatMoney } from "@/lib/money";
 import { getStoreContext } from "@/lib/stores/context";
 import { canAcceptOrders } from "@/lib/stores/policy";
 
@@ -34,9 +42,10 @@ export default async function StoreOverviewPage(
   const { storeSlug } = await props.params;
   const { store } = await getStoreContext(storeSlug);
 
-  const productCount = await rootDb.product.count({
-    where: { storeId: store.id },
-  });
+  const [productCount, totals] = await Promise.all([
+    rootDb.product.count({ where: { storeId: store.id } }),
+    getStoreTotals(store.id),
+  ]);
 
   const paymentsLive = canAcceptOrders(store);
   const hasProducts = productCount > 0;
@@ -48,7 +57,11 @@ export default async function StoreOverviewPage(
       done: true,
       shipped: true,
       action: (
-        <ButtonLink href={`/s/${store.slug}`} variant="secondary" size="sm">
+        <ButtonLink
+          href={storefrontUrl(store.slug)}
+          variant="secondary"
+          size="sm"
+        >
           View
         </ButtonLink>
       ),
@@ -70,11 +83,10 @@ export default async function StoreOverviewPage(
       shipped: true,
       action: (
         <ButtonLink
-          href={
-            hasProducts
-              ? `/dashboard/${store.slug}/products`
-              : `/dashboard/${store.slug}/products/new`
-          }
+          href={storeAdminPath(
+            store.slug,
+            hasProducts ? "products" : "products/new",
+          )}
           variant={hasProducts ? "secondary" : "primary"}
           size="sm"
         >
@@ -88,38 +100,67 @@ export default async function StoreOverviewPage(
   const blocked = steps.some((step) => !step.done && !step.shipped);
 
   return (
-    <div className="py-8">
-      <h2 className="text-lg font-medium tracking-tight">Set up your store</h2>
-      <p className="mt-1 text-sm text-muted">
-        {remaining === 0
-          ? "Everything's ready. Your store is open for business."
-          : `${remaining} ${remaining === 1 ? "step" : "steps"} left before you can take orders.`}
-      </p>
+    <AdminPage
+      title="Home"
+      description={`An overview of ${store.name}.`}
+      action={
+        <ButtonLink
+          href={storefrontUrl(store.slug)}
+          variant="secondary"
+          size="sm"
+        >
+          View storefront
+        </ButtonLink>
+      }
+    >
+      <StatGrid>
+        <Stat
+          label="Products"
+          value={String(productCount)}
+          hint={hasProducts ? undefined : "Nothing listed yet"}
+        />
+        <Stat label="Orders" value={String(totals.orders)} hint="Paid to date" />
+        <Stat label="Revenue" value={formatMoney(totals.grossCents)} />
+        <Stat
+          label="Your earnings"
+          value={formatMoney(totals.netCents)}
+          hint="After commission"
+        />
+      </StatGrid>
 
-      <ol className="mt-6 divide-y divide-border overflow-hidden rounded-xl border border-border">
-        {steps.map((step, index) => (
-          <ChecklistItem
-            key={step.title}
-            done={step.done}
-            position={index + 1}
-            title={step.title}
-            action={
-              step.action ??
-              (step.done || step.shipped ? null : <Badge>Coming soon</Badge>)
-            }
-          >
-            {step.body}
-          </ChecklistItem>
-        ))}
-      </ol>
-
-      {blocked ? (
-        <p className="mt-3 text-sm text-muted text-pretty">
-          Steps marked <span className="font-medium">Coming soon</span> are not
-          in this build yet — Stripe Connect onboarding is the next milestone.
-          There is nothing to action on them for now.
+      <section className="mt-8">
+        <h2 className="text-lg font-medium tracking-tight">Set up your store</h2>
+        <p className="mt-1 text-sm text-muted">
+          {remaining === 0
+            ? "Everything's ready. Your store is open for business."
+            : `${remaining} ${remaining === 1 ? "step" : "steps"} left before you can take orders.`}
         </p>
-      ) : null}
+
+        <ol className="mt-4 divide-y divide-border overflow-hidden rounded-xl border border-border">
+          {steps.map((step, index) => (
+            <ChecklistItem
+              key={step.title}
+              done={step.done}
+              position={index + 1}
+              title={step.title}
+              action={
+                step.action ??
+                (step.done || step.shipped ? null : <Badge>Coming soon</Badge>)
+              }
+            >
+              {step.body}
+            </ChecklistItem>
+          ))}
+        </ol>
+
+        {blocked ? (
+          <p className="mt-3 text-sm text-muted text-pretty">
+            Steps marked <span className="font-medium">Coming soon</span> are not
+            in this build yet — Stripe Connect onboarding is the next milestone.
+            There is nothing to action on them for now.
+          </p>
+        ) : null}
+      </section>
 
       <div className="mt-8 rounded-xl border border-border bg-surface-subtle p-5">
         <h3 className="text-sm font-medium">Commission</h3>
@@ -132,7 +173,7 @@ export default async function StoreOverviewPage(
           your own Stripe account.
         </p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

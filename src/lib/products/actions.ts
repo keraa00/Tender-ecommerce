@@ -3,6 +3,7 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
 import { getStoreContext } from "@/lib/stores/context";
@@ -153,10 +154,13 @@ export async function createProductAction(
     return { formError: "Could not save the product. Please try again." };
   }
 
+  // `revalidatePath` names an internal route and keeps the `/dashboard` prefix;
+  // `redirect` names a URL the browser will visit, so it follows the admin host.
+  // They look like the same string and are not — see `src/lib/admin/host.ts`.
   revalidatePath(`/dashboard/${storeSlug}`);
   revalidatePath(`/s/${storeSlug}`);
   // Outside the try block: redirect() signals by throwing.
-  redirect(`/dashboard/${storeSlug}/products/${productId}`);
+  redirect(storeAdminPath(storeSlug, `products/${productId}`));
 }
 
 export async function updateProductAction(
@@ -350,7 +354,9 @@ export async function deleteProductAction(
     });
   } catch (error) {
     console.error("deleteProductAction failed", error);
-    redirect(`/dashboard/${storeSlug}/products/${productId}?error=delete-failed`);
+    redirect(
+      `${storeAdminPath(storeSlug, `products/${productId}`)}?error=delete-failed`,
+    );
   }
 
   await deleteProductImageObjects(
@@ -360,5 +366,5 @@ export async function deleteProductAction(
 
   revalidatePath(`/dashboard/${storeSlug}`);
   revalidatePath(`/s/${storeSlug}`);
-  redirect(`/dashboard/${storeSlug}/products`);
+  redirect(storeAdminPath(storeSlug, "products"));
 }

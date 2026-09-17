@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
+import { platformHomeUrl } from "@/lib/admin/links";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "./redirect";
@@ -139,5 +140,7 @@ export async function signOutAction() {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  // Absolute: this action also runs from the seller admin's own host, where
+  // "/" is that store's admin and would just bounce back to the login form.
+  redirect(platformHomeUrl());
 }
