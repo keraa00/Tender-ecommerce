@@ -41,7 +41,10 @@ export type ProductFormProduct = {
   status: string;
   images: ExistingImage[];
   variants: ExistingVariant[];
+  collectionIds: string[];
 };
+
+export type ProductFormCollection = { id: string; title: string };
 
 type VariantRow = {
   /** Stable React key. Not submitted — `id` is what the server matches on. */
@@ -94,10 +97,13 @@ function rowsFrom(product?: ProductFormProduct): VariantRow[] {
 export function ProductForm({
   action,
   product,
+  collections = [],
   submitLabel,
 }: {
   action: (state: ProductFormState, formData: FormData) => Promise<ProductFormState>;
   product?: ProductFormProduct;
+  /** Every collection in the store, for the picker. */
+  collections?: ProductFormCollection[];
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState<ProductFormState, FormData>(
@@ -228,6 +234,38 @@ export function ProductForm({
           </div>
         </fieldset>
       </section>
+
+      {collections.length > 0 ? (
+        <fieldset className="space-y-2">
+          {/*
+            Tells the action this form carried the picker at all, so an
+            unticked box means "remove" rather than "field missing".
+          */}
+          <input type="hidden" name="collectionsSubmitted" value="1" />
+          <legend className="block text-sm font-medium text-foreground">
+            Collections
+          </legend>
+          <p className="text-sm text-muted">
+            Where this product appears when buyers browse by collection.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {collections.map((collection) => (
+              <label
+                key={collection.id}
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-surface px-3 py-1.5 text-sm has-checked:border-foreground has-checked:bg-surface-hover"
+              >
+                <input
+                  type="checkbox"
+                  name="collectionId"
+                  value={collection.id}
+                  defaultChecked={product?.collectionIds.includes(collection.id)}
+                />
+                {collection.title}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-4">

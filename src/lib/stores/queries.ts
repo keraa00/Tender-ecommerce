@@ -45,3 +45,15 @@ export async function listPublicStores(limit = 12) {
     },
   });
 }
+
+/**
+ * The address the storefront's contact page offers buyers. Stores have no
+ * separate contact field yet, so this is the owner's account email.
+ */
+export async function getStoreContactEmail(storeId: string) {
+  const store = await rootDb.store.findUnique({
+    where: { id: storeId },
+    select: { owner: { select: { email: true } } },
+  });
+  return store?.owner.email ?? null;
+}

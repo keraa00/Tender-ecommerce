@@ -9,8 +9,10 @@ const DEFAULT_LOCALE = "en-US";
 export function formatMoney(
   cents: number,
   currency: string = DEFAULT_CURRENCY,
+  /** A BCP 47 tag. The storefront passes the buyer's language here. */
+  locale: string = DEFAULT_LOCALE,
 ): string {
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
   }).format(cents / 100);

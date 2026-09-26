@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * Shared furniture for the six admin sections. The store layout renders only
+ * Shared furniture for the admin sections. The store layout renders only
  * the drawer, so the content column's width, heading and empty states are
  * defined once here rather than copied into each page.
  */

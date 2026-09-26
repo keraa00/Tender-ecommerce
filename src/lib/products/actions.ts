@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
+import { isUuid } from "@/lib/ids";
 import { getStoreContext } from "@/lib/stores/context";
 import { requireSupabaseConfig } from "@/lib/supabase/config";
 import { imageRejectionReason, MAX_IMAGES_PER_UPLOAD } from "./constants";
@@ -46,6 +47,45 @@ function fileColumn(formData: FormData, name: string): File[] {
 
 function stringColumn(formData: FormData, name: string): string[] {
   return formData.getAll(name).map((v) => (typeof v === "string" ? v : ""));
+}
+
+/**
+ * The collection ids the form ticked, narrowed to ones this store owns, or null
+ * when the form did not carry the picker (a store with no collections yet) —
+ * in which case memberships are left exactly as they are.
+ */
+async function submittedCollectionIds(
+  storeId: string,
+  formData: FormData,
+): Promise<string[] | null> {
+  if (formData.get("collectionsSubmitted") === null) return null;
+
+  const ids = [...new Set(stringColumn(formData, "collectionId").filter(isUuid))];
+  if (ids.length === 0) return [];
+
+  const owned = await rootDb.collection.findMany({
+    where: { storeId, id: { in: ids } },
+    select: { id: true },
+  });
+  return owned.map((collection) => collection.id);
+}
+
+/** The next free position at the end of each collection. */
+async function nextCollectionPositions(
+  db: Pick<Prisma.TransactionClient, "productOnCollection">,
+  collectionIds: string[],
+): Promise<Map<string, number>> {
+  if (collectionIds.length === 0) return new Map();
+
+  const rows = await db.productOnCollection.groupBy({
+    by: ["collectionId"],
+    where: { collectionId: { in: collectionIds } },
+    _max: { position: true },
+  });
+
+  return new Map(
+    rows.map((row) => [row.collectionId, (row._max.position ?? -1) + 1]),
+  );
 }
 
 /**
@@ -102,6 +142,11 @@ export async function createProductAction(
     return { fieldErrors: { images: uploaded.error } };
   }
 
+  const collectionIds = (await submittedCollectionIds(store.id, formData)) ?? [];
+  // A new product joins the end of each collection, after what the seller
+  // has already arranged.
+  const positions = await nextCollectionPositions(rootDb, collectionIds);
+
   let productId: string;
 
   try {
@@ -132,6 +177,12 @@ export async function createProductAction(
             position,
           })),
         },
+        collections: {
+          create: collectionIds.map((collectionId) => ({
+            collectionId,
+            position: positions.get(collectionId) ?? 0,
+          })),
+        },
       },
       select: { id: true },
     });
@@ -158,7 +209,7 @@ export async function createProductAction(
   // `redirect` names a URL the browser will visit, so it follows the admin host.
   // They look like the same string and are not — see `src/lib/admin/host.ts`.
   revalidatePath(`/dashboard/${storeSlug}`);
-  revalidatePath(`/s/${storeSlug}`);
+  revalidatePath(`/s/${storeSlug}`, "layout");
   // Outside the try block: redirect() signals by throwing.
   redirect(storeAdminPath(storeSlug, `products/${productId}`));
 }
@@ -208,6 +259,8 @@ export async function updateProductAction(
   if ("error" in uploaded) {
     return { fieldErrors: { images: uploaded.error } };
   }
+
+  const collectionIds = await submittedCollectionIds(store.id, formData);
 
   const removedUrls = existing.images
     .filter((image) => removeImageIds.has(image.id))
@@ -299,6 +352,37 @@ export async function updateProductAction(
         position += 1;
       }
 
+      if (collectionIds !== null) {
+        await tx.productOnCollection.deleteMany({
+          where: {
+            productId: existing.id,
+            collectionId: { notIn: collectionIds },
+          },
+        });
+
+        const current = new Set(
+          (
+            await tx.productOnCollection.findMany({
+              where: { productId: existing.id },
+              select: { collectionId: true },
+            })
+          ).map((entry) => entry.collectionId),
+        );
+        // Existing memberships keep their place; new ones go on the end.
+        const added = collectionIds.filter((id) => !current.has(id));
+        const positions = await nextCollectionPositions(tx, added);
+
+        if (added.length > 0) {
+          await tx.productOnCollection.createMany({
+            data: added.map((collectionId) => ({
+              productId: existing.id,
+              collectionId,
+              position: positions.get(collectionId) ?? 0,
+            })),
+          });
+        }
+      }
+
       if (uploaded.urls.length > 0) {
         await tx.productImage.createMany({
           data: uploaded.urls.map((url, offset) => ({
@@ -333,7 +417,8 @@ export async function updateProductAction(
 
   revalidatePath(`/dashboard/${storeSlug}`);
   revalidatePath(`/dashboard/${storeSlug}/products`);
-  revalidatePath(`/s/${storeSlug}`);
+  revalidatePath(`/dashboard/${storeSlug}/collections`);
+  revalidatePath(`/s/${storeSlug}`, "layout");
 
   return { notice: "Saved." };
 }
@@ -365,6 +450,6 @@ export async function deleteProductAction(
   );
 
   revalidatePath(`/dashboard/${storeSlug}`);
-  revalidatePath(`/s/${storeSlug}`);
+  revalidatePath(`/s/${storeSlug}`, "layout");
   redirect(storeAdminPath(storeSlug, "products"));
 }

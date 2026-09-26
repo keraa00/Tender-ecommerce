@@ -7,6 +7,7 @@ import { ProductForm } from "@/components/products/product-form";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
+import { listCollectionOptions } from "@/lib/collections/queries";
 import { deleteProductAction, updateProductAction } from "@/lib/products/actions";
 import { getStoreProduct } from "@/lib/products/queries";
 import { getStoreContext } from "@/lib/stores/context";
@@ -29,7 +30,10 @@ export default async function EditProductPage(
 
   // `storeId` is part of the lookup, so another tenant's product id 404s here
   // rather than resolving and then being rejected later.
-  const product = await getStoreProduct(store.id, productId);
+  const [product, collections] = await Promise.all([
+    getStoreProduct(store.id, productId),
+    listCollectionOptions(store.id),
+  ]);
   if (!product) notFound();
 
   const action = updateProductAction.bind(null, storeSlug, product.id);
@@ -59,6 +63,7 @@ export default async function EditProductPage(
       <ProductForm
         action={action}
         submitLabel="Save changes"
+        collections={collections}
         product={{
           title: product.title,
           slug: product.slug,
@@ -77,6 +82,7 @@ export default async function EditProductPage(
             compareAtPriceCents: variant.compareAtPriceCents,
             inventoryQty: variant.inventoryQty,
           })),
+          collectionIds: product.collections.map((entry) => entry.collectionId),
         }}
       />
 

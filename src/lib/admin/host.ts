@@ -49,6 +49,15 @@ export function deriveAdminHost(rootHost: string, label = "admin"): string {
  * `Domain` the current host does not own is dropped by the browser without a
  * word, which surfaces as an unexplained logout rather than as the
  * misconfiguration it is.
+ *
+ * Null too when the root hostname is a single label — `localhost`, or a bare
+ * machine name. Those are public suffixes, and RFC 6265 §5.3 has the browser
+ * *downgrade* `Domain=localhost` to a host-only cookie rather than honour it.
+ * No value returned here would reach `admin.localhost`, so claiming one only
+ * hides the problem: the seller signs in on the root host and then loops
+ * between the login page and an admin that cannot see the session. Sharing a
+ * session across the split needs a dev host with a dot in it — see
+ * README → Local setup.
  */
 export function sharedCookieDomain(
   rootHost: string,
@@ -58,6 +67,8 @@ export function sharedCookieDomain(
   const [adminName] = splitHost(adminHost);
 
   if (adminName === rootName) return null;
+  if (!rootName.includes(".")) return null;
+
   return adminName.endsWith(`.${rootName}`) ? rootName : null;
 }
 
@@ -103,6 +114,20 @@ export function originFor(
 ): string {
   const authority = host === "admin" ? routing.adminHost : routing.rootHost;
   return `${routing.protocol}//${authority}`;
+}
+
+/**
+ * The host the browser actually asked for, lowercased.
+ *
+ * `x-forwarded-host` first: behind a reverse proxy or a platform edge, `host`
+ * can be the internal origin rather than the name the browser typed.
+ */
+export function requestHost(headers: Headers): string {
+  return (
+    headers.get("x-forwarded-host") ??
+    headers.get("host") ??
+    ""
+  ).toLowerCase();
 }
 
 export function splitHost(host: string): [hostname: string, port: string | null] {

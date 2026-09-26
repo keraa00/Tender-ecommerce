@@ -4,12 +4,20 @@ import {
   deriveAdminHost,
   getAdminRouting,
   originFor,
+  requestHost,
   sharedCookieDomain,
   splitHost,
+  type AdminRouting,
 } from "@/lib/admin/host";
+import {
+  hostRedirectRewrite,
+  hostRedirectTarget,
+  HOST_REDIRECT_PATH,
+} from "@/lib/admin/host-redirect";
 import {
   resolveAdminHostRoute,
   resolveRootHostRoute,
+  resolveRoute,
 } from "@/lib/admin/routing";
 
 describe("deriveAdminHost", () => {
@@ -32,9 +40,20 @@ describe("sharedCookieDomain", () => {
     expect(sharedCookieDomain("tender.com", "admin.tender.com")).toBe(
       "tender.com",
     );
-    expect(sharedCookieDomain("localhost:3000", "admin.localhost:3000")).toBe(
-      "localhost",
+    expect(sharedCookieDomain("tender.test:3000", "admin.tender.test:3000")).toBe(
+      "tender.test",
     );
+  });
+
+  it("returns null for a single-label host, which cannot carry a Domain", () => {
+    // `localhost` is a public suffix. RFC 6265 §5.3 downgrades
+    // `Domain=localhost` to a host-only cookie, so `admin.localhost` never
+    // receives the session however confidently we set it — and a seller signed
+    // in on the root host loops between the login page and an admin that
+    // cannot see them. Saying null here is the difference between a dev setup
+    // that is honestly single-host and one that appears to work and does not.
+    expect(sharedCookieDomain("localhost:3000", "admin.localhost:3000")).toBeNull();
+    expect(sharedCookieDomain("dev-box", "admin.dev-box")).toBeNull();
   });
 
   it("returns null when the admin host is not under the root host", () => {
@@ -184,6 +203,177 @@ describe("the two routing tables together", () => {
   });
 });
 
+const LOCAL: AdminRouting = {
+  rootHost: "localhost:3000",
+  adminHost: "admin.localhost:3000",
+  protocol: "http:",
+  cookieDomain: "localhost",
+};
+
+/**
+ * In development every request's `nextUrl` carries the *server's* address,
+ * whatever host the browser used — Next builds it from `--hostname`/`--port`
+ * rather than from the `Host` header. So the URL alone cannot say which host a
+ * request arrived on, and these tests model that: the URL is the root host's
+ * even when the browser is on the admin host.
+ */
+function devUrl(pathAndSearch: string): URL {
+  return new URL(pathAndSearch, "http://localhost:3000");
+}
+
+describe("requestHost", () => {
+  it("prefers x-forwarded-host, since `host` may be an internal origin", () => {
+    const headers = new Headers({
+      host: "internal.fly.dev",
+      "x-forwarded-host": "admin.tender.com",
+    });
+
+    expect(requestHost(headers)).toBe("admin.tender.com");
+  });
+
+  it("lowercases, and is empty when the request names no host at all", () => {
+    expect(requestHost(new Headers({ host: "Admin.Tender.Com" }))).toBe(
+      "admin.tender.com",
+    );
+    expect(requestHost(new Headers())).toBe("");
+  });
+});
+
+describe("resolveRoute", () => {
+  it("picks the table from the host the browser used, not from the URL", () => {
+    expect(resolveRoute(LOCAL, "admin.localhost:3000", "/acme")).toEqual({
+      kind: "rewrite",
+      pathname: "/dashboard/acme",
+    });
+    expect(resolveRoute(LOCAL, "localhost:3000", "/acme")).toEqual({
+      kind: "pass",
+    });
+  });
+
+  it("leaves a host neither side owns alone", () => {
+    // A preview URL, an IP, a health check: serve the paths as written.
+    expect(resolveRoute(LOCAL, "10.0.0.5:3000", "/dashboard/acme")).toBeNull();
+    expect(resolveRoute(LOCAL, "", "/dashboard/acme")).toBeNull();
+  });
+});
+
+describe("hostRedirectRewrite", () => {
+  it("keeps the request's own origin, so the rewrite stays internal", () => {
+    // Anything cross-origin here would be a proxy Location header again, which
+    // is the one thing that cannot carry a host.
+    const rewritten = hostRedirectRewrite(devUrl("/login?next=%2Fdashboard"));
+
+    expect(rewritten.origin).toBe("http://localhost:3000");
+    expect(rewritten.pathname).toBe(HOST_REDIRECT_PATH);
+  });
+});
+
+describe("hostRedirectTarget", () => {
+  it("sends a platform path on the admin host to the root host, absolutely", () => {
+    const target = hostRedirectTarget(
+      LOCAL,
+      "admin.localhost:3000",
+      devUrl("/login?next=%2Fdashboard%2Facme"),
+    );
+
+    // The bug this route exists for: a relative `/login` here is resolved by
+    // the browser against admin.localhost, which is where it just came from.
+    expect(target?.toString()).toBe(
+      "http://localhost:3000/login?next=%2Fdashboard%2Facme",
+    );
+  });
+
+  it("sends a store path on the root host to the admin host, absolutely", () => {
+    const target = hostRedirectTarget(
+      LOCAL,
+      "localhost:3000",
+      devUrl("/dashboard/acme/orders?status=paid"),
+    );
+
+    expect(target?.toString()).toBe(
+      "http://admin.localhost:3000/acme/orders?status=paid",
+    );
+  });
+
+  it("refuses a request that reached it on its own", () => {
+    // `/api/…` is passed through on both hosts, so the route is reachable
+    // directly. Nothing in the URL names a destination, and nothing is trusted
+    // to: the answer comes from the same table, and for this path it is `pass`.
+    expect(
+      hostRedirectTarget(
+        LOCAL,
+        "admin.localhost:3000",
+        devUrl(`${HOST_REDIRECT_PATH}?host=root&to=https%3A%2F%2Fevil.example`),
+      ),
+    ).toBeNull();
+    expect(
+      hostRedirectTarget(LOCAL, "evil.example", devUrl("/dashboard/acme")),
+    ).toBeNull();
+  });
+});
+
+describe("the proxy and the redirect route together", () => {
+  it("agree on every path, so the rewrite always has something to issue", () => {
+    // The proxy rewrites onto the route handler whenever it sees a redirect,
+    // and the handler recomputes that decision from the same request. If the
+    // two could disagree the rewrite would land on a 404 — or, worse, send the
+    // browser back where it came from.
+    const cases: [host: string, path: string][] = [
+      ["admin.localhost:3000", "/login?next=%2Fdashboard%2Facme"],
+      ["admin.localhost:3000", "/"],
+      ["admin.localhost:3000", "/new"],
+      ["admin.localhost:3000", "/s/acme"],
+      ["admin.localhost:3000", "/dashboard/acme/products"],
+      ["localhost:3000", "/dashboard/acme"],
+      ["localhost:3000", "/dashboard/acme/orders"],
+    ];
+
+    for (const [host, path] of cases) {
+      const url = devUrl(path);
+      const route = resolveRoute(LOCAL, host, url.pathname);
+
+      expect(route?.kind).toBe("redirect");
+
+      const target = hostRedirectTarget(LOCAL, host, url);
+      expect(target).not.toBeNull();
+      // Absolute, on one of the two hosts, carrying the original query. Not
+      // necessarily the *other* host: a stray `/dashboard/…` typed on the admin
+      // host is corrected in place.
+      expect([LOCAL.rootHost, LOCAL.adminHost]).toContain(target!.host);
+      expect(target!.search).toBe(url.search);
+
+      // And one hop settles it — whatever the browser asks for next is not
+      // another redirect. This is the property that was missing in the wild:
+      // the table never looped, but the Location header it produced did.
+      const next = resolveRoute(LOCAL, target!.host, target!.pathname);
+      expect(next?.kind).not.toBe("redirect");
+    }
+  });
+
+  it("terminates: the host a redirect lands on keeps the path", () => {
+    // One hop, never two. Re-resolving each target on its new host must give
+    // an answer that stays there.
+    const onRoot = hostRedirectTarget(
+      LOCAL,
+      "admin.localhost:3000",
+      devUrl("/login"),
+    );
+    expect(resolveRoute(LOCAL, onRoot!.host, onRoot!.pathname)).toEqual({
+      kind: "pass",
+    });
+
+    const onAdmin = hostRedirectTarget(
+      LOCAL,
+      "localhost:3000",
+      devUrl("/dashboard/acme/orders"),
+    );
+    expect(resolveRoute(LOCAL, onAdmin!.host, onAdmin!.pathname)).toEqual({
+      kind: "rewrite",
+      pathname: "/dashboard/acme/orders",
+    });
+  });
+});
+
 describe("getAdminRouting", () => {
   const original = { ...process.env };
 
@@ -211,6 +401,17 @@ describe("getAdminRouting", () => {
     expect(routing).not.toBeNull();
     expect(originFor(routing!, "root")).toBe("http://localhost:3000");
     expect(originFor(routing!, "admin")).toBe("http://admin.localhost:3000");
+    // Routing across the two hosts works on localhost; the session does not.
+    expect(routing!.cookieDomain).toBeNull();
+  });
+
+  it("takes an explicit cookie domain over the derived one", () => {
+    // The escape hatch for a dev host whose parent is not derivable, and the
+    // reason the localhost guard above is not a dead end.
+    process.env.NEXT_PUBLIC_APP_URL = "http://tender.test:3000";
+    process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN = "tender.test";
+
+    expect(getAdminRouting()?.cookieDomain).toBe("tender.test");
   });
 
   it("switches off when the admin host is set to the root host", () => {

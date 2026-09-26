@@ -1,11 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getAdminRouting, originFor } from "@/lib/admin/host";
-import {
-  resolveAdminHostRoute,
-  resolveRootHostRoute,
-  type AdminRoute,
-} from "@/lib/admin/routing";
+import { getAdminRouting, requestHost } from "@/lib/admin/host";
+import { hostRedirectRewrite } from "@/lib/admin/host-redirect";
+import { resolveRoute } from "@/lib/admin/routing";
 import { updateSession } from "@/lib/supabase/middleware";
 
 /**
@@ -20,17 +17,21 @@ import { updateSession } from "@/lib/supabase/middleware";
  * request on the admin host has proved nothing except which URL it typed.
  */
 export async function proxy(request: NextRequest) {
-  const route = resolveRoute(request);
+  const routing = getAdminRouting();
+  const route = routing
+    ? resolveRoute(routing, requestHost(request.headers), request.nextUrl.pathname)
+    : null;
 
   if (route?.kind === "redirect") {
-    const routing = getAdminRouting();
-    if (routing) {
-      const target = new URL(route.pathname, originFor(routing, route.host));
-      target.search = request.nextUrl.search;
-      // 307, so a Server Action POST that lands on the wrong host keeps its
-      // method and body instead of silently becoming a GET.
-      return NextResponse.redirect(target, 307);
-    }
+    // Deliberately not `NextResponse.redirect()`: Next strips the origin off a
+    // proxy's Location header when it matches the address the server is bound
+    // to, which in development is the root host itself — the browser then
+    // resolves the remainder against the host it is already on and loops.
+    // `@/lib/admin/host-redirect` has the detail. The rewrite below is internal;
+    // the route handler it lands on issues the redirect that crosses hosts.
+    return NextResponse.rewrite(hostRedirectRewrite(request.nextUrl), {
+      request,
+    });
   }
 
   // The rewrite has to be the *response* the Supabase client writes its
@@ -46,32 +47,6 @@ export async function proxy(request: NextRequest) {
       : () => NextResponse.next({ request });
 
   return updateSession(request, makeResponse);
-}
-
-function resolveRoute(request: NextRequest): AdminRoute | null {
-  const routing = getAdminRouting();
-  if (!routing) return null;
-
-  // `x-forwarded-host` first: behind a reverse proxy or a platform edge, `host`
-  // can be the internal origin rather than the name the browser asked for.
-  const host = (
-    request.headers.get("x-forwarded-host") ??
-    request.headers.get("host") ??
-    ""
-  ).toLowerCase();
-
-  const { pathname } = request.nextUrl;
-
-  if (host === routing.adminHost.toLowerCase()) {
-    return resolveAdminHostRoute(pathname);
-  }
-  if (host === routing.rootHost.toLowerCase()) {
-    return resolveRootHostRoute(pathname);
-  }
-
-  // Some other host — a preview URL, an IP, a health check. Leave it alone and
-  // serve the paths as written.
-  return null;
 }
 
 export const config = {

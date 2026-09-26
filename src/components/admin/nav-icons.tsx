@@ -2,7 +2,7 @@ import type { AdminIcon } from "@/lib/admin/nav";
 
 /**
  * Line icons for the admin drawer, inlined rather than pulled from an icon
- * package: six glyphs do not justify a dependency, and these ship as part of
+ * package: a handful of glyphs do not justify a dependency, and these ship as part of
  * the component tree instead of as a separate request.
  */
 
@@ -47,6 +47,13 @@ const icons: Record<AdminIcon, (props: IconProps) => React.ReactElement> = {
       <path d="M21 8 12 3 3 8v8l9 5 9-5z" />
       <path d="m3 8 9 5 9-5" />
       <path d="M12 13v8" />
+    </Svg>
+  ),
+  collections: (props) => (
+    <Svg {...props}>
+      <path d="m12 3 9 4.5-9 4.5-9-4.5z" />
+      <path d="m3 12 9 4.5 9-4.5" />
+      <path d="m3 16.5 9 4.5 9-4.5" />
     </Svg>
   ),
   customers: (props) => (

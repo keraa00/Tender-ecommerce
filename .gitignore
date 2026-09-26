@@ -43,4 +43,6 @@ next-env.d.ts
 # agent tooling
 /.claude/settings.local.json
 /.claude/skills
+# Scratch checkouts. One was committed as a stray gitlink once already.
+/.claude/worktrees
 /.agents/skills/

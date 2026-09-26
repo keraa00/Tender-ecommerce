@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AdminPage } from "@/components/admin/page-shell";
 import { ProductForm } from "@/components/products/product-form";
 import { storeAdminPath } from "@/lib/admin/links";
+import { listCollectionOptions } from "@/lib/collections/queries";
 import { createProductAction } from "@/lib/products/actions";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -13,7 +14,8 @@ export default async function NewProductPage(
 ) {
   const { storeSlug } = await props.params;
   // Verifies membership before the form is even rendered.
-  await getStoreContext(storeSlug);
+  const { store } = await getStoreContext(storeSlug);
+  const collections = await listCollectionOptions(store.id);
 
   // The tenant is bound server-side, so the slug is never taken from the
   // submitted body — a forged store field in the form would change nothing.
@@ -28,7 +30,11 @@ export default async function NewProductPage(
         label: "Products",
       }}
     >
-      <ProductForm action={action} submitLabel="Save product" />
+      <ProductForm
+        action={action}
+        collections={collections}
+        submitLabel="Save product"
+      />
     </AdminPage>
   );
 }

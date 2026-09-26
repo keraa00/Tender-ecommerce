@@ -13,6 +13,7 @@ export type AdminIcon =
   | "home"
   | "orders"
   | "products"
+  | "collections"
   | "customers"
   | "discounts"
   | "analytics";
@@ -28,6 +29,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   { segment: null, label: "Home", icon: "home" },
   { segment: "orders", label: "Orders", icon: "orders" },
   { segment: "products", label: "Products", icon: "products" },
+  { segment: "collections", label: "Collections", icon: "collections" },
   { segment: "customers", label: "Customers", icon: "customers" },
   { segment: "discounts", label: "Discounts", icon: "discounts" },
   { segment: "analytics", label: "Analytics", icon: "analytics" },

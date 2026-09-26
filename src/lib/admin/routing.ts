@@ -1,13 +1,13 @@
 /**
  * The routing table behind the `admin.` subdomain, as pure functions.
  *
- * `src/proxy.ts` is the only caller. Keeping the decisions here — rather than
- * inline in the proxy — is what makes them testable without constructing a
- * `NextRequest`, and the proxy is exactly the layer where an untested branch
- * turns into a redirect loop.
+ * `src/proxy.ts` and the redirect route handler are the callers. Keeping the
+ * decisions here — rather than inline in the proxy — is what makes them testable
+ * without constructing a `NextRequest`, and the proxy is exactly the layer where
+ * an untested branch turns into a redirect loop.
  */
 
-import { INTERNAL_ADMIN_PREFIX } from "@/lib/admin/host";
+import { INTERNAL_ADMIN_PREFIX, type AdminRouting } from "@/lib/admin/host";
 import { RESERVED_STORE_SLUGS } from "@/lib/slug";
 
 /**
@@ -34,6 +34,30 @@ export type AdminRoute =
   | { kind: "pass" }
   | { kind: "rewrite"; pathname: string }
   | { kind: "redirect"; host: "root" | "admin"; pathname: string };
+
+/**
+ * The decision for one request, from the host it arrived on.
+ *
+ * Null when neither host owns that name — a preview URL, an IP, a health check.
+ * Those are served as written.
+ *
+ * Both `src/proxy.ts` and the redirect route handler call this, on the same
+ * request, and must reach the same answer: the proxy rewrites onto the handler
+ * for anything that redirects, and the handler is what actually issues it.
+ */
+export function resolveRoute(
+  routing: AdminRouting,
+  host: string,
+  pathname: string,
+): AdminRoute | null {
+  if (host === routing.adminHost.toLowerCase()) {
+    return resolveAdminHostRoute(pathname);
+  }
+  if (host === routing.rootHost.toLowerCase()) {
+    return resolveRootHostRoute(pathname);
+  }
+  return null;
+}
 
 /** Requests arriving on `admin.<root>`. */
 export function resolveAdminHostRoute(pathname: string): AdminRoute {

@@ -353,17 +353,56 @@ Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 npm run dev
 ```
 
-Two hosts, one dev server:
+Locally that is one host:
 
 | | |
 |---|---|
-| `http://localhost:3000` | Landing page, login, storefronts, your store list |
-| `http://admin.localhost:3000` | The seller admin — open a store from the list to land here |
+| `http://localhost:3000` | Everything — landing page, login, storefronts, your store list |
+| `http://localhost:3000/dashboard/<slug>` | The seller admin |
 
-`*.localhost` resolves to 127.0.0.1 in Chrome, Firefox and Safari without an
-`/etc/hosts` entry. If yours does not, or you would rather not run the split
-locally, set `NEXT_PUBLIC_ADMIN_HOST="localhost:3000"` in `.env` and everything
-stays on one host under `/dashboard/<slug>`.
+In production the seller admin moves to its own subdomain, `admin.<your-domain>`,
+and `/dashboard/<slug>` redirects there. `.env` ships with
+`NEXT_PUBLIC_ADMIN_HOST="localhost:3000"`, which switches that split off for
+local development; clearing it turns it back on.
+
+The reason local development does not run the split is the session rather than
+the routing. One session has to cover both hosts, which takes an auth cookie
+scoped to the parent domain, and `localhost` cannot carry one: it is a public
+suffix, so RFC 6265 §5.3 has the browser *downgrade* `Domain=localhost` to a
+host-only cookie rather than honour it. `admin.localhost` never receives the
+session, and a signed-in seller bounces between the login page and an admin that
+cannot see them.
+
+A hostname with a dot does carry it, so the split can be run locally by clearing
+`NEXT_PUBLIC_ADMIN_HOST` and pointing `NEXT_PUBLIC_APP_URL` at one:
+
+- **`http://lvh.me:3000`** — `lvh.me` and `*.lvh.me` are public DNS names
+  resolving to 127.0.0.1, so nothing needs adding to `/etc/hosts`.
+- **A name of your own** — `127.0.0.1  tender.test admin.tender.test` in
+  `/etc/hosts`. `.test` is reserved for this (RFC 6761) and, unlike `.local`,
+  does not collide with mDNS.
+
+Either way the browser marks plain `http://` on a real hostname Not Secure —
+only `localhost` is treated as a trustworthy origin. For a padlock, issue a
+certificate covering both hosts with [mkcert](https://github.com/FiloSottile/mkcert)
+(`mkcert lvh.me "*.lvh.me"`) and pass it to `next dev --experimental-https-key`
+and `--experimental-https-cert`.
+
+### Deploying
+
+Nothing about the split is production-only — the same variables describe it
+anywhere:
+
+| | |
+|---|---|
+| `NEXT_PUBLIC_APP_URL` | `https://your-domain.com` |
+| `NEXT_PUBLIC_ADMIN_HOST` | empty, so the admin host is derived as `admin.your-domain.com` |
+| DNS | an `admin.` record pointing at the same deployment |
+| Supabase → Authentication → URL Configuration | `https://your-domain.com/auth/confirm` and `/auth/callback` |
+
+The auth cookie's `Domain` is derived from the host (`your-domain.com`), so one
+session covers the platform and the admin. A real domain has a real parent, so
+the public-suffix problem that rules out `localhost` does not arise.
 
 ### Scripts
 

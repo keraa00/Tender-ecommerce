@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -29,6 +29,8 @@ type StoreShellProps = {
   storefrontUrl: string;
   userEmail: string;
   statusBadge: ReactNode;
+  /** Setup is finished from the store's home page, so the badge links there. */
+  setupIncomplete: boolean;
   children: ReactNode;
 };
 
@@ -38,6 +40,7 @@ export function StoreShell({
   storefrontUrl,
   userEmail,
   statusBadge,
+  setupIncomplete,
   children,
 }: StoreShellProps) {
   const segment = useSelectedLayoutSegment();
@@ -72,6 +75,7 @@ export function StoreShell({
       storefrontUrl={storefrontUrl}
       userEmail={userEmail}
       statusBadge={statusBadge}
+      setupIncomplete={setupIncomplete}
       activeSegment={segment}
     />
   );
@@ -141,8 +145,12 @@ function DrawerContents({
   storefrontUrl,
   userEmail,
   statusBadge,
+  setupIncomplete,
   activeSegment,
 }: Omit<StoreShellProps, "children"> & { activeSegment: string | null }) {
+  // On the home page the setup steps are already on screen.
+  const badgeLinksHome = setupIncomplete && activeSegment !== null;
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-3 py-3">
@@ -173,7 +181,19 @@ function DrawerContents({
           </div>
         </div>
 
-        <div className="mt-2.5 px-1">{statusBadge}</div>
+        <div className="mt-2.5 px-1">
+          {badgeLinksHome ? (
+            <Link
+              href={storeAdminPath(store.slug)}
+              title="Finish setting up your store"
+              className="inline-flex rounded-full transition-opacity hover:opacity-80 cursor-pointer"
+            >
+              {statusBadge}
+            </Link>
+          ) : (
+            statusBadge
+          )}
+        </div>
       </div>
 
       <nav aria-label="Store" className="flex-1 overflow-y-auto p-2">
@@ -194,7 +214,8 @@ function DrawerContents({
                   )}
                 >
                   <NavIcon name={section.icon} className="h-[18px] w-[18px]" />
-                  {section.label}
+                  <span className="flex-1">{section.label}</span>
+                  <PendingDot />
                 </Link>
               </li>
             );
@@ -241,6 +262,24 @@ function DrawerContents({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Confirms a drawer click while the next page is on its way. Always rendered
+ * and only its opacity changes, so the item never shifts when it appears.
+ */
+function PendingDot() {
+  const { pending } = useLinkStatus();
+
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full bg-current transition-opacity",
+        pending ? "animate-pulse opacity-100" : "opacity-0",
+      )}
+    />
   );
 }
 
