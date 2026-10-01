@@ -4,7 +4,9 @@ import {
   DISCOUNT_STATE_LABELS,
   type DiscountState,
 } from "@/lib/discounts/format";
-import { OrderStatus, ProductStatus, StoreStatus } from "@/lib/db/types";
+// Types only: the values re-export the Prisma client, and this module is also
+// rendered inside Client Components (the discount form's status preview).
+import type { OrderStatus, ProductStatus, StoreStatus } from "@/lib/db/types";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -36,15 +38,15 @@ export function Badge({
 }
 
 const storeStatusTone: Record<StoreStatus, Tone> = {
-  [StoreStatus.PENDING]: "warning",
-  [StoreStatus.ACTIVE]: "success",
-  [StoreStatus.SUSPENDED]: "danger",
+  PENDING: "warning",
+  ACTIVE: "success",
+  SUSPENDED: "danger",
 };
 
 const storeStatusLabel: Record<StoreStatus, string> = {
-  [StoreStatus.PENDING]: "Setup incomplete",
-  [StoreStatus.ACTIVE]: "Live",
-  [StoreStatus.SUSPENDED]: "Suspended",
+  PENDING: "Setup incomplete",
+  ACTIVE: "Live",
+  SUSPENDED: "Suspended",
 };
 
 export function StoreStatusBadge({ status }: { status: StoreStatus }) {
@@ -52,15 +54,15 @@ export function StoreStatusBadge({ status }: { status: StoreStatus }) {
 }
 
 const productStatusTone: Record<ProductStatus, Tone> = {
-  [ProductStatus.DRAFT]: "neutral",
-  [ProductStatus.ACTIVE]: "success",
-  [ProductStatus.ARCHIVED]: "warning",
+  DRAFT: "neutral",
+  ACTIVE: "success",
+  ARCHIVED: "warning",
 };
 
 const productStatusLabel: Record<ProductStatus, string> = {
-  [ProductStatus.DRAFT]: "Draft",
-  [ProductStatus.ACTIVE]: "Published",
-  [ProductStatus.ARCHIVED]: "Archived",
+  DRAFT: "Draft",
+  ACTIVE: "Published",
+  ARCHIVED: "Archived",
 };
 
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
@@ -70,17 +72,17 @@ export function ProductStatusBadge({ status }: { status: ProductStatus }) {
 }
 
 const orderStatusTone: Record<OrderStatus, Tone> = {
-  [OrderStatus.PENDING]: "warning",
-  [OrderStatus.PAID]: "success",
-  [OrderStatus.FULFILLED]: "success",
-  [OrderStatus.CANCELLED]: "danger",
+  PENDING: "warning",
+  PAID: "success",
+  FULFILLED: "success",
+  CANCELLED: "danger",
 };
 
 const orderStatusLabel: Record<OrderStatus, string> = {
-  [OrderStatus.PENDING]: "Unpaid",
-  [OrderStatus.PAID]: "Paid",
-  [OrderStatus.FULFILLED]: "Fulfilled",
-  [OrderStatus.CANCELLED]: "Cancelled",
+  PENDING: "Unpaid",
+  PAID: "Paid",
+  FULFILLED: "Fulfilled",
+  CANCELLED: "Cancelled",
 };
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {

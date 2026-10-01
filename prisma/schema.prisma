@@ -62,6 +62,7 @@ enum DiscountType {
   PERCENTAGE
   FIXED_AMOUNT
   FREE_SHIPPING
+  BUY_X_GET_Y
 
   @@map("discount_type")
 }
@@ -72,6 +73,37 @@ enum DiscountAppliesTo {
   PRODUCT
 
   @@map("discount_applies_to")
+}
+
+/// Which side of a discount a linked product or collection sits on.
+enum DiscountTargetRole {
+  /// Receives the discount: the "applies to" scope, or what a buy-X-get-Y
+  /// buyer gets.
+  DISCOUNTED
+  /// Has to be bought to unlock a buy-X-get-Y. Unused by the other types.
+  QUALIFYING
+
+  @@map("discount_target_role")
+}
+
+enum DiscountEligibility {
+  ALL
+  SEGMENTS
+  CUSTOMERS
+
+  @@map("discount_eligibility")
+}
+
+/// Built-in customer groups, derived from order history at checkout rather than
+/// stored — see `src/lib/discounts/segments.ts` for what each one means.
+enum CustomerSegment {
+  FIRST_TIME
+  RETURNING
+  LOYAL
+  LAPSED
+  ACCOUNT_HOLDERS
+
+  @@map("customer_segment")
 }
 
 // ---------------------------------------------------------------------------
@@ -176,10 +208,11 @@ model Product {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  store       Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  images      ProductImage[]
-  variants    Variant[]
-  collections ProductOnCollection[]
+  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  images        ProductImage[]
+  variants      Variant[]
+  collections   ProductOnCollection[]
+  discountLinks DiscountProduct[]
 
   @@unique([storeId, slug])
   @@index([storeId, status, createdAt])
@@ -233,8 +266,9 @@ model Collection {
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
 
-  store    Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products ProductOnCollection[]
+  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products      ProductOnCollection[]
+  discountLinks DiscountCollection[]
 
   @@unique([storeId, slug])
   @@map("collections")
@@ -265,6 +299,13 @@ model Cart {
   storeId   String   @map("store_id") @db.Uuid
   userId    String?  @map("user_id") @db.Uuid
   sessionId String   @map("session_id")
+  /// Codes the buyer entered, upper-case, in the order entered. Kept on the
+  /// cart so they follow the buyer from cart to checkout; whether each one
+  /// applies is decided afresh by the discount engine on every render.
+  discountCodes String[] @default([]) @map("discount_codes")
+  /// The email given at checkout, lower-case. Segment and per-customer
+  /// discounts are judged against it, in the cart as well as at checkout.
+  email     String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -318,6 +359,13 @@ model Order {
 
   shippingAddress Json @map("shipping_address") @db.JsonB
 
+  /// What each applied discount was and took, as charged:
+  /// `[{ discountId, code, title, type, amountCents, shippingCents }]`.
+  /// A snapshot like the order lines — a discount edited or deleted later must
+  /// not change what this order says it gave. `discountId` above names the
+  /// largest one, for the simple case; redemptions link them all.
+  appliedDiscounts Json @default("[]") @map("applied_discounts") @db.JsonB
+
   paidAt      DateTime? @map("paid_at")
   fulfilledAt DateTime? @map("fulfilled_at")
   cancelledAt DateTime? @map("cancelled_at")
@@ -349,6 +397,9 @@ model OrderLine {
   imageUrlSnapshot     String? @map("image_url_snapshot")
   unitPriceCents       Int     @map("unit_price_cents")
   quantity             Int
+  /// This line's share of the order's item discounts, split exactly by the
+  /// engine, so a refund of one line knows what the buyer actually paid for it.
+  discountCents        Int     @default(0) @map("discount_cents")
 
   order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variant Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
@@ -363,28 +414,61 @@ model OrderLine {
 
 /// `value` is an integer whose meaning depends on `type`:
 ///   PERCENTAGE     -> basis points (1000 = 10.00%)
-///   FIXED_AMOUNT   -> cents off
-///   FREE_SHIPPING  -> ignored
+///   FIXED_AMOUNT   -> cents off, once per order
+///   BUY_X_GET_Y    -> basis points off each "get" item (10000 = free)
+///   FREE_SHIPPING  -> always 0
 /// `code = null` means the discount applies automatically when conditions hold.
+///
+/// The shape rules that Prisma cannot express — value ranges per type, the
+/// buy-X-get-Y fields travelling together, at most one minimum — are CHECK
+/// constraints in migration `20260926160000_discount_rules`. The form parser in
+/// `src/lib/discounts/form.ts` enforces the same rules with readable messages;
+/// the constraints are the backstop for every other write path.
 model Discount {
   id      String  @id @default(uuid(7)) @db.Uuid
   storeId String  @map("store_id") @db.Uuid
+  /// Stored upper-case, so the (storeId, code) index is case-insensitive in
+  /// effect: `welcome10` and `WELCOME10` cannot both exist in one store.
   code    String?
   title   String
 
   type  DiscountType
   value Int
 
-  minSubtotalCents Int?              @map("min_subtotal_cents")
-  appliesTo        DiscountAppliesTo @default(ALL) @map("applies_to")
-  /// Collection id when appliesTo = COLLECTION, product id when = PRODUCT.
-  targetId         String?           @map("target_id") @db.Uuid
+  /// Which items the discount reduces. For BUY_X_GET_Y, what the buyer gets.
+  /// Specific products and collections are rows in `DiscountProduct` and
+  /// `DiscountCollection` with role DISCOUNTED.
+  appliesTo DiscountAppliesTo @default(ALL) @map("applies_to")
+
+  // Buy X get Y — all null on every other type.
+  /// What the buyer has to buy; targets are the QUALIFYING link rows.
+  buysFrom        DiscountAppliesTo? @map("buys_from")
+  buyQuantity     Int?               @map("buy_quantity")
+  getQuantity     Int?               @map("get_quantity")
+  /// How often the offer repeats within one order. Null = as often as the
+  /// cart allows.
+  maxUsesPerOrder Int?               @map("max_uses_per_order")
+
+  /// Minimum requirement, measured over the items the discount applies to. At
+  /// most one of the two is set; neither means "no minimum".
+  minSubtotalCents Int? @map("min_subtotal_cents")
+  minQuantity      Int? @map("min_quantity")
+
+  eligibility DiscountEligibility @default(ALL)
+  /// Non-empty exactly when eligibility = SEGMENTS; the buyer must be in any.
+  segments    CustomerSegment[]   @default([])
 
   usageLimit       Int? @map("usage_limit")
+  /// Denormalised count of redemptions, incremented atomically at checkout so
+  /// `usageLimit` holds under concurrent orders. See `redemption.ts`.
   usageCount       Int  @default(0) @map("usage_count")
   perCustomerLimit Int? @map("per_customer_limit")
 
-  startsAt DateTime? @map("starts_at")
+  /// Whether this may stack with other discounts on the same order. A
+  /// non-combinable discount only ever applies on its own.
+  combinable Boolean @default(false)
+
+  startsAt DateTime  @default(now()) @map("starts_at")
   endsAt   DateTime? @map("ends_at")
   active   Boolean   @default(true)
 
@@ -394,10 +478,57 @@ model Discount {
   store       Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders      Order[]
   redemptions DiscountRedemption[]
+  products    DiscountProduct[]
+  collections DiscountCollection[]
+  customers   DiscountCustomer[]
 
   @@unique([storeId, code])
   @@index([storeId, active])
   @@map("discounts")
+}
+
+/// A product a discount applies to (DISCOUNTED) or requires (QUALIFYING).
+/// Cascades from both sides: deleting a product quietly narrows the discounts
+/// that named it rather than blocking the delete. The product is checked to
+/// belong to the discount's store by the action that writes the row.
+model DiscountProduct {
+  discountId String             @map("discount_id") @db.Uuid
+  productId  String             @map("product_id") @db.Uuid
+  role       DiscountTargetRole
+
+  discount Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([discountId, role, productId])
+  @@index([productId])
+  @@map("discount_products")
+}
+
+/// A collection a discount applies to or requires. Same rules as above.
+model DiscountCollection {
+  discountId   String             @map("discount_id") @db.Uuid
+  collectionId String             @map("collection_id") @db.Uuid
+  role         DiscountTargetRole
+
+  discount   Discount   @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([discountId, role, collectionId])
+  @@index([collectionId])
+  @@map("discount_collections")
+}
+
+/// A customer a discount is limited to when eligibility = CUSTOMERS. Keyed by
+/// email, lower-cased, because email is what identifies a customer across
+/// guest and signed-in orders — see `src/lib/customers/queries.ts`.
+model DiscountCustomer {
+  discountId String @map("discount_id") @db.Uuid
+  email      String
+
+  discount Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+
+  @@id([discountId, email])
+  @@map("discount_customers")
 }
 
 /// `email` is carried alongside `userId` so the per-customer limit is

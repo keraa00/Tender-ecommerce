@@ -69,12 +69,12 @@ export function ProductCard({
         )}
 
         {soldOut ? (
-          <span className="absolute top-2 left-2 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium">
+          <span className="absolute top-2 start-2 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium">
             {t.soldOut}
           </span>
         ) : onSale ? (
           <span
-            className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+            className="absolute top-2 start-2 rounded-full px-2 py-0.5 text-xs font-medium text-white"
             style={{ backgroundColor: "var(--store-accent)" }}
           >
             {t.sale}
@@ -90,7 +90,7 @@ export function ProductCard({
         <p className="mt-0.5 text-sm text-muted tabular">
           {price.varies ? format(t.from, { price: money(price.min) }) : money(price.min)}
           {compareAt !== null && compareAt > price.min ? (
-            <s className="ml-2 text-muted/70">{money(compareAt)}</s>
+            <s className="ms-2 text-muted/70">{money(compareAt)}</s>
           ) : null}
         </p>
       ) : null}

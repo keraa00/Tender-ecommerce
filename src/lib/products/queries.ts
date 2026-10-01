@@ -2,6 +2,7 @@ import "server-only";
 
 import { rootDb } from "@/lib/db/root";
 import { Prisma, ProductStatus } from "@/lib/db/types";
+import { rankByTitle, searchTerms } from "./search";
 import { sortProducts, type CatalogSort } from "./sort";
 
 export { isSoldOut, priceRange, totalInventory } from "./pricing";
@@ -72,30 +73,76 @@ export type StorefrontProduct = Awaited<
 >[number];
 
 /**
- * Case-insensitive match on title or description. A `contains` scan is fine at
- * one store's catalogue size; full-text search is the upgrade when it is not.
+ * Published products containing every word of the query, case-insensitively,
+ * in the title or the description — best title matches first (see
+ * `rankByTitle`). A `contains` scan is fine at one store's catalogue size;
+ * full-text search is the upgrade when it is not.
+ *
+ * Ranking reads only ids and titles; card data is loaded for the `limit`
+ * products that are actually shown. `total` counts every match.
  */
+async function rankedStorefrontSearch(
+  storeId: string,
+  query: string,
+  limit: number,
+) {
+  const terms = searchTerms(query);
+  if (terms.length === 0) return { products: [], total: 0 };
+
+  const where = {
+    storeId,
+    status: ProductStatus.ACTIVE,
+    AND: terms.map((term): Prisma.ProductWhereInput => ({
+      OR: [
+        { title: { contains: term, mode: "insensitive" } },
+        { description: { contains: term, mode: "insensitive" } },
+      ],
+    })),
+  } satisfies Prisma.ProductWhereInput;
+
+  const candidates = await rootDb.product.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: STOREFRONT_PAGE_SIZE,
+    select: { id: true, title: true },
+  });
+  const ids = rankByTitle(candidates, terms)
+    .slice(0, limit)
+    .map((product) => product.id);
+
+  const [rows, total] = await Promise.all([
+    ids.length === 0
+      ? []
+      : rootDb.product.findMany({
+          where: { storeId, status: ProductStatus.ACTIVE, id: { in: ids } },
+          include: storefrontCardInclude,
+        }),
+    candidates.length < STOREFRONT_PAGE_SIZE
+      ? candidates.length
+      : rootDb.product.count({ where }),
+  ]);
+
+  const byId = new Map(rows.map((product) => [product.id, product]));
+  const products = ids.flatMap((id) => byId.get(id) ?? []);
+  return { products, total };
+}
+
+/** Results for the storefront's search page. */
 export async function searchStorefrontProducts(
   storeId: string,
   query: string,
   limit = 48,
 ) {
-  const term = query.trim().slice(0, 100);
-  if (term === "") return [];
+  return (await rankedStorefrontSearch(storeId, query, limit)).products;
+}
 
-  return rootDb.product.findMany({
-    where: {
-      storeId,
-      status: ProductStatus.ACTIVE,
-      OR: [
-        { title: { contains: term, mode: "insensitive" } },
-        { description: { contains: term, mode: "insensitive" } },
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    include: storefrontCardInclude,
-  });
+/** The handful of results shown under the header's search field as it is typed in. */
+export async function suggestStorefrontProducts(
+  storeId: string,
+  query: string,
+  limit = 6,
+) {
+  return rankedStorefrontSearch(storeId, query, limit);
 }
 
 /** One published product by its storefront address. Drafts 404. */

@@ -67,9 +67,18 @@ export function CartLineList({
                 ) : null}
                 <p className="mt-0.5 text-sm text-muted tabular">{line.unitPrice}</p>
               </div>
-              <p className="shrink-0 text-sm font-medium tabular">
-                {line.available ? line.lineTotal : null}
-              </p>
+              {line.available && line.discountedTotal ? (
+                <p className="shrink-0 text-end text-sm tabular">
+                  <del className="block text-xs text-muted">{line.lineTotal}</del>
+                  <ins className="block font-medium text-success no-underline">
+                    {line.discountedTotal}
+                  </ins>
+                </p>
+              ) : (
+                <p className="shrink-0 text-sm font-medium tabular">
+                  {line.available ? line.lineTotal : null}
+                </p>
+              )}
             </div>
 
             <div className="mt-auto flex items-center justify-between gap-3 pt-3">

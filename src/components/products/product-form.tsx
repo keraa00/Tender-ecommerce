@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
+import { SaveBar } from "@/components/admin/save-bar";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
 import { centsToInputValue } from "@/lib/money";
@@ -24,6 +25,9 @@ import { slugify } from "@/lib/slug";
  */
 
 type ExistingImage = { id: string; url: string; altText: string | null };
+
+/** A chosen file shown before it is uploaded. `url` is a `blob:` object URL. */
+type PendingImage = { url: string; name: string };
 
 type ExistingVariant = {
   id: string;
@@ -118,7 +122,18 @@ export function ProductForm({
   const [rows, setRows] = useState<VariantRow[]>(() => rowsFrom(product));
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
 
+  // Object URLs hold the file in memory until revoked, so each batch is
+  // released as soon as it is replaced, cleared or the form unmounts.
+  useEffect(
+    () => () => {
+      for (const image of pendingImages) URL.revokeObjectURL(image.url);
+    },
+    [pendingImages],
+  );
+
+  const existingImages = product?.images ?? [];
   const effectiveSlug = slugEdited ? slug : slugify(title);
   const rowErrors = state.fieldErrors?.variantRows ?? {};
 
@@ -138,7 +153,22 @@ export function ProductForm({
   }
 
   return (
-    <form action={formAction} className="space-y-8" noValidate>
+    <form
+      action={formAction}
+      // React resets the form after every submission, which empties the file
+      // input — the previews have to go with it or they'd show files that are
+      // no longer selected.
+      onReset={() => setPendingImages([])}
+      className="space-y-8"
+      noValidate
+    >
+      <SaveBar
+        label={submitLabel}
+        pending={pending}
+        disabled={fileError !== null}
+        savedKey={state.notice ? state : undefined}
+      />
+
       <FormError>{state.formError}</FormError>
 
       {state.notice ? (
@@ -422,9 +452,9 @@ export function ProductForm({
           </p>
         ) : null}
 
-        {product && product.images.length > 0 ? (
+        {existingImages.length > 0 || pendingImages.length > 0 ? (
           <ul className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {product.images.map((image) => {
+            {existingImages.map((image) => {
               const markedForRemoval = removed.has(image.id);
 
               return (
@@ -468,11 +498,30 @@ export function ProductForm({
                 </li>
               );
             })}
+
+            {pendingImages.map((image) => (
+              <li key={image.url} className="space-y-2">
+                <div className="relative aspect-square overflow-hidden rounded-xl bg-surface-subtle">
+                  {/* `blob:` sources skip the optimizer, so no loader config is needed. */}
+                  <Image
+                    src={image.url}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 50vw, 25vw"
+                    className="object-cover"
+                  />
+                </div>
+                <p className="truncate text-xs text-foreground" title={image.name}>
+                  {image.name}
+                </p>
+                <p className="text-xs text-muted">Uploads on save</p>
+              </li>
+            ))}
           </ul>
         ) : null}
 
         <Field
-          label={product ? "Add more photos" : "Photos"}
+          label={product ? "Add more photos" : "Add photos"}
           htmlFor="imageFile"
           hint={`JPEG, PNG, WebP or AVIF. Up to ${MAX_IMAGES_PER_UPLOAD} at a time, ${MAX_IMAGE_MB}MB each.`}
         >
@@ -486,22 +535,26 @@ export function ProductForm({
               // Caught here so an oversized file is reported before the upload
               // is attempted rather than after it has been sent.
               const files = Array.from(event.target.files ?? []);
-              if (files.length > MAX_IMAGES_PER_UPLOAD) {
-                setFileError(`Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.`);
-                return;
-              }
-              setFileError(files.map(imageRejectionReason).find(Boolean) ?? null);
+              setFileError(
+                files.length > MAX_IMAGES_PER_UPLOAD
+                  ? `Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.`
+                  : (files.map(imageRejectionReason).find(Boolean) ?? null),
+              );
+              // Only files the server would accept get a preview; the rest are
+              // covered by the error above and would render as broken images.
+              setPendingImages(
+                files
+                  .filter((file) => imageRejectionReason(file) === null)
+                  .map((file) => ({
+                    url: URL.createObjectURL(file),
+                    name: file.name,
+                  })),
+              );
             }}
             className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-surface-hover"
           />
         </Field>
       </section>
-
-      <div className="flex items-center gap-3 border-t border-border pt-6">
-        <Button type="submit" size="lg" disabled={pending || fileError !== null}>
-          {pending ? "Saving…" : submitLabel}
-        </Button>
-      </div>
     </form>
   );
 }

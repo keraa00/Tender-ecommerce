@@ -52,6 +52,8 @@ export default async function EditProductPage(
           {product.status === "ACTIVE" ? (
             <Link
               href={`${storefrontUrl(storeSlug)}/p/${product.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-muted underline-offset-4 hover:underline tabular"
             >
               /s/{storeSlug}/p/{product.slug} ↗

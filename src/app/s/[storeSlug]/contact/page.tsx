@@ -69,7 +69,10 @@ export default async function ContactPage(
         href={storefrontPaths(store.slug).catalog}
         className="mt-10 inline-block text-sm font-medium underline underline-offset-4"
       >
-        {t.contact.browse} →
+        {t.contact.browse}{" "}
+        <span aria-hidden className="inline-block rtl:-scale-x-100">
+          →
+        </span>
       </Link>
     </div>
   );

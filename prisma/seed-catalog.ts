@@ -31,15 +31,31 @@ export type SeedProduct = {
 export type SeedDiscount = {
   code: string | null;
   title: string;
-  type: "PERCENTAGE" | "FIXED_AMOUNT" | "FREE_SHIPPING";
-  /** Basis points for PERCENTAGE, cents for FIXED_AMOUNT, ignored otherwise. */
+  type: "PERCENTAGE" | "FIXED_AMOUNT" | "FREE_SHIPPING" | "BUY_X_GET_Y";
+  /**
+   * Basis points for PERCENTAGE and BUY_X_GET_Y (10000 = free), cents for
+   * FIXED_AMOUNT, 0 for FREE_SHIPPING.
+   */
   value: number;
   minSubtotalCents?: number;
+  minQuantity?: number;
   appliesTo?: "ALL" | "COLLECTION" | "PRODUCT";
-  /** Collection slug when appliesTo = COLLECTION. */
+  /** Collection slug when appliesTo = COLLECTION. For BXGY, what the buyer gets. */
   targetCollection?: string;
+  /** BUY_X_GET_Y only. */
+  buy?: {
+    quantity: number;
+    getQuantity: number;
+    /** Collection slug the buyer buys from; omitted means any product. */
+    fromCollection?: string;
+    maxUsesPerOrder?: number;
+  };
+  segments?: ("FIRST_TIME" | "RETURNING" | "LOYAL" | "LAPSED" | "ACCOUNT_HOLDERS")[];
   usageLimit?: number;
   perCustomerLimit?: number;
+  combinable?: boolean;
+  startsAt?: string;
+  endsAt?: string;
   active?: boolean;
 };
 
@@ -291,6 +307,7 @@ const nordhavn: SeedStore = {
       title: "10% off your first order",
       type: "PERCENTAGE",
       value: 1000,
+      segments: ["FIRST_TIME"],
       perCustomerLimit: 1,
     },
     {
@@ -308,6 +325,17 @@ const nordhavn: SeedStore = {
       type: "FREE_SHIPPING",
       value: 0,
       minSubtotalCents: 10000,
+      combinable: true,
+    },
+    {
+      code: null,
+      title: "Camp & trail: buy 2, get the cheapest free",
+      type: "BUY_X_GET_Y",
+      value: 10000,
+      appliesTo: "COLLECTION",
+      targetCollection: "camp-trail",
+      buy: { quantity: 2, getQuantity: 1, fromCollection: "camp-trail", maxUsesPerOrder: 1 },
+      combinable: true,
     },
   ],
 };
@@ -526,7 +554,26 @@ const rosewater: SeedStore = {
       title: "15% off your first order",
       type: "PERCENTAGE",
       value: 1500,
+      segments: ["FIRST_TIME"],
       perCustomerLimit: 1,
+    },
+    {
+      code: "COMEBACK20",
+      title: "20% off to welcome lapsed customers back",
+      type: "PERCENTAGE",
+      value: 2000,
+      segments: ["LAPSED"],
+      perCustomerLimit: 1,
+    },
+    {
+      code: null,
+      title: "10% off 4 or more tableware pieces",
+      type: "PERCENTAGE",
+      value: 1000,
+      appliesTo: "COLLECTION",
+      targetCollection: "tableware",
+      minQuantity: 4,
+      combinable: true,
     },
     {
       code: "SECONDS",
@@ -540,6 +587,8 @@ const rosewater: SeedStore = {
       title: "Expired holiday promotion",
       type: "PERCENTAGE",
       value: 2000,
+      startsAt: "2025-12-01T00:00:00Z",
+      endsAt: "2026-01-01T00:00:00Z",
       active: false,
     },
   ],

@@ -9,12 +9,13 @@ import {
   LanguageSwitcher,
   MobileMenu,
   NavLinks,
-  SearchPanel,
 } from "@/components/storefront/header-controls";
+import { SearchPanel } from "@/components/storefront/search-panel";
 import { StorefrontUIProvider } from "@/components/storefront/storefront-ui";
 import type { NavItem } from "@/components/storefront/types";
 import { updateCartLineAction } from "@/lib/cart/actions";
-import { getCart } from "@/lib/cart/queries";
+import { getCartPricing } from "@/lib/checkout/pricing";
+import { localeDirection } from "@/lib/i18n/locales";
 import { getStorefrontI18n } from "@/lib/i18n/server";
 import { toCartDisplay } from "@/lib/storefront/cart-display";
 import { storefrontPaths } from "@/lib/storefront/links";
@@ -53,10 +54,10 @@ export default async function StorefrontLayout({
     );
   }
 
-  const [{ locale, t }, cart] = await Promise.all([
+  const [{ locale, t }, { cart, pricing }] = await Promise.all([
     getStorefrontI18n(),
     // Keyed by the resolved store id, and by this browser's own cart cookie.
-    getCart(store.id),
+    getCartPricing(store.id),
   ]);
 
   const paths = storefrontPaths(store.slug);
@@ -71,6 +72,7 @@ export default async function StorefrontLayout({
     <StorefrontUIProvider>
       <div
         lang={locale}
+        dir={localeDirection(locale)}
         style={{ "--store-accent": accent } as CSSProperties}
         className="flex flex-1 flex-col"
       >
@@ -85,7 +87,7 @@ export default async function StorefrontLayout({
 
             <Link
               href={paths.home}
-              className="flex min-w-0 items-center gap-2.5 pr-2"
+              className="flex min-w-0 items-center gap-2.5 pe-2"
             >
               {store.logoUrl ? (
                 <Image
@@ -107,16 +109,17 @@ export default async function StorefrontLayout({
               </span>
             </Link>
 
-            <NavLinks items={nav} className="ml-4 hidden lg:block" />
+            <NavLinks items={nav} className="ms-4 hidden lg:block" />
 
-            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <div className="ms-auto flex shrink-0 items-center gap-0.5">
               <LanguageSwitcher locale={locale} label={t.header.language} />
               <SearchPanel
                 action={paths.search}
+                suggestionsUrl={paths.searchSuggestions}
                 label={t.header.search}
-                placeholder={t.search.placeholder}
-                submitLabel={t.search.submit}
                 closeLabel={t.cart.close}
+                soldOutLabel={t.product.soldOut}
+                t={t.search}
               />
               <CartButton
                 href={paths.cart}
@@ -164,11 +167,12 @@ export default async function StorefrontLayout({
         </footer>
 
         <CartDrawer
-          cart={toCartDisplay(cart, store.slug, locale)}
+          cart={toCartDisplay(cart, pricing, store.slug, locale)}
           t={t.cart}
           updateLine={updateLine}
           cartHref={paths.cart}
           catalogHref={paths.catalog}
+          checkoutHref={canAcceptOrders(store) ? paths.checkout : null}
         />
       </div>
     </StorefrontUIProvider>

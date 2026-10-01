@@ -158,6 +158,9 @@
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Fast off the mark, long soft landing — how the storefront sheets slide. */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {
@@ -182,4 +185,12 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/*
+ * Arabic letters join up; `tracking-*` would pull words apart. Unlayered on
+ * purpose, so it outranks the utilities layer.
+ */
+:lang(ar) {
+  letter-spacing: normal;
 }

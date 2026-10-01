@@ -54,6 +54,8 @@ export default async function EditCollectionPage(
       description={
         <Link
           href={`${storefrontUrl(storeSlug)}/collections/${collection.slug}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-muted underline-offset-4 hover:underline tabular"
         >
           /s/{storeSlug}/collections/{collection.slug} ↗

@@ -20,7 +20,7 @@ import { readFile } from "node:fs/promises";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "@supabase/supabase-js";
 
-import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaClient, type Prisma } from "../src/generated/prisma/client";
 import {
   PLATFORM_ADMIN,
   SEED_PASSWORD,
@@ -289,32 +289,60 @@ async function seedDiscount(
   discount: SeedDiscount,
   collectionIds: Map<string, string>,
 ) {
-  const targetId = discount.targetCollection
-    ? (collectionIds.get(discount.targetCollection) ?? null)
-    : null;
+  const collection = (slug: string | undefined) => {
+    if (!slug) return null;
+    const id = collectionIds.get(slug);
+    if (!id) throw new Error(`Seed discount "${discount.title}" names unknown collection "${slug}".`);
+    return id;
+  };
 
+  const target = collection(discount.targetCollection);
+  const buyFrom = collection(discount.buy?.fromCollection);
+  const segments = discount.segments ?? [];
+
+  // Typed against the generated input, so a field the schema no longer has is
+  // a compile error here rather than a runtime one on the next reseed.
   const data = {
     code: discount.code,
     title: discount.title,
     type: discount.type,
     value: discount.value,
     minSubtotalCents: discount.minSubtotalCents ?? null,
-    appliesTo: discount.appliesTo ?? ("ALL" as const),
-    targetId,
+    minQuantity: discount.minQuantity ?? null,
+    appliesTo: discount.appliesTo ?? "ALL",
+    buysFrom: discount.buy ? (buyFrom ? "COLLECTION" : "ALL") : null,
+    buyQuantity: discount.buy?.quantity ?? null,
+    getQuantity: discount.buy?.getQuantity ?? null,
+    maxUsesPerOrder: discount.buy?.maxUsesPerOrder ?? null,
+    eligibility: segments.length > 0 ? "SEGMENTS" : "ALL",
+    segments,
     usageLimit: discount.usageLimit ?? null,
     perCustomerLimit: discount.perCustomerLimit ?? null,
+    combinable: discount.combinable ?? false,
+    ...(discount.startsAt ? { startsAt: new Date(discount.startsAt) } : {}),
+    endsAt: discount.endsAt ? new Date(discount.endsAt) : null,
     active: discount.active ?? true,
-  };
+  } satisfies Prisma.DiscountUncheckedUpdateInput;
+
+  const links = [
+    ...(target ? [{ collectionId: target, role: "DISCOUNTED" as const }] : []),
+    ...(buyFrom ? [{ collectionId: buyFrom, role: "QUALIFYING" as const }] : []),
+  ];
 
   const existing = await db.discount.findFirst({
     where: { storeId, title: discount.title },
     select: { id: true },
   });
 
-  if (existing) {
-    await db.discount.update({ where: { id: existing.id }, data });
-  } else {
-    await db.discount.create({ data: { storeId, ...data } });
+  const saved = existing
+    ? await db.discount.update({ where: { id: existing.id }, data, select: { id: true } })
+    : await db.discount.create({ data: { storeId, ...data }, select: { id: true } });
+
+  await db.discountCollection.deleteMany({ where: { discountId: saved.id } });
+  if (links.length > 0) {
+    await db.discountCollection.createMany({
+      data: links.map((link) => ({ ...link, discountId: saved.id })),
+    });
   }
 }
 

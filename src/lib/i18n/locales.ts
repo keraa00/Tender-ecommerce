@@ -6,7 +6,21 @@
  * Dependency-free so the language switcher (a Client Component) can import it.
  */
 
-export const LOCALES = ["en", "bs", "es", "it", "de"] as const;
+/** English first as the default, then by code — the order the switcher lists. */
+export const LOCALES = [
+  "en",
+  "ar",
+  "bs",
+  "de",
+  "es",
+  "fr",
+  "it",
+  "ja",
+  "pt",
+  "ru",
+  "tr",
+  "zh",
+] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -18,20 +32,45 @@ export const LOCALE_COOKIE = "tender_locale";
 /** Each language named in itself, which is how a reader looks for their own. */
 export const LOCALE_NAMES: Record<Locale, string> = {
   en: "English",
+  ar: "العربية",
   bs: "Bosanski",
-  es: "Español",
-  it: "Italiano",
   de: "Deutsch",
+  es: "Español",
+  fr: "Français",
+  it: "Italiano",
+  ja: "日本語",
+  pt: "Português",
+  ru: "Русский",
+  tr: "Türkçe",
+  zh: "简体中文",
 };
 
-/** BCP 47 tags for `Intl` — number, currency and plural formatting. */
+/**
+ * BCP 47 tags for `Intl` — number, currency and plural formatting.
+ *
+ * Arabic pins Western digits (`nu-latn`): they are what Arabic-language shops
+ * mostly show, and without the pin some regions and ICU versions switch to
+ * Arabic-Indic digits, so a price could render differently server and client.
+ */
 export const INTL_LOCALES: Record<Locale, string> = {
   en: "en-US",
+  ar: "ar-u-nu-latn",
   bs: "bs-BA",
-  es: "es-ES",
-  it: "it-IT",
   de: "de-DE",
+  es: "es-ES",
+  fr: "fr-FR",
+  it: "it-IT",
+  ja: "ja-JP",
+  pt: "pt-BR",
+  ru: "ru-RU",
+  tr: "tr-TR",
+  zh: "zh-CN",
 };
+
+/** Arabic reads right to left; the storefront mirrors its layout to match. */
+export function localeDirection(locale: Locale): "ltr" | "rtl" {
+  return locale === "ar" ? "rtl" : "ltr";
+}
 
 export function isLocale(value: unknown): value is Locale {
   return (

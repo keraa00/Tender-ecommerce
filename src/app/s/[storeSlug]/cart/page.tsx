@@ -3,12 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CartLineList } from "@/components/storefront/cart-lines";
+import { CartSummary } from "@/components/storefront/cart-summary";
 import { CheckoutButton } from "@/components/storefront/checkout-button";
-import { updateCartLineAction } from "@/lib/cart/actions";
-import { getCart } from "@/lib/cart/queries";
+import { DiscountCodeForm } from "@/components/storefront/discount-code-form";
+import {
+  applyDiscountCodeAction,
+  removeDiscountCodeAction,
+  updateCartLineAction,
+} from "@/lib/cart/actions";
+import { getCartPricing } from "@/lib/checkout/pricing";
 import { getStorefrontI18n } from "@/lib/i18n/server";
-import { toCartDisplay } from "@/lib/storefront/cart-display";
+import { discountCodeErrors, toCartDisplay } from "@/lib/storefront/cart-display";
 import { storefrontPaths } from "@/lib/storefront/links";
+import { canAcceptOrders } from "@/lib/stores/policy";
 import { getStoreBySlug } from "@/lib/stores/queries";
 
 export async function generateMetadata(
@@ -35,11 +42,11 @@ export default async function CartPage(props: PageProps<"/s/[storeSlug]/cart">) 
   const store = await getStoreBySlug(storeSlug);
   if (!store) notFound();
 
-  const [{ locale, t }, cartView] = await Promise.all([
+  const [{ locale, t }, { cart: cartView, pricing }] = await Promise.all([
     getStorefrontI18n(),
-    getCart(store.id),
+    getCartPricing(store.id),
   ]);
-  const cart = toCartDisplay(cartView, store.slug, locale);
+  const cart = toCartDisplay(cartView, pricing, store.slug, locale);
   const paths = storefrontPaths(store.slug);
 
   return (
@@ -69,13 +76,20 @@ export default async function CartPage(props: PageProps<"/s/[storeSlug]/cart">) 
           </div>
 
           <aside className="h-fit space-y-4 rounded-2xl border border-border bg-surface-subtle p-6 lg:sticky lg:top-24">
-            <div className="flex items-baseline justify-between">
-              <span>{t.cart.subtotal}</span>
-              <span className="text-lg font-semibold tabular">{cart.subtotal}</span>
-            </div>
             <p className="text-sm text-muted">{cart.itemCountLabel}</p>
+            <CartSummary cart={cart} t={t.cart} />
+            <DiscountCodeForm
+              codes={cart.codes}
+              t={t.discountCode}
+              errors={discountCodeErrors(locale)}
+              apply={applyDiscountCodeAction.bind(null, store.slug)}
+              remove={removeDiscountCodeAction.bind(null, store.slug)}
+            />
             <p className="text-xs text-muted">{t.cart.shippingNote}</p>
-            <CheckoutButton t={t.cart} />
+            <CheckoutButton
+              t={t.cart}
+              href={canAcceptOrders(store) ? paths.checkout : null}
+            />
             <Link
               href={paths.catalog}
               className="block text-center text-sm text-muted underline-offset-4 hover:text-foreground hover:underline"

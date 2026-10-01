@@ -9,7 +9,10 @@ export const storefrontPaths = (slug: string) => {
     catalog: `${base}/catalog`,
     contact: `${base}/contact`,
     search: `${base}/search`,
+    searchSuggestions: `${base}/search/suggestions`,
     cart: `${base}/cart`,
+    checkout: `${base}/checkout`,
+    checkoutComplete: `${base}/checkout/complete`,
     product: (productSlug: string) => `${base}/p/${productSlug}`,
     collection: (collectionSlug: string) => `${base}/collections/${collectionSlug}`,
   };

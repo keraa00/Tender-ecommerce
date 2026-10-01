@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useActionState, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { SaveBar } from "@/components/admin/save-bar";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
 import type { CollectionFormState } from "@/lib/collections/actions";
 import { slugify } from "@/lib/slug";
@@ -85,6 +85,12 @@ export function CollectionForm({
 
   return (
     <form action={formAction} className="space-y-8" noValidate>
+      <SaveBar
+        label={submitLabel}
+        pending={pending}
+        savedKey={state.notice ? state : undefined}
+      />
+
       <FormError>{state.formError}</FormError>
 
       {state.notice ? (
@@ -289,11 +295,6 @@ export function CollectionForm({
         )}
       </section>
 
-      <div className="flex items-center gap-3 border-t border-border pt-6">
-        <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Saving…" : submitLabel}
-        </Button>
-      </div>
     </form>
   );
 }

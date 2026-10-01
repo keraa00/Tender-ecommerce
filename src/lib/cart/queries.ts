@@ -9,6 +9,10 @@ import { readCartSessionId } from "./session";
 
 export type CartLineView = {
   id: string;
+  variantId: string;
+  /** With `collectionIds`, what the discount engine matches scopes against. */
+  productId: string;
+  collectionIds: string[];
   quantity: number;
   productTitle: string;
   productSlug: string;
@@ -27,9 +31,19 @@ export type CartView = {
   lines: CartLineView[];
   itemCount: number;
   subtotalCents: number;
+  /** Entered codes, upper-case. Whether they apply is the engine's call. */
+  discountCodes: string[];
+  /** Given at checkout; null until then. */
+  email: string | null;
 };
 
-const EMPTY_CART: CartView = { lines: [], itemCount: 0, subtotalCents: 0 };
+const EMPTY_CART: CartView = {
+  lines: [],
+  itemCount: 0,
+  subtotalCents: 0,
+  discountCodes: [],
+  email: null,
+};
 
 /**
  * This browser's cart in one store, shaped for display. Prices are read live
@@ -51,9 +65,11 @@ export const getCart = cache(async (storeId: string): Promise<CartView> => {
             include: {
               product: {
                 select: {
+                  id: true,
                   title: true,
                   slug: true,
                   status: true,
+                  collections: { select: { collectionId: true } },
                   _count: { select: { variants: true } },
                   images: {
                     orderBy: { position: "asc" },
@@ -87,6 +103,9 @@ export const getCart = cache(async (storeId: string): Promise<CartView> => {
 
       return {
         id: line.id,
+        variantId: variant.id,
+        productId: product.id,
+        collectionIds: product.collections.map((entry) => entry.collectionId),
         // Stock can fall after something was added. Show what can actually be
         // bought; the stored quantity is corrected on the next write.
         quantity: available ? Math.min(line.quantity, maxQuantity) : line.quantity,
@@ -103,5 +122,10 @@ export const getCart = cache(async (storeId: string): Promise<CartView> => {
       };
     });
 
-  return { lines, ...cartTotals(lines) };
+  return {
+    lines,
+    ...cartTotals(lines),
+    discountCodes: cart.discountCodes,
+    email: cart.email,
+  };
 });

@@ -5,8 +5,9 @@ store is an isolated tenant with its own catalogue, its own orders and its own
 Stripe account; the platform takes a commission at the moment of the charge.
 
 > **Status: in active development.** Schema, tenancy, auth, store creation, slug
-> routing, product management and seed data are in. Stripe Connect, checkout, the
-> discount engine and the admin surfaces are next — see [Roadmap](#roadmap).
+> routing, product management, discounts (admin, engine, cart and checkout),
+> order placement and seed data are in. Stripe Connect — card payment — and the
+> remaining admin surfaces are next — see [Roadmap](#roadmap).
 
 ---
 
@@ -20,7 +21,9 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
 | Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived |
-| Seed | Two stores, 30 products, 56 variants, 6 collections, 6 discounts — idempotent |
+| Discounts | `admin.<host>/[storeSlug]/discounts` — codes and automatic discounts: percentage, fixed amount, buy X get Y, free shipping; whole order, products or collections; minimum spend or quantity; all customers, segments or named customers; total and per-customer limits; schedule; on/off; stacking. The pricing engine is pure and tested, ready for checkout |
+| Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout; the checkout email re-prices segment and per-customer offers. "Place order" creates an **Unpaid** order — line and discount snapshots, commission on the discounted total, usage limits enforced in the order transaction — and nothing is charged until Stripe lands |
+| Seed | Two stores, 30 products, 56 variants, 6 collections, 9 discounts — idempotent |
 
 ---
 
@@ -236,6 +239,16 @@ and unable to upload, list or delete. Verified against the live project.
    `getCurrentUser()` calls `connection()` before checking whether Supabase is
    configured. Without it, a build with no keys prerenders `/dashboard` as a
    static redirect and then silently switches to dynamic once keys are added.
+9. **Discount rules are enforced twice, usage limits once — at the right
+   moment.** The form parser (`src/lib/discounts/form.ts`) explains a bad
+   discount in words; CHECK constraints in `20260926160000_discount_rules`
+   refuse one from any other write path. The engine
+   (`src/lib/discounts/engine.ts`) decides amounts from counts it read earlier,
+   which is fine for showing a total; `redeemDiscounts` re-checks inside the
+   order transaction with a conditional `UPDATE … WHERE usage_count <
+   usage_limit`, so two buyers racing for the last use cannot both get it.
+   Customer segments are rules over order history, not stored lists — there is
+   no customers table to keep in step.
 
 ---
 
@@ -427,8 +440,8 @@ the public-suffix problem that rules out `localhost` does not arise.
 | Data layer | Product CRUD with images and variants ✅; scoped data-access layer + isolation tests still to come | ◐ |
 | Storefront | Listing, search, filters, detail, cart | |
 | Connect | Stripe Connect onboarding, `account.updated` webhook, activation gating | |
-| Checkout | Direct charges with application fee, `payment_intent.succeeded`, inventory, emails | |
-| Discounts | Discount engine + tests, discount admin, checkout integration | |
+| Checkout | Order placement with discounts ✅; direct charges with application fee, `payment_intent.succeeded`, inventory, emails still to come | ◐ |
+| Discounts | Discount engine + tests, discount admin, cart and checkout integration | ✅ |
 | Surfaces | Seller dashboard, platform admin, buyer order history, mobile pass | |
 
 ---

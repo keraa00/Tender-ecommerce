@@ -2,8 +2,11 @@
 
 import { refresh } from "next/cache";
 
+import { MAX_CART_CODES } from "@/lib/checkout/totals";
 import { rootDb } from "@/lib/db/root";
 import { ProductStatus } from "@/lib/db/types";
+import { DISCOUNT_CODE_MAX_LENGTH } from "@/lib/discounts/constants";
+import { normalizeDiscountCode } from "@/lib/discounts/form";
 import { isUuid } from "@/lib/ids";
 import { getStoreBySlug } from "@/lib/stores/queries";
 import { isStorePubliclyVisible } from "@/lib/stores/policy";
@@ -91,6 +94,101 @@ export async function addToCartAction(
 
   refresh();
   return { addedAt: Date.now() };
+}
+
+export type DiscountCodeError =
+  | "not-found"
+  | "already-applied"
+  | "too-many"
+  | "empty-cart"
+  | "failed";
+
+export type DiscountCodeState = {
+  error?: DiscountCodeError;
+  /** Changes on every successful apply, so the form can clear its input. */
+  appliedAt?: number;
+};
+
+/** This browser's cart in the store, with how many lines it holds. */
+async function currentCart(storeId: string) {
+  const sessionId = await readCartSessionId();
+  if (!sessionId) return null;
+
+  return rootDb.cart.findUnique({
+    where: { storeId_sessionId: { storeId, sessionId } },
+    select: { id: true, discountCodes: true, _count: { select: { lines: true } } },
+  });
+}
+
+/**
+ * Adds a code to the cart. Only a code this store actually has is kept — the
+ * buyer is told at once about a typo — but one that exists and cannot apply
+ * yet (a minimum not met, an email not given) is kept, and the cart explains
+ * what it is waiting for. Whether it applies is decided on every render by the
+ * discount engine, never stored.
+ */
+export async function applyDiscountCodeAction(
+  storeSlug: string,
+  _prev: DiscountCodeState,
+  formData: FormData,
+): Promise<DiscountCodeState> {
+  const storeId = await visibleStoreId(storeSlug);
+  if (!storeId) return { error: "failed" };
+
+  const raw = formData.get("code");
+  const code = normalizeDiscountCode(typeof raw === "string" ? raw : "");
+  if (code === "" || code.length > DISCOUNT_CODE_MAX_LENGTH) return { error: "not-found" };
+
+  const cart = await currentCart(storeId);
+  if (!cart || cart._count.lines === 0) return { error: "empty-cart" };
+  if (cart.discountCodes.includes(code)) return { error: "already-applied" };
+  if (cart.discountCodes.length >= MAX_CART_CODES) return { error: "too-many" };
+
+  // (storeId, code) is the tenant-scoped key: another store's WELCOME10 is
+  // simply not found here.
+  const discount = await rootDb.discount.findUnique({
+    where: { storeId_code: { storeId, code } },
+    select: { id: true },
+  });
+  if (!discount) return { error: "not-found" };
+
+  try {
+    await rootDb.cart.update({
+      where: { id: cart.id },
+      data: { discountCodes: [...cart.discountCodes, code] },
+    });
+  } catch (error) {
+    console.error("applyDiscountCodeAction failed", error);
+    return { error: "failed" };
+  }
+
+  refresh();
+  return { appliedAt: Date.now() };
+}
+
+/** Takes a code off the cart. Posted by the remove button beside each code. */
+export async function removeDiscountCodeAction(
+  storeSlug: string,
+  formData: FormData,
+): Promise<void> {
+  const storeId = await visibleStoreId(storeSlug);
+  if (!storeId) return;
+
+  const raw = formData.get("code");
+  const code = normalizeDiscountCode(typeof raw === "string" ? raw : "");
+  const cart = await currentCart(storeId);
+  if (!cart || !cart.discountCodes.includes(code)) return;
+
+  try {
+    await rootDb.cart.update({
+      where: { id: cart.id },
+      data: { discountCodes: cart.discountCodes.filter((entry) => entry !== code) },
+    });
+  } catch (error) {
+    console.error("removeDiscountCodeAction failed", error);
+  }
+
+  refresh();
 }
 
 /**

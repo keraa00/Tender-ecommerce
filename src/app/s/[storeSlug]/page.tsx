@@ -145,7 +145,10 @@ export default async function StorefrontPage(
                 href={paths.catalog}
                 className="text-sm font-medium underline-offset-4 hover:underline"
               >
-                {t.home.viewAll} →
+                {t.home.viewAll}{" "}
+                <span aria-hidden className="inline-block rtl:-scale-x-100">
+                  →
+                </span>
               </Link>
             ) : null}
           </div>

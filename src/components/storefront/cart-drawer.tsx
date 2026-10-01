@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { CartLineList } from "./cart-lines";
+import { CartSummary } from "./cart-summary";
 import { CheckoutButton } from "./checkout-button";
 import { Sheet, SheetHeader, usePanel } from "./storefront-ui";
 import type { CartDisplay, CartMessages } from "./types";
@@ -13,12 +14,15 @@ export function CartDrawer({
   updateLine,
   cartHref,
   catalogHref,
+  checkoutHref,
 }: {
   cart: CartDisplay;
   t: CartMessages;
   updateLine: (formData: FormData) => Promise<void>;
   cartHref: string;
   catalogHref: string;
+  /** Null while the store cannot take orders. */
+  checkoutHref: string | null;
 }) {
   const { panel, setPanel } = usePanel();
   const close = () => setPanel(null);
@@ -27,7 +31,7 @@ export function CartDrawer({
     <Sheet
       open={panel === "cart"}
       onClose={close}
-      side="right"
+      side="end"
       label={t.title}
       closeLabel={t.close}
     >
@@ -36,7 +40,7 @@ export function CartDrawer({
           <>
             {t.title}
             {cart.itemCount > 0 ? (
-              <span className="ml-2 text-sm font-normal text-muted">
+              <span className="ms-2 text-sm font-normal text-muted">
                 {cart.itemCountLabel}
               </span>
             ) : null}
@@ -72,12 +76,9 @@ export function CartDrawer({
           </div>
 
           <div className="shrink-0 space-y-3 border-t border-border px-4 py-4 sm:px-6">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm">{t.subtotal}</span>
-              <span className="text-base font-semibold tabular">{cart.subtotal}</span>
-            </div>
+            <CartSummary cart={cart} t={t} />
             <p className="text-xs text-muted">{t.shippingNote}</p>
-            <CheckoutButton t={t} />
+            <CheckoutButton t={t} href={checkoutHref} onNavigate={close} />
             <Link
               href={cartHref}
               onClick={close}

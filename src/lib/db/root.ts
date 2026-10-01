@@ -37,12 +37,28 @@ function createPrismaClient() {
 
 // Next.js dev-server hot reload re-evaluates modules; without this the process
 // accumulates connection pools until Postgres refuses new connections.
+//
+// The cached client is only reused while it came from the current generated
+// `PrismaClient` class. `prisma generate` after a schema change hot-reloads a
+// new class, and an instance of the old one still carries the old schema — so
+// every query touching a new field fails with "Unknown field … for include
+// statement" until the dev server is restarted. A new class gets a new client,
+// and the stale one's pool is released.
 const globalForPrisma = globalThis as unknown as {
   rootDb?: ReturnType<typeof createPrismaClient>;
+  rootDbClass?: typeof PrismaClient;
 };
 
-export const rootDb = globalForPrisma.rootDb ?? createPrismaClient();
+function devCachedClient() {
+  const cached = globalForPrisma.rootDb;
+  if (cached && globalForPrisma.rootDbClass === PrismaClient) return cached;
+  if (cached) void cached.$disconnect();
+  return createPrismaClient();
+}
+
+export const rootDb = devCachedClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.rootDb = rootDb;
+  globalForPrisma.rootDbClass = PrismaClient;
 }

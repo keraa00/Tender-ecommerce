@@ -8,6 +8,9 @@ export type {
   CartLine,
   Collection,
   Discount,
+  DiscountCollection,
+  DiscountCustomer,
+  DiscountProduct,
   DiscountRedemption,
   Order,
   OrderLine,
@@ -22,7 +25,10 @@ export type {
 } from "@/generated/prisma/client";
 
 export {
+  CustomerSegment,
   DiscountAppliesTo,
+  DiscountEligibility,
+  DiscountTargetRole,
   DiscountType,
   OrderStatus,
   PlatformRole,
