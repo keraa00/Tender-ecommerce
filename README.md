@@ -360,6 +360,10 @@ in Supabase Auth so you can log in as them:
 
 Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 
+Both stores also get about a year of orders (`prisma/seed-orders.ts`), so
+Customers, Orders and Analytics have something to show. Their dates count back
+from when the seed runs, so reseeding keeps recent customers recent.
+
 **5. Run.**
 
 ```bash
@@ -427,7 +431,7 @@ the public-suffix problem that rules out `localhost` does not arise.
 | `npm run typecheck` | `tsc --noEmit` (run `npm run build` first — Next generates route types) |
 | `npm run db:migrate` | Create and apply a migration (local `prisma dev` database) |
 | `npm run db:deploy` | Apply existing migrations — hosted Postgres, CI, production |
-| `npm run db:seed` | Seed the demo stores (idempotent) |
+| `npm run db:seed` | Seed the demo stores and their orders (idempotent) |
 | `npm run seed:images` | Refresh seed photography from Openverse |
 
 ---

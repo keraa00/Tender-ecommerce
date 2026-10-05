@@ -1,5 +1,6 @@
 /**
- * Seeds two demo stores with real catalogues.
+ * Seeds two demo stores with real catalogues, and a year of orders from the
+ * customers in `seed-orders.ts`.
  *
  * Idempotent: every write is an upsert keyed on a natural composite key, so
  * running it repeatedly converges rather than duplicating. It never drops
@@ -15,12 +16,14 @@
 
 import "dotenv/config";
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "@supabase/supabase-js";
 
 import { PrismaClient, type Prisma } from "../src/generated/prisma/client";
+import { calculatePlatformFee } from "../src/lib/money";
 import {
   PLATFORM_ADMIN,
   SEED_PASSWORD,
@@ -28,6 +31,7 @@ import {
   type SeedDiscount,
   type SeedStore,
 } from "./seed-catalog";
+import { SEED_ORDERS } from "./seed-orders";
 
 type SeedImage = {
   url: string;
@@ -347,6 +351,231 @@ async function seedDiscount(
 }
 
 // ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A fixed id for a seeded order, derived from its key, so a reseed updates the
+ * order it wrote last time instead of adding another. Orders have no natural
+ * key to upsert on: the number is handed out by the store's counter.
+ */
+function seedOrderId(key: string): string {
+  const hex = createHash("sha256").update(`tender-seed-order:${key}`).digest("hex");
+  // Version 4 and RFC 4122 variant bits, so it is a well-formed UUID.
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** What a whole-order code takes off, rounded as the discount engine rounds. */
+function orderDiscountCents(
+  discount: { code: string | null; type: string; value: number },
+  subtotalCents: number,
+): number {
+  switch (discount.type) {
+    case "PERCENTAGE":
+      return Math.round((subtotalCents * discount.value) / 10_000);
+    case "FIXED_AMOUNT":
+      return Math.min(discount.value, subtotalCents);
+    default:
+      throw new Error(`Seed orders apply percentage and fixed-amount codes only, not ${discount.code}.`);
+  }
+}
+
+/**
+ * Splits an order's discount across its lines by each line's share of the
+ * subtotal, the rounding remainder on the last, so the lines add up to the
+ * order as they do on a real one.
+ */
+function splitAcrossLines(discountCents: number, lineTotals: number[]): number[] {
+  const subtotal = lineTotals.reduce((sum, cents) => sum + cents, 0);
+  const shares = lineTotals.map((cents) => Math.floor((discountCents * cents) / subtotal));
+  shares[shares.length - 1] += discountCents - shares.reduce((sum, cents) => sum + cents, 0);
+  return shares;
+}
+
+/**
+ * Runs after every store is seeded, because the demo owners shop at each
+ * other's stores and a signed-in order needs its account to exist.
+ *
+ * Prices come from the variants as seeded, and inventory is left alone: these
+ * are history, not sales happening now.
+ */
+async function seedOrders(store: SeedStore) {
+  const orders = SEED_ORDERS[store.slug] ?? [];
+  if (orders.length === 0) return;
+
+  const record = await db.store.findUniqueOrThrow({
+    where: { slug: store.slug },
+    select: { id: true, commissionBps: true, stripeAccountId: true },
+  });
+
+  const variants = new Map(
+    (
+      await db.variant.findMany({
+        where: { storeId: record.id, sku: { in: orders.flatMap((order) => order.items.map((item) => item.sku)) } },
+        select: {
+          id: true,
+          sku: true,
+          title: true,
+          priceCents: true,
+          product: {
+            select: {
+              title: true,
+              images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+            },
+          },
+        },
+      })
+    ).map((variant) => [variant.sku, variant]),
+  );
+
+  const codes = [...new Set(orders.flatMap((order) => (order.code ? [order.code] : [])))];
+  const discounts = new Map(
+    (
+      await db.discount.findMany({
+        where: { storeId: record.id, code: { in: codes } },
+        select: { id: true, code: true, title: true, type: true, value: true },
+      })
+    ).map((discount) => [discount.code, discount]),
+  );
+
+  const now = Date.now();
+
+  // Oldest first, so order numbers rise with time as real ones do.
+  for (const order of [...orders].sort((a, b) => b.daysAgo - a.daysAgo)) {
+    const id = seedOrderId(order.key);
+
+    const lines = order.items.map(({ sku, quantity }) => {
+      const variant = variants.get(sku);
+      if (!variant) throw new Error(`Seed order "${order.key}" names unknown SKU "${sku}".`);
+      return { variant, quantity };
+    });
+    const lineTotals = lines.map(({ variant, quantity }) => variant.priceCents * quantity);
+    const subtotalCents = lineTotals.reduce((sum, cents) => sum + cents, 0);
+
+    const discount = order.code ? discounts.get(order.code) : undefined;
+    if (order.code && !discount) {
+      throw new Error(`Seed order "${order.key}" uses unknown code "${order.code}".`);
+    }
+    const discountCents = discount ? orderDiscountCents(discount, subtotalCents) : 0;
+    const lineDiscounts = splitAcrossLines(discountCents, lineTotals);
+    const totalCents = subtotalCents - discountCents;
+    const platformFeeCents = calculatePlatformFee(totalCents, record.commissionBps);
+
+    const email = order.email.toLowerCase();
+    const account = order.signedIn
+      ? await db.user.findUnique({ where: { email }, select: { id: true } })
+      : null;
+    if (order.signedIn && !account) {
+      throw new Error(`Seed order "${order.key}" is signed in as ${email}, which is not a seeded account.`);
+    }
+
+    const placedAt = new Date(now - order.daysAgo * DAY_MS);
+    const later = (ms: number) => new Date(Math.min(placedAt.getTime() + ms, now));
+    const settled = order.status === "PAID" || order.status === "FULFILLED";
+
+    const data = {
+      userId: account?.id ?? null,
+      email: order.email,
+      status: order.status,
+      subtotalCents,
+      discountCents,
+      shippingCents: 0,
+      totalCents,
+      platformFeeCents,
+      sellerNetCents: totalCents - platformFeeCents,
+      discountId: discount?.id ?? null,
+      appliedDiscounts: discount
+        ? [
+            {
+              discountId: discount.id,
+              code: discount.code,
+              title: discount.title,
+              type: discount.type,
+              amountCents: discountCents,
+              shippingCents: 0,
+            },
+          ]
+        : [],
+      stripeAccountId: record.stripeAccountId,
+      shippingAddress: {
+        name: order.name,
+        line1: order.address.line1,
+        line2: order.address.line2 ?? null,
+        city: order.address.city,
+        region: order.address.region ?? null,
+        postalCode: order.address.postalCode,
+        country: order.address.country,
+      },
+      paidAt: settled ? later(2 * 60 * 1000) : null,
+      fulfilledAt: order.status === "FULFILLED" ? later(2 * DAY_MS) : null,
+      cancelledAt: order.status === "CANCELLED" ? later(60 * 60 * 1000) : null,
+      createdAt: placedAt,
+    } satisfies Prisma.OrderUncheckedUpdateInput;
+
+    const existing = await db.order.findUnique({ where: { id }, select: { storeId: true } });
+    if (existing && existing.storeId !== record.id) {
+      throw new Error(`Seed order "${order.key}" collides with an order in another store.`);
+    }
+
+    if (existing) {
+      await db.order.update({ where: { id }, data });
+    } else {
+      // Numbered from the store's counter, as checkout numbers them, so a
+      // seeded order never takes a number a real one already has.
+      const { orderSequence } = await db.store.update({
+        where: { id: record.id },
+        data: { orderSequence: { increment: 1 } },
+        select: { orderSequence: true },
+      });
+      await db.order.create({
+        data: { id, storeId: record.id, orderNumber: orderSequence, ...data },
+      });
+    }
+
+    // Lines and redemptions are replaced wholesale, like product images.
+    await db.orderLine.deleteMany({ where: { orderId: id } });
+    await db.orderLine.createMany({
+      data: lines.map(({ variant, quantity }, index) => ({
+        orderId: id,
+        variantId: variant.id,
+        titleSnapshot: variant.product.title,
+        variantTitleSnapshot: variant.title,
+        skuSnapshot: variant.sku,
+        imageUrlSnapshot: variant.product.images[0]?.url ?? null,
+        unitPriceCents: variant.priceCents,
+        quantity,
+        discountCents: lineDiscounts[index],
+      })),
+    });
+
+    await db.discountRedemption.deleteMany({ where: { orderId: id } });
+    // A cancelled checkout gives its use back, so it keeps no redemption.
+    if (discount && order.status !== "CANCELLED") {
+      await db.discountRedemption.create({
+        data: { discountId: discount.id, orderId: id, userId: account?.id ?? null, email, createdAt: placedAt },
+      });
+    }
+  }
+
+  // Checkout keeps `usageCount` equal to the redemptions, so recount rather
+  // than add: a reseed must not count the same orders twice.
+  for (const discount of discounts.values()) {
+    const usageCount = await db.discountRedemption.count({ where: { discountId: discount.id } });
+    await db.discount.update({ where: { id: discount.id }, data: { usageCount } });
+  }
+
+  const customers = new Set(
+    orders
+      .filter((order) => order.status === "PAID" || order.status === "FULFILLED")
+      .map((order) => order.email.toLowerCase()),
+  );
+  console.log(`  ${store.name.padEnd(22)} ${orders.length} orders, ${customers.size} customers`);
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const images = await loadImages();
@@ -363,6 +592,10 @@ async function main() {
 
   for (const store of SEED_STORES) {
     await seedStore(store, images);
+  }
+
+  for (const store of SEED_STORES) {
+    await seedOrders(store);
   }
 
   console.log("\nDone. Demo accounts:");

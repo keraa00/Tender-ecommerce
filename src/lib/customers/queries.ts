@@ -1,6 +1,8 @@
 import "server-only";
 
+import type { ShippingAddress } from "@/lib/checkout/form";
 import { rootDb } from "@/lib/db/root";
+import { Prisma, type OrderStatus } from "@/lib/db/types";
 import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
 
 /**
@@ -9,51 +11,231 @@ import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
  * spans a buyer's orders is the email on them, not a user row. Rolling the
  * orders up on read keeps one source of truth; a separate table would need a
  * write path that guest checkout has no natural place to call.
+ *
+ * Like every other query module here, each function takes `storeId` first and
+ * filters by it. The same address may well have bought from other stores too.
  */
 
 export type StoreCustomer = {
+  /** Lower-cased — the key a customer is grouped, linked and looked up by. */
   email: string;
   /** From the linked account, when the buyer had one. Guests have none. */
   name: string | null;
   hasAccount: boolean;
+  /** Settled orders, like every figure here. */
   orders: number;
   spentCents: number;
+  firstOrderAt: Date;
   lastOrderAt: Date;
 };
 
+type CustomerRow = {
+  email: string;
+  name: string | null;
+  has_account: boolean;
+  orders: number;
+  spent_cents: bigint | number;
+  first_order_ms: number;
+  last_order_ms: number;
+};
+
+/**
+ * The one definition of "a customer and their totals", which the list, the
+ * discount form's picker and the detail page all read through — so a row and
+ * the page it links to cannot disagree about what someone has spent.
+ *
+ * Raw SQL because order emails keep the case they were typed in, and grouping
+ * on the column as stored would split `Ann@x.com` and `ann@x.com` into two
+ * customers. Prisma's `groupBy` cannot group on an expression, and its
+ * case-insensitive `equals` is an unescaped ILIKE that reads `_` as a wildcard;
+ * `lower(email) = $1` is exact. The epoch reads keep timestamps in UTC whatever
+ * the driver's zone, as in `loadCustomerProfile`.
+ *
+ * An address that matches no account is a guest, which is a normal outcome
+ * rather than a miss. The account join is case-folded too, and DISTINCT ON
+ * keeps it to one row per customer even if two accounts differed only by case.
+ */
+async function rollUpCustomers(
+  storeId: string,
+  options: { email?: string; limit?: number } = {},
+): Promise<StoreCustomer[]> {
+  const rows = await rootDb.$queryRaw<CustomerRow[]>`
+    SELECT c.email,
+           u.name,
+           (u.email IS NOT NULL) AS has_account,
+           c.orders,
+           c.spent_cents,
+           c.first_order_ms,
+           c.last_order_ms
+    FROM (
+      SELECT lower("email") AS email,
+             count(*)::int AS orders,
+             sum("total_cents")::bigint AS spent_cents,
+             (extract(epoch FROM min("created_at")) * 1000)::float8 AS first_order_ms,
+             (extract(epoch FROM max("created_at")) * 1000)::float8 AS last_order_ms
+      FROM "orders"
+      WHERE "store_id" = ${storeId}::uuid
+        AND "status"::text IN (${Prisma.join([...SETTLED_ORDER_STATUSES])})
+        ${options.email === undefined ? Prisma.empty : Prisma.sql`AND lower("email") = ${options.email}`}
+      GROUP BY lower("email")
+    ) c
+    LEFT JOIN (
+      SELECT DISTINCT ON (lower("email")) lower("email") AS email, "name"
+      FROM "users"
+      ORDER BY lower("email"), "created_at"
+    ) u ON u.email = c.email
+    ORDER BY c.spent_cents DESC, c.last_order_ms DESC, c.email
+    ${options.limit === undefined ? Prisma.empty : Prisma.sql`LIMIT ${options.limit}`}
+  `;
+
+  return rows.map((row) => ({
+    email: row.email,
+    name: row.name,
+    hasAccount: row.has_account,
+    orders: row.orders,
+    spentCents: Number(row.spent_cents),
+    firstOrderAt: new Date(row.first_order_ms),
+    lastOrderAt: new Date(row.last_order_ms),
+  }));
+}
+
+/** The top spenders, for the discount form's customer picker. */
 export async function listStoreCustomers(
   storeId: string,
   limit = 50,
 ): Promise<StoreCustomer[]> {
-  const rows = await rootDb.order.groupBy({
-    by: ["email"],
-    where: { storeId, status: { in: [...SETTLED_ORDER_STATUSES] } },
-    _count: { _all: true },
-    _sum: { totalCents: true },
-    _max: { createdAt: true },
-    orderBy: { _sum: { totalCents: "desc" } },
-    take: limit,
+  return rollUpCustomers(storeId, { limit });
+}
+
+/** Every customer of the store, highest spend first. */
+export async function listAllStoreCustomers(
+  storeId: string,
+): Promise<StoreCustomer[]> {
+  return rollUpCustomers(storeId);
+}
+
+export type CustomerOrder = {
+  id: string;
+  orderNumber: number;
+  status: OrderStatus;
+  totalCents: number;
+  createdAt: Date;
+  itemCount: number;
+};
+
+export type CustomerRedemption = {
+  id: string;
+  createdAt: Date;
+  /** Null for an automatic discount, which has no code to type. */
+  code: string | null;
+  title: string;
+  orderNumber: number;
+};
+
+export type StoreCustomerDetail = {
+  customer: StoreCustomer;
+  /** Every order this address placed here, in any status, newest first. */
+  orders: CustomerOrder[];
+  redemptions: CustomerRedemption[];
+  /** Where the newest order was going, with that order's number. */
+  lastAddress: { orderNumber: number; address: ShippingAddress } | null;
+};
+
+/**
+ * One customer of one store, or null when the address has never paid this
+ * store — whether or not it has paid another.
+ */
+export async function getStoreCustomer(
+  storeId: string,
+  email: string,
+): Promise<StoreCustomerDetail | null> {
+  const key = email.trim().toLowerCase();
+
+  const [[customer], orders, redemptions] = await Promise.all([
+    rollUpCustomers(storeId, { email: key }),
+    listCustomerOrders(storeId, key),
+    // Redemption emails are lower-case by constraint, so equality is exact.
+    rootDb.discountRedemption.findMany({
+      where: { email: key, discount: { storeId } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        createdAt: true,
+        discount: { select: { code: true, title: true } },
+        order: { select: { orderNumber: true } },
+      },
+    }),
+  ]);
+
+  if (!customer) return null;
+
+  const newest = orders[0];
+
+  return {
+    customer,
+    orders: orders.map(({ shippingAddress: _address, _count, ...order }) => ({
+      ...order,
+      itemCount: _count.lines,
+    })),
+    redemptions: redemptions.map((redemption) => ({
+      id: redemption.id,
+      createdAt: redemption.createdAt,
+      code: redemption.discount.code,
+      title: redemption.discount.title,
+      orderNumber: redemption.order.orderNumber,
+    })),
+    lastAddress: newest
+      ? {
+          orderNumber: newest.orderNumber,
+          address: toShippingAddress(newest.shippingAddress),
+        }
+      : null,
+  };
+}
+
+async function listCustomerOrders(storeId: string, email: string) {
+  // The ids by the same exact, case-folded match the rollup uses; the rows
+  // themselves through Prisma, so the shapes and dates come back typed.
+  const ids = await rootDb.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "orders"
+    WHERE "store_id" = ${storeId}::uuid AND lower("email") = ${email}
+  `;
+  if (ids.length === 0) return [];
+
+  return rootDb.order.findMany({
+    where: { storeId, id: { in: ids.map((row) => row.id) } },
+    orderBy: [{ createdAt: "desc" }, { orderNumber: "desc" }],
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      totalCents: true,
+      createdAt: true,
+      shippingAddress: true,
+      _count: { select: { lines: true } },
+    },
   });
+}
 
-  if (rows.length === 0) return [];
+/**
+ * The address JSON as checkout wrote it. Read defensively: it is a snapshot in
+ * a JSON column, so nothing but the write path vouches for its shape.
+ */
+function toShippingAddress(value: Prisma.JsonValue): ShippingAddress {
+  const record: Prisma.JsonObject =
+    value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const text = (key: string) => {
+    const field = record[key];
+    return typeof field === "string" && field.trim() !== "" ? field : null;
+  };
 
-  // One lookup for the whole page rather than one per row. An email that
-  // matches no account is a guest, which is a normal outcome, not a miss.
-  const accounts = await rootDb.user.findMany({
-    where: { email: { in: rows.map((row) => row.email) } },
-    select: { email: true, name: true },
-  });
-  const byEmail = new Map(accounts.map((user) => [user.email, user.name]));
-
-  return rows.map((row) => ({
-    email: row.email,
-    name: byEmail.get(row.email) ?? null,
-    hasAccount: byEmail.has(row.email),
-    orders: row._count._all,
-    spentCents: row._sum.totalCents ?? 0,
-    // `_max.createdAt` cannot actually be null — the group exists because rows
-    // do — but the generated type allows it, and a fabricated date would be
-    // worse than the epoch showing up in a bug report.
-    lastOrderAt: row._max.createdAt ?? new Date(0),
-  }));
+  return {
+    name: text("name") ?? "",
+    line1: text("line1") ?? "",
+    line2: text("line2"),
+    city: text("city") ?? "",
+    region: text("region"),
+    postalCode: text("postalCode") ?? "",
+    country: text("country") ?? "",
+  };
 }
