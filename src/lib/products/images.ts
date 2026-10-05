@@ -14,6 +14,9 @@ import { PRODUCT_IMAGE_BUCKET, storagePathFromPublicUrl } from "./constants";
  * Objects are keyed under the store's id. The caller reaches this module only
  * with a `store.id` that `getStoreContext()` has already tied to the session,
  * so one seller cannot write into another's prefix.
+ *
+ * Store logos share the bucket and the prefix: same public-read rules, same
+ * `next/image` allowlist entry, and one place to clean up if a store goes.
  */
 
 const EXTENSIONS: Record<string, string> = {
@@ -28,9 +31,21 @@ export async function uploadProductImage(
   storeId: string,
   file: File,
 ): Promise<string> {
+  return uploadImage(storeId, randomUUID(), file);
+}
+
+/**
+ * Uploads a store's logo and returns its public URL. The name is fresh each
+ * time, so a replaced logo is never served from a stale cache.
+ */
+export async function uploadStoreLogo(storeId: string, file: File): Promise<string> {
+  return uploadImage(storeId, `logo-${randomUUID()}`, file);
+}
+
+async function uploadImage(storeId: string, name: string, file: File): Promise<string> {
   const supabase = createSupabaseAdminClient();
   const extension = EXTENSIONS[file.type] ?? "bin";
-  const path = `${storeId}/${randomUUID()}.${extension}`;
+  const path = `${storeId}/${name}.${extension}`;
 
   const { error } = await supabase.storage
     .from(PRODUCT_IMAGE_BUCKET)

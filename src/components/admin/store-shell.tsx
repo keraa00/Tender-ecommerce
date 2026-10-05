@@ -5,6 +5,7 @@ import { useSelectedLayoutSegment } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { NavIcon } from "@/components/admin/nav-icons";
+import { StoreMark } from "@/components/store-mark";
 import { storeAdminPath } from "@/lib/admin/links";
 import { ADMIN_SECTIONS } from "@/lib/admin/nav";
 import { signOutAction } from "@/lib/auth/actions";
@@ -23,7 +24,12 @@ import { cn } from "@/lib/cn";
  */
 
 type StoreShellProps = {
-  store: { slug: string; name: string; accentColor: string | null };
+  store: {
+    slug: string;
+    name: string;
+    logoUrl: string | null;
+    accentColor: string | null;
+  };
   /** Absolute when the admin has its own host, so these leave it deliberately. */
   allStoresUrl: string;
   storefrontUrl: string;
@@ -127,7 +133,12 @@ export function StoreShell({
             </svg>
           </button>
 
-          <StoreMark accentColor={store.accentColor} className="h-6 w-6" />
+          <StoreMark
+            name={store.name}
+            logoUrl={store.logoUrl}
+            accentColor={store.accentColor}
+            size="xs"
+          />
           <span className="min-w-0 flex-1 truncate font-medium">
             {store.name}
           </span>
@@ -174,7 +185,12 @@ function DrawerContents({
         </a>
 
         <div className="mt-2 flex items-start gap-2.5 px-1">
-          <StoreMark accentColor={store.accentColor} className="mt-0.5 h-8 w-8" />
+          <StoreMark
+            name={store.name}
+            logoUrl={store.logoUrl}
+            accentColor={store.accentColor}
+            className="mt-0.5"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold tracking-tight">{store.name}</p>
             <p className="truncate text-xs text-muted tabular">/s/{store.slug}</p>
@@ -279,22 +295,6 @@ function PendingDot() {
         "h-1.5 w-1.5 shrink-0 rounded-full bg-current transition-opacity",
         pending ? "animate-pulse opacity-100" : "opacity-0",
       )}
-    />
-  );
-}
-
-function StoreMark({
-  accentColor,
-  className,
-}: {
-  accentColor: string | null;
-  className?: string;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={cn("shrink-0 rounded-lg", className)}
-      style={{ backgroundColor: accentColor ?? "var(--border-strong)" }}
     />
   );
 }

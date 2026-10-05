@@ -78,6 +78,16 @@ const icons: Record<AdminIcon, (props: IconProps) => React.ReactElement> = {
       <path d="M3 20h18" />
     </Svg>
   ),
+  settings: (props) => (
+    <Svg {...props}>
+      <path d="M4 7h9" />
+      <path d="M19 7h1" />
+      <circle cx="16" cy="7" r="2.5" />
+      <path d="M4 17h1" />
+      <path d="M11 17h9" />
+      <circle cx="8" cy="17" r="2.5" />
+    </Svg>
+  ),
 };
 
 export function NavIcon({

@@ -25,7 +25,8 @@ const sizes: Record<Size, string> = {
   lg: "h-12 px-6 text-base",
 };
 
-function classes(variant: Variant, size: Size, className?: string) {
+/** A button's look, for elements that act as one without being a <button>. */
+export function buttonClasses(variant: Variant, size: Size, className?: string) {
   return cn(base, variants[variant], sizes[size], className);
 }
 
@@ -35,7 +36,7 @@ export function Button({
   className,
   ...props
 }: ComponentProps<"button"> & { variant?: Variant; size?: Size }) {
-  return <button className={classes(variant, size, className)} {...props} />;
+  return <button className={buttonClasses(variant, size, className)} {...props} />;
 }
 
 export function ButtonLink({
@@ -50,7 +51,7 @@ export function ButtonLink({
   children: ReactNode;
 }) {
   return (
-    <Link className={classes(variant, size, className)} {...props}>
+    <Link className={buttonClasses(variant, size, className)} {...props}>
       {children}
     </Link>
   );

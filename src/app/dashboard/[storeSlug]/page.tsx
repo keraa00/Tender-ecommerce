@@ -59,6 +59,8 @@ export default async function StoreOverviewPage(
       action: (
         <ButtonLink
           href={storefrontUrl(store.slug)}
+          target="_blank"
+          rel="noopener noreferrer"
           variant="secondary"
           size="sm"
         >
@@ -106,6 +108,8 @@ export default async function StoreOverviewPage(
       action={
         <ButtonLink
           href={storefrontUrl(store.slug)}
+          target="_blank"
+          rel="noopener noreferrer"
           variant="secondary"
           size="sm"
         >

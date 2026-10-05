@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -89,21 +88,12 @@ export default async function StorefrontLayout({
               href={paths.home}
               className="flex min-w-0 items-center gap-2.5 pe-2"
             >
-              {store.logoUrl ? (
-                <Image
-                  src={store.logoUrl}
-                  alt=""
-                  width={32}
-                  height={32}
-                  className="h-8 w-8 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="h-8 w-8 shrink-0 rounded-lg"
-                  style={{ backgroundColor: "var(--store-accent)" }}
-                />
-              )}
+              {/* The logo is the seller's mark for their admin; buyers see the accent. */}
+              <span
+                aria-hidden
+                className="h-8 w-8 shrink-0 rounded-lg"
+                style={{ backgroundColor: "var(--store-accent)" }}
+              />
               <span className="truncate text-lg font-semibold tracking-tight">
                 {store.name}
               </span>

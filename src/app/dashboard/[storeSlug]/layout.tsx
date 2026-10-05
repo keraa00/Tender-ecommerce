@@ -24,6 +24,7 @@ export default async function StoreAdminLayout({
       store={{
         slug: store.slug,
         name: store.name,
+        logoUrl: store.logoUrl,
         accentColor: store.accentColor,
       }}
       allStoresUrl={allStoresUrl()}

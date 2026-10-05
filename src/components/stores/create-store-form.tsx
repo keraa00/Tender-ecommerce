@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 
+import { KEEP_LOGO, LogoField, type LogoChoice } from "@/components/stores/logo-field";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
 import {
@@ -29,6 +30,7 @@ export function CreateStoreForm() {
   // name — silently rewriting a field someone is typing into is infuriating.
   const [slugEdited, setSlugEdited] = useState(false);
   const [check, setCheck] = useState<CheckState>(null);
+  const [logo, setLogo] = useState<LogoChoice>(KEEP_LOGO);
 
   const effectiveSlug = slugEdited ? slug : slugify(name);
 
@@ -113,6 +115,15 @@ export function CreateStoreForm() {
           placeholder="Small-batch stoneware, thrown and glazed in Lisbon."
         />
       </Field>
+
+      <LogoField
+        storeName={name}
+        accentColor={null}
+        current={null}
+        value={logo}
+        onChange={setLogo}
+        error={state.fieldErrors?.logo}
+      />
 
       <Button
         type="submit"

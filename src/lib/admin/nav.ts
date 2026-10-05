@@ -16,7 +16,8 @@ export type AdminIcon =
   | "collections"
   | "customers"
   | "discounts"
-  | "analytics";
+  | "analytics"
+  | "settings";
 
 export type AdminSection = {
   /** Path segment under the store, or null for the store's home page. */
@@ -33,4 +34,5 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   { segment: "customers", label: "Customers", icon: "customers" },
   { segment: "discounts", label: "Discounts", icon: "discounts" },
   { segment: "analytics", label: "Analytics", icon: "analytics" },
+  { segment: "settings", label: "Settings", icon: "settings" },
 ];

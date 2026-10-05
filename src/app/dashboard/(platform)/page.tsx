@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { StoreMark } from "@/components/store-mark";
 import { StoreStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { storeAdminUrl } from "@/lib/admin/links";
@@ -53,12 +54,11 @@ export default async function DashboardPage() {
                 href={storeAdminUrl(store.slug)}
                 className="flex items-center gap-4 bg-surface px-4 py-4 transition-colors hover:bg-surface-hover"
               >
-                <span
-                  aria-hidden
-                  className="h-9 w-9 shrink-0 rounded-lg"
-                  style={{
-                    backgroundColor: store.accentColor ?? "var(--border-strong)",
-                  }}
+                <StoreMark
+                  name={store.name}
+                  logoUrl={store.logoUrl}
+                  accentColor={store.accentColor}
+                  size="md"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{store.name}</p>

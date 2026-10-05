@@ -8,7 +8,11 @@ import { storeAdminUrl } from "@/lib/admin/links";
 import { requireUser } from "@/lib/auth/session";
 import { rootDb } from "@/lib/db/root";
 import { Prisma, StoreMemberRole } from "@/lib/db/types";
+import { deleteProductImageObjects, uploadStoreLogo } from "@/lib/products/images";
 import { slugify, storeSlugSchema } from "@/lib/slug";
+import { requireSupabaseConfig } from "@/lib/supabase/config";
+import { logoRejectionReason } from "./logo";
+import { getStoreContext } from "./context";
 import { isStoreSlugTaken } from "./queries";
 
 const createStoreSchema = z.object({
@@ -18,7 +22,7 @@ const createStoreSchema = z.object({
 });
 
 export type CreateStoreState = {
-  fieldErrors?: Partial<Record<"name" | "slug" | "description", string>>;
+  fieldErrors?: Partial<Record<"name" | "slug" | "description" | "logo", string>>;
   formError?: string;
   values?: { name: string; slug: string; description: string };
 };
@@ -44,21 +48,25 @@ export async function createStoreAction(
       values.description.trim() === "" ? undefined : values.description,
   });
 
-  if (!parsed.success) {
-    const { fieldErrors } = z.flattenError(parsed.error);
+  const logo = logoFrom(formData);
+  const logoError = logo ? logoRejectionReason(logo) : null;
+
+  if (!parsed.success || logoError) {
+    const fieldErrors = parsed.success ? {} : z.flattenError(parsed.error).fieldErrors;
     return {
       values,
       fieldErrors: {
         name: fieldErrors.name?.[0],
         slug: fieldErrors.slug?.[0],
         description: fieldErrors.description?.[0],
+        logo: logoError ?? undefined,
       },
     };
   }
 
   const { name, slug, description } = parsed.data;
 
-  let createdSlug: string;
+  let created: { id: string; slug: string };
   try {
     const store = await rootDb.store.create({
       data: {
@@ -73,9 +81,9 @@ export async function createStoreAction(
           create: { userId: user.id, role: StoreMemberRole.OWNER },
         },
       },
-      select: { slug: true },
+      select: { id: true, slug: true },
     });
-    createdSlug = store.slug;
+    created = store;
   } catch (error) {
     // The unique index is the real guard. The pre-flight availability check is
     // a UX affordance and can always lose a race to another signup.
@@ -96,6 +104,9 @@ export async function createStoreAction(
     };
   }
 
+  // Uploaded once the store exists, because objects are keyed under its id.
+  if (logo) await attachLogo(created.id, logo);
+
   revalidatePath("/dashboard");
   // redirect() throws a control-flow signal — it must sit outside the try block
   // or the catch above would swallow it.
@@ -104,7 +115,78 @@ export async function createStoreAction(
   // store's admin is not. Going via a relative path would work — the proxy
   // would bounce it — but it would cost the seller an extra round trip on the
   // one screen where they are waiting to see something appear.
-  redirect(storeAdminUrl(createdSlug));
+  redirect(storeAdminUrl(created.slug));
+}
+
+/**
+ * Best effort, and never throws: the store is already created, and a logo is
+ * decoration. If storage is down the seller still gets their store, marked
+ * with its initials, rather than an error that suggests nothing was made.
+ */
+async function attachLogo(storeId: string, logo: File): Promise<void> {
+  let url: string | null = null;
+  try {
+    url = await uploadStoreLogo(storeId, logo);
+    await rootDb.store.update({ where: { id: storeId }, data: { logoUrl: url } });
+  } catch (error) {
+    console.error("Store logo upload failed", error);
+    if (url) await deleteProductImageObjects([url], requireSupabaseConfig().url);
+  }
+}
+
+export type StoreSettingsState = {
+  fieldErrors?: { logo?: string };
+  formError?: string;
+  notice?: string;
+};
+
+/** Saves the settings page: for now, a new logo or none. */
+export async function updateStoreSettingsAction(
+  storeSlug: string,
+  _prev: StoreSettingsState,
+  formData: FormData,
+): Promise<StoreSettingsState> {
+  const { store } = await getStoreContext(storeSlug);
+
+  const logo = logoFrom(formData);
+  const removeLogo = formData.get("removeLogo") === "1";
+  if (!logo && !removeLogo) return { notice: "Saved." };
+
+  const logoError = logo ? logoRejectionReason(logo) : null;
+  if (logoError) return { fieldErrors: { logo: logoError } };
+
+  let logoUrl: string | null = null;
+  try {
+    if (logo) logoUrl = await uploadStoreLogo(store.id, logo);
+    await rootDb.store.update({ where: { id: store.id }, data: { logoUrl } });
+  } catch (error) {
+    console.error("updateStoreSettingsAction failed", error);
+    if (logoUrl) await deleteProductImageObjects([logoUrl], requireSupabaseConfig().url);
+    return { formError: "Could not save the logo. Please try again." };
+  }
+
+  // Nothing points at the old file any more. Only objects this app uploaded
+  // are deleted; a seeded logo hosted elsewhere is left alone.
+  if (store.logoUrl) {
+    await deleteProductImageObjects([store.logoUrl], requireSupabaseConfig().url);
+  }
+
+  // Every place the mark is drawn: the store list and this store's admin.
+  // The storefront never shows it.
+  revalidatePath("/dashboard");
+  revalidatePath(`/dashboard/${storeSlug}`, "layout");
+
+  return { notice: "Saved." };
+}
+
+/**
+ * The uploaded logo, if any. An empty file input still posts a nameless,
+ * zero-byte File. The browser has already cropped and shrunk it, but only
+ * `logoRejectionReason` on this side is a check that counts.
+ */
+function logoFrom(formData: FormData): File | null {
+  const entry = formData.get("logo");
+  return entry instanceof File && entry.size > 0 ? entry : null;
 }
 
 export type SlugAvailability =
