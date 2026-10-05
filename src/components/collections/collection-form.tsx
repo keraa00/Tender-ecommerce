@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useActionState, useMemo, useState } from "react";
 
-import { SaveBar } from "@/components/admin/save-bar";
+import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
 import type { CollectionFormState } from "@/lib/collections/actions";
 import { slugify } from "@/lib/slug";
@@ -31,12 +31,7 @@ export type CollectionFormCollection = {
   productIds: string[];
 };
 
-export function CollectionForm({
-  action,
-  collection,
-  products,
-  submitLabel,
-}: {
+type CollectionFormProps = {
   action: (
     state: CollectionFormState,
     formData: FormData,
@@ -44,7 +39,20 @@ export function CollectionForm({
   collection?: CollectionFormCollection;
   products: CollectionProductOption[];
   submitLabel: string;
-}) {
+};
+
+export function CollectionForm(props: CollectionFormProps) {
+  const { key, discard } = useDiscard();
+  return <CollectionFormBody key={key} {...props} onDiscard={discard} />;
+}
+
+function CollectionFormBody({
+  action,
+  collection,
+  products,
+  submitLabel,
+  onDiscard,
+}: CollectionFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<CollectionFormState, FormData>(
     action,
     {},
@@ -88,6 +96,7 @@ export function CollectionForm({
       <SaveBar
         label={submitLabel}
         pending={pending}
+        onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
       />
 

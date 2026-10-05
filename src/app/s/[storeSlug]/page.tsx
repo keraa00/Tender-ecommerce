@@ -100,8 +100,7 @@ export default async function StorefrontPage(
           ) : null}
           <Link
             href={paths.catalog}
-            className="mt-8 inline-flex h-12 items-center rounded-lg px-6 text-base font-medium text-white transition-opacity hover:opacity-90"
-            style={{ backgroundColor: "var(--store-accent)" }}
+            className="mt-8 inline-flex h-12 items-center rounded-lg px-6 text-base font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover"
           >
             {t.home.shopAll}
           </Link>

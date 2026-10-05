@@ -4,7 +4,7 @@ import { useActionState, useState, type ReactNode } from "react";
 
 import { ItemPicker, type PickerOption } from "@/components/discounts/item-picker";
 import { DiscountStateBadge } from "@/components/ui/badge";
-import { SaveBar } from "@/components/admin/save-bar";
+import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Field, FormError, Input } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
 import { parseDateTimeInput } from "@/lib/dates";
@@ -98,15 +98,7 @@ function summaryOf(values: DiscountFormValues): DiscountSummary {
   };
 }
 
-export function DiscountForm({
-  action,
-  initialValues,
-  options,
-  submitLabel,
-  usageCount = 0,
-  now,
-  initialNotice,
-}: {
+type DiscountFormProps = {
   action: (state: DiscountFormState, formData: FormData) => Promise<DiscountFormState>;
   initialValues: DiscountFormValues;
   options: Options;
@@ -121,7 +113,31 @@ export function DiscountForm({
   now: string;
   /** Shown until the first save replaces it — "Discount created." after a create. */
   initialNotice?: string;
-}) {
+};
+
+export function DiscountForm(props: DiscountFormProps) {
+  const { key, discard } = useDiscard();
+  return (
+    <DiscountFormBody
+      key={key}
+      {...props}
+      // Announces the create once; a discard after it is not news.
+      initialNotice={key === 0 ? props.initialNotice : undefined}
+      onDiscard={discard}
+    />
+  );
+}
+
+function DiscountFormBody({
+  action,
+  initialValues,
+  options,
+  submitLabel,
+  usageCount = 0,
+  now,
+  initialNotice,
+  onDiscard,
+}: DiscountFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<DiscountFormState, FormData>(
     action,
     initialNotice ? { notice: initialNotice } : {},
@@ -156,6 +172,7 @@ export function DiscountForm({
       <SaveBar
         label={submitLabel}
         pending={pending}
+        onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
       />
 

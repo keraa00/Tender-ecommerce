@@ -201,8 +201,7 @@ export function CheckoutForm({
           type="submit"
           form={formId}
           disabled={placing || repricing}
-          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg text-base font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-default disabled:opacity-50"
-          style={{ backgroundColor: "var(--store-accent)" }}
+          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg text-base font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-store-accent"
         >
           {placing ? t.placing : t.placeOrder}
         </button>

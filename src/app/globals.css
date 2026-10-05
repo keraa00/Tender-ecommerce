@@ -150,6 +150,14 @@
 
   --color-ring: var(--ring);
 
+  /*
+   * A storefront's own accent, set per store by the storefront layout. The
+   * hover shade darkens it rather than fading it, so the white label on top
+   * keeps its contrast whatever colour the seller picked.
+   */
+  --color-store-accent: var(--store-accent);
+  --color-store-accent-hover: color-mix(in oklab, var(--store-accent), black 12%);
+
   --color-home-sky: var(--home-sky);
   --color-home-mist: var(--home-mist);
   --color-home-veil: var(--home-veil);

@@ -25,6 +25,7 @@ export function SaveBar({
   label,
   pending,
   disabled = false,
+  onDiscard,
   savedKey,
   className,
 }: {
@@ -32,6 +33,8 @@ export function SaveBar({
   pending: boolean;
   /** Blocks saving for a reason the form shows itself, like a bad file. */
   disabled?: boolean;
+  /** Throws the edits away: the `discard` from `useDiscard`. */
+  onDiscard: () => void;
   /**
    * Changes identity after each successful save — the action's state when it
    * carries a notice — so what is on screen becomes the new saved version.
@@ -141,12 +144,31 @@ export function SaveBar({
           )}
           {pending ? "Saving…" : "Unsaved changes"}
         </p>
-        <Button type="submit" size="sm" disabled={pending || disabled} className="shrink-0">
-          {pending ? "Saving…" : label}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={onDiscard}>
+            Discard
+          </Button>
+          <Button type="submit" size="sm" disabled={pending || disabled}>
+            {pending ? "Saving…" : label}
+          </Button>
+        </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Discard for an edit form, used by the component that renders it: put `key`
+ * on the form's body and hand `discard` to its SaveBar.
+ *
+ * Discarding remounts the body, so everything — typed fields, picked products,
+ * reordered rows, chosen files — starts again from the props the page passed
+ * in. Those are the saved version even after a save here: every save action
+ * revalidates, and Next re-renders the page in the same response.
+ */
+export function useDiscard() {
+  const [key, setKey] = useState(0);
+  return { key, discard: () => setKey((current) => current + 1) };
 }
 
 /** The form's data as one string: equal strings, nothing to save. */

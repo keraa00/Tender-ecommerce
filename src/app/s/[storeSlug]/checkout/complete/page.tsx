@@ -135,8 +135,7 @@ export default async function CheckoutCompletePage(
 
       <Link
         href={paths.catalog}
-        className="mt-8 inline-flex h-11 items-center rounded-lg px-5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        style={{ backgroundColor: "var(--store-accent)" }}
+        className="mt-8 inline-flex h-11 items-center rounded-lg px-5 text-sm font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover"
       >
         {t.orderComplete.continueShopping}
       </Link>

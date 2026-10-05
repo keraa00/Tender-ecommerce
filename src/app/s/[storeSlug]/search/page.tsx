@@ -62,8 +62,7 @@ export default async function SearchPage(
         />
         <button
           type="submit"
-          className="h-9 shrink-0 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: "var(--store-accent)" }}
+          className="h-9 shrink-0 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover"
         >
           {t.search.submit}
         </button>

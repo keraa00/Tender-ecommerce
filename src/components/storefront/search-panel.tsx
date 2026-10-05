@@ -223,15 +223,14 @@ function SearchBox({
         />
         <button
           type="submit"
-          className="h-10 shrink-0 cursor-pointer rounded-lg px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: "var(--store-accent)" }}
+          className="h-10 shrink-0 cursor-pointer rounded-lg px-4 text-sm font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover"
         >
           {t.submit}
         </button>
         <button
           type="button"
           onClick={onDone}
-          className="h-10 shrink-0 cursor-pointer rounded-lg px-2 text-sm text-muted hover:text-foreground"
+          className="h-10 shrink-0 cursor-pointer rounded-lg px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
         >
           {closeLabel}
         </button>

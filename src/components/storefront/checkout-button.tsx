@@ -18,15 +18,14 @@ export function CheckoutButton({
   onNavigate?: () => void;
 }) {
   const className =
-    "flex h-12 w-full items-center justify-center rounded-lg text-base font-medium text-white";
+    "flex h-12 w-full items-center justify-center rounded-lg bg-store-accent text-base font-medium text-white";
 
   if (href) {
     return (
       <Link
         href={href}
         onClick={onNavigate}
-        className={`${className} transition-opacity hover:opacity-90`}
-        style={{ backgroundColor: "var(--store-accent)" }}
+        className={`${className} transition-colors hover:bg-store-accent-hover`}
       >
         {t.checkout}
       </Link>
@@ -39,7 +38,6 @@ export function CheckoutButton({
         type="button"
         disabled
         className={`${className} opacity-50`}
-        style={{ backgroundColor: "var(--store-accent)" }}
       >
         {t.checkout}
       </button>

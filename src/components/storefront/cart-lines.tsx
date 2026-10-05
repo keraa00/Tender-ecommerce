@@ -83,7 +83,7 @@ export function CartLineList({
 
             <div className="mt-auto flex items-center justify-between gap-3 pt-3">
               {line.available ? (
-                <div className="flex items-center rounded-lg border border-border-strong">
+                <div className="flex items-center overflow-hidden rounded-lg border border-border-strong">
                   <QuantityButton
                     action={updateLine}
                     lineId={line.id}
@@ -163,7 +163,7 @@ function StepperSubmit({
       type="submit"
       aria-label={label}
       disabled={disabled || pending}
-      className="grid h-8 w-8 cursor-pointer place-items-center text-base text-muted transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-40"
+      className="grid h-8 w-8 cursor-pointer place-items-center text-base text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {children}
     </button>

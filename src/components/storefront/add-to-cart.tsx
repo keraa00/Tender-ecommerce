@@ -110,7 +110,7 @@ export function AddToCart({
                     "min-w-12 cursor-pointer rounded-lg border px-3.5 py-2 text-sm transition-colors",
                     active
                       ? "border-foreground bg-foreground text-background"
-                      : "border-border-strong hover:border-foreground",
+                      : "border-border-strong hover:border-foreground hover:bg-surface-hover",
                     out && !active && "text-muted line-through decoration-muted/60",
                   )}
                 >
@@ -130,14 +130,14 @@ export function AddToCart({
           <div
             role="group"
             aria-labelledby="quantity-label"
-            className="mt-2 flex h-12 items-center rounded-lg border border-border-strong"
+            className="mt-2 flex h-12 items-center overflow-hidden rounded-lg border border-border-strong"
           >
             <button
               type="button"
               aria-label={stepperLabels.decrease}
               disabled={soldOut || quantity <= 1}
               onClick={() => setQuantity((value) => Math.max(1, value - 1))}
-              className="grid h-full w-11 cursor-pointer place-items-center text-lg text-muted hover:text-foreground disabled:cursor-default disabled:opacity-40"
+              className="grid h-full w-11 cursor-pointer place-items-center text-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
             >
               −
             </button>
@@ -149,7 +149,7 @@ export function AddToCart({
               aria-label={stepperLabels.increase}
               disabled={soldOut || quantity >= ceiling}
               onClick={() => setQuantity((value) => Math.min(ceiling, value + 1))}
-              className="grid h-full w-11 cursor-pointer place-items-center text-lg text-muted hover:text-foreground disabled:cursor-default disabled:opacity-40"
+              className="grid h-full w-11 cursor-pointer place-items-center text-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
             >
               +
             </button>
@@ -195,8 +195,7 @@ function SubmitButton({
     <button
       type="submit"
       disabled={soldOut || pending}
-      className="h-12 min-w-48 flex-1 cursor-pointer rounded-lg px-6 text-base font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-      style={{ backgroundColor: "var(--store-accent)" }}
+      className="h-12 min-w-48 flex-1 cursor-pointer rounded-lg px-6 text-base font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-store-accent"
     >
       {pending ? pendingLabel : label}
     </button>

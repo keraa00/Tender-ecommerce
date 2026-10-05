@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useActionState, useEffect, useState } from "react";
 
-import { SaveBar } from "@/components/admin/save-bar";
+import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
 import { centsToInputValue } from "@/lib/money";
@@ -98,18 +98,26 @@ function rowsFrom(product?: ProductFormProduct): VariantRow[] {
   }));
 }
 
-export function ProductForm({
-  action,
-  product,
-  collections = [],
-  submitLabel,
-}: {
+type ProductFormProps = {
   action: (state: ProductFormState, formData: FormData) => Promise<ProductFormState>;
   product?: ProductFormProduct;
   /** Every collection in the store, for the picker. */
   collections?: ProductFormCollection[];
   submitLabel: string;
-}) {
+};
+
+export function ProductForm(props: ProductFormProps) {
+  const { key, discard } = useDiscard();
+  return <ProductFormBody key={key} {...props} onDiscard={discard} />;
+}
+
+function ProductFormBody({
+  action,
+  product,
+  collections = [],
+  submitLabel,
+  onDiscard,
+}: ProductFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<ProductFormState, FormData>(
     action,
     {},
@@ -166,6 +174,7 @@ export function ProductForm({
         label={submitLabel}
         pending={pending}
         disabled={fileError !== null}
+        onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
       />
 
@@ -551,7 +560,7 @@ export function ProductForm({
                   })),
               );
             }}
-            className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-surface-hover"
+            className="block w-full cursor-pointer text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:transition-colors hover:file:bg-surface-hover"
           />
         </Field>
       </section>
