@@ -78,6 +78,14 @@ const icons: Record<AdminIcon, (props: IconProps) => React.ReactElement> = {
       <path d="M3 20h18" />
     </Svg>
   ),
+  "online-store": (props) => (
+    <Svg {...props}>
+      <path d="M4 9.5 5.5 4h13L20 9.5" />
+      <path d="M4 9.5a2.67 2.67 0 0 0 5.33 0 2.67 2.67 0 0 0 5.34 0 2.67 2.67 0 0 0 5.33 0" />
+      <path d="M5 12v8h14v-8" />
+      <path d="M10 20v-4.5h4V20" />
+    </Svg>
+  ),
   settings: (props) => (
     <Svg {...props}>
       <path d="M4 7h9" />

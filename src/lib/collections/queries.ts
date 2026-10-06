@@ -31,13 +31,7 @@ const coverInclude = {
   },
 };
 
-type WithCover = {
-  products: { product: { images: { url: string; altText: string | null }[] } }[];
-};
-
-export function collectionCover(collection: WithCover) {
-  return collection.products[0]?.product.images[0] ?? null;
-}
+export { collectionCover } from "./cover";
 
 // ---------------------------------------------------------------------------
 // Storefront

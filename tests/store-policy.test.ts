@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { StoreStatus } from "@/lib/db/types";
+import { StoreMemberRole, StoreStatus } from "@/lib/db/types";
 import {
   canAcceptOrders,
+  canEditTheme,
+  canPublishTheme,
   checkoutBlockedReason,
   isStorePubliclyVisible,
 } from "@/lib/stores/policy";
@@ -79,5 +81,20 @@ describe("isStorePubliclyVisible", () => {
     // A seller mid-onboarding can still share their storefront link.
     expect(isStorePubliclyVisible({ status: StoreStatus.PENDING })).toBe(true);
     expect(isStorePubliclyVisible({ status: StoreStatus.SUSPENDED })).toBe(false);
+  });
+});
+
+describe("theme permissions", () => {
+  it("let every member edit and publish the storefront's design, as elsewhere in the admin", () => {
+    for (const role of [StoreMemberRole.OWNER, StoreMemberRole.STAFF]) {
+      expect(canEditTheme({ role })).toBe(true);
+      expect(canPublishTheme({ role })).toBe(true);
+    }
+  });
+
+  it("refuse a role they do not know", () => {
+    const unknown = { role: "VIEWER" as StoreMemberRole };
+    expect(canEditTheme(unknown)).toBe(false);
+    expect(canPublishTheme(unknown)).toBe(false);
   });
 });

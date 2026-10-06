@@ -42,6 +42,15 @@ export async function uploadStoreLogo(storeId: string, file: File): Promise<stri
   return uploadImage(storeId, `logo-${randomUUID()}`, file);
 }
 
+/**
+ * Uploads an image a theme section shows — a banner, an image beside text —
+ * and returns its public URL. Under the store's prefix like everything else,
+ * which is what `storeImageUrlPolicy` checks a theme's images against.
+ */
+export async function uploadThemeImage(storeId: string, file: File): Promise<string> {
+  return uploadImage(storeId, `theme-${randomUUID()}`, file);
+}
+
 async function uploadImage(storeId: string, name: string, file: File): Promise<string> {
   const supabase = createSupabaseAdminClient();
   const extension = EXTENSIONS[file.type] ?? "bin";

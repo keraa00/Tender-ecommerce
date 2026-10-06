@@ -121,11 +121,12 @@ model User {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  ownedStores Store[]              @relation("StoreOwner")
-  memberships StoreMember[]
-  carts       Cart[]
-  orders      Order[]
-  redemptions DiscountRedemption[]
+  ownedStores   Store[]              @relation("StoreOwner")
+  memberships   StoreMember[]
+  carts         Cart[]
+  orders        Order[]
+  redemptions   DiscountRedemption[]
+  themePreviews ThemePreview[]
 
   @@map("users")
 }
@@ -165,14 +166,16 @@ model Store {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  owner       User          @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  members     StoreMember[]
-  products    Product[]
-  variants    Variant[]
-  collections Collection[]
-  carts       Cart[]
-  orders      Order[]
-  discounts   Discount[]
+  owner         User           @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members       StoreMember[]
+  products      Product[]
+  variants      Variant[]
+  collections   Collection[]
+  carts         Cart[]
+  orders        Order[]
+  discounts     Discount[]
+  theme         StoreTheme?
+  themePreviews ThemePreview[]
 
   @@index([ownerId])
   @@index([status])
@@ -192,6 +195,71 @@ model StoreMember {
   @@unique([storeId, userId])
   @@index([userId])
   @@map("store_members")
+}
+
+// ---------------------------------------------------------------------------
+// Storefront design
+// ---------------------------------------------------------------------------
+
+/// A store's storefront design: a JSON document of global settings and ordered
+/// sections, rendered through the section registry in `src/lib/theme/`. The
+/// document's shape is owned by that code, not by the database — it is
+/// validated by `parseThemeForWrite()` on every write and read back leniently
+/// by `resolveTheme()`, so a section type removed from code cannot break a
+/// storefront that still names it.
+///
+/// One per store. No row means the store has never saved a design and renders
+/// `defaultTheme()`, which reproduces the original hard-coded home page — so
+/// existing stores needed no backfill.
+model StoreTheme {
+  id      String @id @default(uuid(7)) @db.Uuid
+  storeId String @unique @map("store_id") @db.Uuid
+  name    String @default("Tender")
+
+  /// What the seller is editing. Never shown to buyers.
+  draft     Json  @db.JsonB
+  /// What buyers see. Null until the first publish, which renders the default.
+  published Json? @db.JsonB
+
+  /// Bumped on every draft save. A save names the version it started from and
+  /// is refused if another one landed in between, so two people editing at
+  /// once cannot silently overwrite each other.
+  draftVersion     Int       @default(0) @map("draft_version")
+  draftSavedAt     DateTime? @map("draft_saved_at")
+  /// The draft version that was published, so "unpublished changes" is a
+  /// comparison rather than a guess.
+  publishedVersion Int?      @map("published_version")
+  publishedAt      DateTime? @map("published_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_themes")
+}
+
+/// What the theme editor's preview shows: one seller's unsaved edits, staged
+/// as they type so the preview iframe can render them on the server. Not a
+/// draft — nothing reads it but that seller's own preview — and overwritten on
+/// every change.
+///
+/// `session` names the editor tab that wrote it. A preview only shows a staged
+/// copy from its own session, so reopening the editor never flashes edits that
+/// were abandoned last time.
+model ThemePreview {
+  storeId   String   @map("store_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  session   String
+  document  Json     @db.JsonB
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([storeId, userId])
+  @@index([userId])
+  @@map("theme_previews")
 }
 
 // ---------------------------------------------------------------------------
@@ -295,19 +363,19 @@ model ProductOnCollection {
 /// a single payment cannot be split across multiple connected accounts without
 /// a materially harder settlement design. See README "Out of scope".
 model Cart {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  storeId   String   @map("store_id") @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid
-  sessionId String   @map("session_id")
+  id            String   @id @default(uuid(7)) @db.Uuid
+  storeId       String   @map("store_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  sessionId     String   @map("session_id")
   /// Codes the buyer entered, upper-case, in the order entered. Kept on the
   /// cart so they follow the buyer from cart to checkout; whether each one
   /// applies is decided afresh by the discount engine on every render.
   discountCodes String[] @default([]) @map("discount_codes")
   /// The email given at checkout, lower-case. Segment and per-customer
   /// discounts are judged against it, in the cart as well as at checkout.
-  email     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  email         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   store Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
   user  User?      @relation(fields: [userId], references: [id], onDelete: SetNull)

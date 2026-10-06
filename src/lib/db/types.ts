@@ -19,6 +19,7 @@ export type {
   ProductOnCollection,
   Store,
   StoreMember,
+  StoreTheme,
   User,
   Variant,
   WebhookEvent,

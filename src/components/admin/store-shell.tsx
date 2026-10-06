@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavIcon } from "@/components/admin/nav-icons";
 import { StoreMark } from "@/components/store-mark";
 import { storeAdminPath } from "@/lib/admin/links";
-import { ADMIN_SECTIONS } from "@/lib/admin/nav";
+import { ADMIN_NAV } from "@/lib/admin/nav";
 import { signOutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/cn";
 
@@ -213,30 +213,57 @@ function DrawerContents({
       </div>
 
       <nav aria-label="Store" className="flex-1 overflow-y-auto p-2">
-        <ul className="flex flex-col gap-0.5">
-          {ADMIN_SECTIONS.map((section) => {
-            const active = section.segment === activeSegment;
+        {ADMIN_NAV.map((group, index) => (
+          <div
+            key={group.label ?? index}
+            className={cn(index > 0 && "mt-2 border-t border-border pt-2")}
+          >
+            {group.label ? (
+              <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-muted">
+                {group.label}
+              </p>
+            ) : null}
+            <ul className="flex flex-col gap-0.5">
+              {group.sections.map((section) => {
+                const active = section.segment === activeSegment;
 
-            return (
-              <li key={section.label}>
-                <Link
-                  href={storeAdminPath(store.slug, section.segment ?? undefined)}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-surface-hover font-medium text-foreground"
-                      : "text-muted hover:bg-surface-hover hover:text-foreground",
-                  )}
-                >
-                  <NavIcon name={section.icon} className="h-[18px] w-[18px]" />
-                  <span className="flex-1">{section.label}</span>
-                  <PendingDot />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                return (
+                  <li key={section.label} className="relative">
+                    <Link
+                      href={storeAdminPath(store.slug, section.segment ?? undefined)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                        section.opensStorefront && "pe-10",
+                        active
+                          ? "bg-surface-hover font-medium text-foreground"
+                          : "text-muted hover:bg-surface-hover hover:text-foreground",
+                      )}
+                    >
+                      <NavIcon name={section.icon} className="h-[18px] w-[18px]" />
+                      <span className="flex-1">{section.label}</span>
+                      <PendingDot />
+                    </Link>
+                    {/* A sibling of the link, not inside it: an anchor cannot
+                        hold another, and this one leaves the admin. */}
+                    {section.opensStorefront ? (
+                      <a
+                        href={storefrontUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="View online store (opens in a new tab)"
+                        title="View online store"
+                        className="absolute inset-y-1 end-1 grid w-8 place-items-center rounded-md text-muted transition-colors hover:bg-background hover:text-foreground"
+                      >
+                        <ExternalIcon className="h-4 w-4" />
+                      </a>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-border p-2">
@@ -246,20 +273,7 @@ function DrawerContents({
           rel="noreferrer"
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
         >
-          <svg
-            aria-hidden
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-[18px] w-[18px]"
-          >
-            <path d="M14 4h6v6" />
-            <path d="M20 4 10 14" />
-            <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
-          </svg>
+          <ExternalIcon className="h-[18px] w-[18px]" />
           View storefront
         </a>
 
@@ -296,5 +310,24 @@ function PendingDot() {
         pending ? "animate-pulse opacity-100" : "opacity-0",
       )}
     />
+  );
+}
+
+function ExternalIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
   );
 }

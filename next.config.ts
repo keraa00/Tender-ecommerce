@@ -23,8 +23,26 @@ const adminDevOrigin = appUrl
     )[0]
   : null;
 
+/**
+ * The theme editor and its draft preview may only be framed by the admin
+ * itself — the editor frames the preview, and nothing else should frame
+ * either.
+ */
+const sameOriginFramesOnly = [
+  { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+];
+
 const nextConfig: NextConfig = {
   ...(adminDevOrigin ? { allowedDevOrigins: [adminDevOrigin] } : {}),
+  async headers() {
+    return [
+      { source: "/dashboard/:storeSlug/editor/:path*", headers: sameOriginFramesOnly },
+      // These are matched against the URL as requested, before `src/proxy.ts`
+      // rewrites it — and on the admin host that URL has no `/dashboard`.
+      { source: "/:storeSlug/editor/:path*", headers: sameOriginFramesOnly },
+    ];
+  },
   images: {
     remotePatterns: [
       // Hosts behind the openly-licensed seed photography in
