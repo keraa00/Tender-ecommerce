@@ -60,9 +60,14 @@ describe("parseMoneyToCents", () => {
 
 describe("formatMoney", () => {
   it("renders integer cents as a currency string", () => {
-    expect(formatMoney(2_499)).toBe("$24.99");
-    expect(formatMoney(0)).toBe("$0.00");
-    expect(formatMoney(100_000)).toBe("$1,000.00");
+    expect(formatMoney(2_499, "USD")).toBe("$24.99");
+    expect(formatMoney(0, "USD")).toBe("$0.00");
+    expect(formatMoney(100_000, "USD")).toBe("$1,000.00");
+  });
+
+  it("prints the store's own currency, in the reader's language", () => {
+    expect(formatMoney(490, "EUR", "pt-PT")).toBe("4,90\u00a0€");
+    expect(formatMoney(2_499, "EUR")).toBe("€24.99");
   });
 });
 

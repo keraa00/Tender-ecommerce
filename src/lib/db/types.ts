@@ -17,6 +17,9 @@ export type {
   Product,
   ProductImage,
   ProductOnCollection,
+  ShippingRate,
+  ShippingZone,
+  ShippingZoneCountry,
   Store,
   StoreMember,
   StoreTheme,
@@ -26,6 +29,8 @@ export type {
 } from "@/generated/prisma/client";
 
 export {
+  CartKind,
+  CheckoutFieldMode,
   CustomerSegment,
   DiscountAppliesTo,
   DiscountEligibility,

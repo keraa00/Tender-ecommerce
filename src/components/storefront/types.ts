@@ -47,6 +47,51 @@ export type CartDisplay = {
   codes: CartCodeDisplay[];
 };
 
+/** A country in a select, named in the buyer's language on the server. */
+export type CountryOptionDisplay = { code: string; name: string };
+
+export type ShippingRateDisplay = {
+  id: string;
+  /** The seller's name for it — theirs, so not translated. */
+  name: string;
+  /** Formatted, or the word for free. */
+  price: string;
+  /** "2–4 business days", or null when the seller gave none. */
+  estimate: string | null;
+};
+
+/** What checkout knows about shipping, ready to show. */
+export type CheckoutShippingDisplay = {
+  state: "not-required" | "address-needed" | "not-shipped" | "no-rates" | "ready";
+  /** Cheapest first; empty unless `state` is "ready". */
+  rates: ShippingRateDisplay[];
+  selectedId: string | null;
+  /** The summary's shipping line, or null when nothing ships. */
+  summary: { value: string; struck: string | null } | null;
+};
+
+/**
+ * How the buyer pays: Stripe's Payment Element, acting as the store's own
+ * connected account — charges are direct, so Stripe.js has to load as the
+ * seller to confirm a PaymentIntent that lives on their account. No client
+ * secret here: the PaymentIntent is created when the order is placed, and the
+ * amount the Element shows wallets is the cart's total, which re-pricing keeps
+ * current.
+ */
+export type PaymentProviderDisplay = {
+  kind: "stripe";
+  publishableKey: string;
+  stripeAccountId: string;
+  /** Lower-case ISO 4217, as Stripe.js wants it. */
+  currency: string;
+  /** The storefront language as a Stripe Elements locale. */
+  locale: string;
+  /** The store's accent, for the Payment Element's primary colour. */
+  accentColor: string | null;
+  /** The theme's scheme, so the Element is not a white box on a dark page. */
+  colorScheme: "light" | "dark" | "auto";
+};
+
 export type CartMessages = Messages["cart"];
 export type DiscountCodeMessages = Messages["discountCode"];
 export type CheckoutMessages = Messages["checkout"];

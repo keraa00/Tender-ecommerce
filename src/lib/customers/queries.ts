@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { ShippingAddress } from "@/lib/checkout/form";
+import type { PostalAddress } from "@/lib/address/types";
+import { readAddress } from "@/lib/address/validate";
 import { rootDb } from "@/lib/db/root";
 import { Prisma, type OrderStatus } from "@/lib/db/types";
 import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
@@ -119,8 +120,11 @@ export type CustomerOrder = {
   orderNumber: number;
   status: OrderStatus;
   totalCents: number;
+  currency: string;
   createdAt: Date;
   itemCount: number;
+  /** The rate it shipped by, as chosen; null when nothing shipped. */
+  shippingRateName: string | null;
 };
 
 export type CustomerRedemption = {
@@ -137,8 +141,11 @@ export type StoreCustomerDetail = {
   /** Every order this address placed here, in any status, newest first. */
   orders: CustomerOrder[];
   redemptions: CustomerRedemption[];
-  /** Where the newest order was going, with that order's number. */
-  lastAddress: { orderNumber: number; address: ShippingAddress } | null;
+  /**
+   * Where the newest order that shipped was going, with that order's number.
+   * Orders of digital products alone have no address and are passed over.
+   */
+  lastAddress: { orderNumber: number; address: PostalAddress } | null;
 };
 
 /**
@@ -169,7 +176,9 @@ export async function getStoreCustomer(
 
   if (!customer) return null;
 
-  const newest = orders[0];
+  const shipped = orders
+    .map((order) => ({ orderNumber: order.orderNumber, address: readAddress(order.shippingAddress) }))
+    .find((entry): entry is { orderNumber: number; address: PostalAddress } => entry.address !== null);
 
   return {
     customer,
@@ -184,12 +193,7 @@ export async function getStoreCustomer(
       title: redemption.discount.title,
       orderNumber: redemption.order.orderNumber,
     })),
-    lastAddress: newest
-      ? {
-          orderNumber: newest.orderNumber,
-          address: toShippingAddress(newest.shippingAddress),
-        }
-      : null,
+    lastAddress: shipped ?? null,
   };
 }
 
@@ -210,32 +214,11 @@ async function listCustomerOrders(storeId: string, email: string) {
       orderNumber: true,
       status: true,
       totalCents: true,
+      currency: true,
       createdAt: true,
       shippingAddress: true,
+      shippingRateName: true,
       _count: { select: { lines: true } },
     },
   });
-}
-
-/**
- * The address JSON as checkout wrote it. Read defensively: it is a snapshot in
- * a JSON column, so nothing but the write path vouches for its shape.
- */
-function toShippingAddress(value: Prisma.JsonValue): ShippingAddress {
-  const record: Prisma.JsonObject =
-    value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const text = (key: string) => {
-    const field = record[key];
-    return typeof field === "string" && field.trim() !== "" ? field : null;
-  };
-
-  return {
-    name: text("name") ?? "",
-    line1: text("line1") ?? "",
-    line2: text("line2"),
-    city: text("city") ?? "",
-    region: text("region"),
-    postalCode: text("postalCode") ?? "",
-    country: text("country") ?? "",
-  };
 }

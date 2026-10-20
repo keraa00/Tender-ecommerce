@@ -27,7 +27,7 @@ import {
 } from "@/lib/discounts/format";
 import type { DiscountFormValues } from "@/lib/discounts/form-values";
 import { CUSTOMER_SEGMENT_OPTIONS } from "@/lib/discounts/segments";
-import { parseMoneyToCents } from "@/lib/money";
+import { currencySymbol, parseMoneyToCents } from "@/lib/money";
 
 /**
  * Create and edit a discount. Every input is controlled, and the fields of the
@@ -113,6 +113,8 @@ type DiscountFormProps = {
   now: string;
   /** Shown until the first save replaces it — "Discount created." after a create. */
   initialNotice?: string;
+  /** The store's, ISO 4217: amounts are typed and summarised in it. */
+  currency: string;
 };
 
 export function DiscountForm(props: DiscountFormProps) {
@@ -136,8 +138,10 @@ function DiscountFormBody({
   usageCount = 0,
   now,
   initialNotice,
+  currency,
   onDiscard,
 }: DiscountFormProps & { onDiscard: () => void }) {
+  const symbol = currencySymbol(currency);
   const [state, formAction, pending] = useActionState<DiscountFormState, FormData>(
     action,
     initialNotice ? { notice: initialNotice } : {},
@@ -292,7 +296,7 @@ function DiscountFormBody({
               error={errors.value}
               hint="Taken once per order, never more than the matching items cost."
             >
-              <Affixed prefix="$" className="max-w-40">
+              <Affixed prefix={symbol} className="max-w-40">
                 <Input
                   id="amountValue"
                   name="amountValue"
@@ -310,7 +314,7 @@ function DiscountFormBody({
           {values.type === "FREE_SHIPPING" ? (
             <p className="text-sm text-muted text-pretty">
               Takes the whole shipping charge off the order. Pair it with a minimum
-              purchase below to make it “free shipping over $X”.
+              purchase below to make it “free shipping over {symbol}X”.
             </p>
           ) : null}
         </Card>
@@ -460,7 +464,7 @@ function DiscountFormBody({
 
                   {option.value === "SUBTOTAL" && values.minimum === "SUBTOTAL" ? (
                     <div className="pl-6">
-                      <Affixed prefix="$" className="max-w-40">
+                      <Affixed prefix={symbol} className="max-w-40">
                         <Input
                           name="minSubtotal"
                           aria-label="Minimum purchase amount"
@@ -695,11 +699,11 @@ function DiscountFormBody({
                   value: summary.value,
                   buyQuantity: summary.buyQuantity,
                   getQuantity: summary.getQuantity,
-                })
+                }, currency)
               : "Enter a value"}
           </p>
           <ul className="mt-3 list-disc space-y-1.5 pl-4 text-sm text-muted marker:text-border-strong">
-            {describeDiscount(summary).map((line) => (
+            {describeDiscount(summary, currency).map((line) => (
               <li key={line} className="text-pretty">
                 {line}
               </li>

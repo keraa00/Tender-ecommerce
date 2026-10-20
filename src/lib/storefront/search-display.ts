@@ -20,12 +20,12 @@ export function toSearchSuggestions(
   query: string,
   products: Omit<StorefrontProduct, "position">[],
   total: number,
-  storeSlug: string,
+  store: { slug: string; currency: string },
   locale: Locale,
 ): SearchSuggestions {
   const t = MESSAGES[locale];
-  const money = (cents: number) => formatMoney(cents, undefined, INTL_LOCALES[locale]);
-  const paths = storefrontPaths(storeSlug);
+  const money = (cents: number) => formatMoney(cents, store.currency, INTL_LOCALES[locale]);
+  const paths = storefrontPaths(store.slug);
 
   const suggestions = products.map((product): SearchSuggestion => {
     const image = product.images[0];

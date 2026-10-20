@@ -16,6 +16,7 @@ import { SortMenu } from "./sort-menu";
  */
 export function CatalogView({
   storeSlug,
+  currency,
   title,
   description,
   collections,
@@ -29,6 +30,7 @@ export function CatalogView({
   emptyHint,
 }: {
   storeSlug: string;
+  currency: string;
   title: string;
   description?: ReactNode;
   collections: { slug: string; title: string }[];
@@ -110,6 +112,7 @@ export function CatalogView({
           <ProductGrid
             products={products}
             storeSlug={storeSlug}
+            currency={currency}
             locale={locale}
             t={t.product}
           />

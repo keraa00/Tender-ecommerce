@@ -11,14 +11,19 @@ import type { CartDisplay, CartMessages } from "./types";
 export function CartSummary({
   cart,
   t,
-  showShipping = false,
+  shipping,
   className,
 }: {
   /** A cart, or a placed order shaped like one for its confirmation. */
   cart: Pick<CartDisplay, "subtotal" | "discounts" | "total">;
   t: CartMessages;
-  /** Checkout shows the shipping line; the cart leaves it to the note. */
-  showShipping?: boolean;
+  /**
+   * Checkout's shipping line: the rate's price, "Free" with the price struck
+   * through when a discount took it, or what checkout is waiting for. The
+   * cart leaves shipping to its note, and an order of nothing that ships has
+   * no line at all.
+   */
+  shipping?: { value: string; struck?: string | null } | null;
   className?: string;
 }) {
   return (
@@ -43,7 +48,21 @@ export function CartSummary({
         />
       ))}
 
-      {showShipping ? <Row label={t.shipping} value={t.free} /> : null}
+      {shipping ? (
+        <Row
+          label={t.shipping}
+          value={
+            shipping.struck ? (
+              <span className="inline-flex items-baseline gap-2">
+                <del className="text-xs text-muted">{shipping.struck}</del>
+                <ins className="text-success no-underline">{shipping.value}</ins>
+              </span>
+            ) : (
+              shipping.value
+            )
+          }
+        />
+      ) : null}
 
       <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3">
         <dt className="font-medium">{t.total}</dt>
@@ -59,7 +78,7 @@ function Row({
   valueClassName,
 }: {
   label: ReactNode;
-  value: string;
+  value: ReactNode;
   valueClassName?: string;
 }) {
   return (

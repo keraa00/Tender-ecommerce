@@ -184,8 +184,8 @@ export default async function DiscountsPage(
                       </p>
                       <p className="truncate text-sm text-muted tabular">
                         {discount.type === "PERCENTAGE" || discount.type === "FIXED_AMOUNT"
-                          ? describeDiscount(summary)[0]
-                          : formatDiscountValue(discount)}
+                          ? describeDiscount(summary, store.currency)[0]
+                          : formatDiscountValue(discount, store.currency)}
                         {window ? ` · ${window}` : ""}
                       </p>
                     </Link>

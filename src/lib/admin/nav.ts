@@ -63,3 +63,26 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
   },
   { sections: [{ segment: "settings", label: "Settings", icon: "settings" }] },
 ];
+
+/**
+ * The pages inside Settings, as a second row of navigation. `segment` is
+ * relative to the settings layout — null on Settings itself — which is what
+ * `useSelectedLayoutSegment()` reports from there. The drawer above still
+ * sees `settings` on every one of them, so it keeps Settings lit throughout.
+ */
+export type SettingsSection = {
+  segment: string | null;
+  label: string;
+};
+
+export const SETTINGS_NAV: readonly SettingsSection[] = [
+  { segment: null, label: "General" },
+  { segment: "payments", label: "Payments" },
+  { segment: "shipping", label: "Shipping and delivery" },
+  { segment: "checkout", label: "Checkout" },
+];
+
+/** The path of a settings page under the store, for `storeAdminPath`. */
+export function settingsPath(segment: string | null): string {
+  return segment ? `settings/${segment}` : "settings";
+}

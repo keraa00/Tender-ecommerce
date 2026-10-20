@@ -157,6 +157,7 @@ export async function createProductAction(
         slug: draft.slug,
         description: draft.description,
         status: draft.status,
+        requiresShipping: draft.requiresShipping,
         variants: {
           create: draft.variants.map((variant, position) => ({
             // Variants carry the tenant key too, so a variant-level query never
@@ -167,6 +168,7 @@ export async function createProductAction(
             priceCents: variant.priceCents,
             compareAtPriceCents: variant.compareAtPriceCents,
             inventoryQty: variant.inventoryQty,
+            weightGrams: variant.weightGrams,
             position,
           })),
         },
@@ -275,6 +277,7 @@ export async function updateProductAction(
           slug: draft.slug,
           description: draft.description,
           status: draft.status,
+          requiresShipping: draft.requiresShipping,
         },
       });
 
@@ -313,6 +316,7 @@ export async function updateProductAction(
               priceCents: variant.priceCents,
               compareAtPriceCents: variant.compareAtPriceCents,
               inventoryQty: variant.inventoryQty,
+              weightGrams: variant.weightGrams,
               position,
             },
           });
@@ -326,6 +330,7 @@ export async function updateProductAction(
               priceCents: variant.priceCents,
               compareAtPriceCents: variant.compareAtPriceCents,
               inventoryQty: variant.inventoryQty,
+              weightGrams: variant.weightGrams,
               position,
             },
           });

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import {
   AdminPage,
   EmptyState,
-  Row,
   Rows,
   Stat,
   StatGrid,
@@ -49,7 +49,7 @@ export default async function OrdersPage(
       }
     >
       <StatGrid>
-        <Stat label="Unpaid" value={String(counts.PENDING)} />
+        <Stat label="Awaiting payment" value={String(counts.PENDING)} />
         <Stat label="Paid" value={String(counts.PAID)} />
         <Stat label="Fulfilled" value={String(counts.FULFILLED)} />
         <Stat label="Cancelled" value={String(counts.CANCELLED)} />
@@ -68,7 +68,11 @@ export default async function OrdersPage(
                 >
                   Review your catalogue
                 </ButtonLink>
-              ) : null
+              ) : (
+                <ButtonLink href={storeAdminPath(store.slug, "settings/payments")} size="sm">
+                  Set up payments
+                </ButtonLink>
+              )
             }
           >
             {canAcceptOrders(store)
@@ -78,27 +82,33 @@ export default async function OrdersPage(
         ) : (
           <Rows>
             {orders.map((order) => (
-              <Row key={order.id}>
-                <div className="w-16 shrink-0 font-medium tabular">
-                  #{order.orderNumber}
-                </div>
+              <li key={order.id}>
+                <Link
+                  href={storeAdminPath(store.slug, `orders/${order.id}`)}
+                  className="flex items-center gap-4 bg-surface px-4 py-3 transition-colors hover:bg-surface-hover"
+                >
+                  <div className="w-16 shrink-0 font-medium tabular">
+                    #{order.orderNumber}
+                  </div>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate">{order.email}</p>
-                  <p className="truncate text-sm text-muted tabular">
-                    {formatDate(order.createdAt)} · {order._count.lines}{" "}
-                    {order._count.lines === 1 ? "item" : "items"}
-                  </p>
-                </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">{order.email}</p>
+                    <p className="truncate text-sm text-muted tabular">
+                      {formatDate(order.createdAt)} · {order._count.lines}{" "}
+                      {order._count.lines === 1 ? "item" : "items"}
+                      {order.shippingRateName ? ` · ${order.shippingRateName}` : ""}
+                    </p>
+                  </div>
 
-                <div className="shrink-0 text-right font-medium tabular">
-                  {formatMoney(order.totalCents)}
-                </div>
+                  <div className="shrink-0 text-right font-medium tabular">
+                    {formatMoney(order.totalCents, order.currency)}
+                  </div>
 
-                <div className="shrink-0">
-                  <OrderStatusBadge status={order.status} />
-                </div>
-              </Row>
+                  <div className="shrink-0">
+                    <OrderStatusBadge status={order.status} />
+                  </div>
+                </Link>
+              </li>
             ))}
           </Rows>
         )}

@@ -107,6 +107,7 @@ describe("heroContent", () => {
     description: "Stoneware, thrown and glazed by hand.",
     logoUrl: null,
     bannerUrl: "https://live.staticflickr.com/banner.jpg",
+    currency: "USD",
   };
   const empty = { image: null, heading: "", text: "" };
 

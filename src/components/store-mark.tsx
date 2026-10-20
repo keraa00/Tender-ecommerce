@@ -14,8 +14,8 @@ const sizes: Record<Size, { box: string; pixels: number }> = {
 
 /**
  * A store's logo, or its initials on its accent colour when it has none — how
- * the seller tells their stores apart in the store list and the admin. Buyers
- * never see it; the storefront header shows only the accent.
+ * the seller tells their stores apart in the store list and the admin, and
+ * what heads checkout, whose pared-down header has room for nothing else.
  *
  * Without an accent it takes the platform primary, which is also what the
  * storefront falls back to for `--store-accent`. Decorative: the store's name

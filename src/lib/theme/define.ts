@@ -26,7 +26,10 @@ import type { Fields, FieldValues } from "./fields";
  * validation run in unit tests.
  */
 export type StorefrontContext = {
-  store: Pick<Store, "id" | "slug" | "name" | "description" | "logoUrl" | "bannerUrl">;
+  store: Pick<
+    Store,
+    "id" | "slug" | "name" | "description" | "logoUrl" | "bannerUrl" | "currency"
+  >;
   locale: Locale;
   t: Messages;
   paths: ReturnType<typeof storefrontPaths>;

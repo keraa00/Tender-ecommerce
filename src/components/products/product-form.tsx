@@ -7,6 +7,7 @@ import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
 import { centsToInputValue } from "@/lib/money";
+import { gramsToInputValue } from "@/lib/weight";
 import type { ProductFormState } from "@/lib/products/actions";
 import {
   IMAGE_ACCEPT_ATTRIBUTE,
@@ -36,6 +37,7 @@ type ExistingVariant = {
   priceCents: number;
   compareAtPriceCents: number | null;
   inventoryQty: number;
+  weightGrams: number;
 };
 
 export type ProductFormProduct = {
@@ -43,6 +45,7 @@ export type ProductFormProduct = {
   slug: string;
   description: string | null;
   status: string;
+  requiresShipping: boolean;
   images: ExistingImage[];
   variants: ExistingVariant[];
   collectionIds: string[];
@@ -59,6 +62,8 @@ type VariantRow = {
   price: string;
   compareAt: string;
   stock: string;
+  /** Kilograms, as typed. */
+  weight: string;
 };
 
 let rowCounter = 0;
@@ -76,6 +81,7 @@ function blankRow(): VariantRow {
     price: "",
     compareAt: "",
     stock: "0",
+    weight: "",
   };
 }
 
@@ -95,6 +101,7 @@ function rowsFrom(product?: ProductFormProduct): VariantRow[] {
         ? ""
         : centsToInputValue(variant.compareAtPriceCents),
     stock: String(variant.inventoryQty),
+    weight: variant.weightGrams === 0 ? "" : gramsToInputValue(variant.weightGrams),
   }));
 }
 
@@ -128,6 +135,7 @@ function ProductFormBody({
   // Once the seller edits the address, stop rewriting it from the title.
   const [slugEdited, setSlugEdited] = useState(Boolean(product));
   const [rows, setRows] = useState<VariantRow[]>(() => rowsFrom(product));
+  const [requiresShipping, setRequiresShipping] = useState(product?.requiresShipping ?? true);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -165,7 +173,8 @@ function ProductFormBody({
       action={formAction}
       // React resets the form after every submission, which empties the file
       // input — the previews have to go with it or they'd show files that are
-      // no longer selected.
+      // no longer selected. Setting state here also re-renders the form, which
+      // puts the controlled fields the reset disturbed back as they were.
       onReset={() => setPendingImages([])}
       className="space-y-8"
       noValidate
@@ -272,6 +281,23 @@ function ProductFormBody({
             ))}
           </div>
         </fieldset>
+
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            name="requiresShipping"
+            checked={requiresShipping}
+            onChange={(event) => setRequiresShipping(event.target.checked)}
+            className="mt-1"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Physical product — requires shipping</span>
+            <span className="block text-xs text-muted text-pretty">
+              Untick for digital products and services. An order made only of these
+              skips delivery at checkout and ships free.
+            </span>
+          </span>
+        </label>
       </section>
 
       {collections.length > 0 ? (
@@ -309,7 +335,7 @@ function ProductFormBody({
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-sm font-medium tracking-tight">Options</h2>
-          <p className="text-sm text-muted">Each one has its own price and stock.</p>
+          <p className="text-sm text-muted">Each one has its own price, stock and weight in kg.</p>
         </div>
 
         {state.fieldErrors?.variants ? (
@@ -324,7 +350,7 @@ function ProductFormBody({
               key={row.key}
               className="rounded-xl border border-border bg-surface p-4"
             >
-              <div className="grid gap-3 sm:grid-cols-12">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-12">
                 {row.id ? (
                   <input type="hidden" name="variantId" value={row.id} />
                 ) : (
@@ -333,7 +359,7 @@ function ProductFormBody({
                   <input type="hidden" name="variantId" value="" />
                 )}
 
-                <div className="sm:col-span-4">
+                <div className="col-span-2 sm:col-span-4">
                   <Label htmlFor={`${row.key}-title`}>Name</Label>
                   <Input
                     id={`${row.key}-title`}
@@ -349,7 +375,7 @@ function ProductFormBody({
                   />
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="col-span-2 sm:col-span-2">
                   <Label htmlFor={`${row.key}-sku`}>SKU</Label>
                   <Input
                     id={`${row.key}-sku`}
@@ -407,6 +433,24 @@ function ProductFormBody({
                       updateRow(row.key, { stock: event.target.value })
                     }
                     inputMode="numeric"
+                    autoComplete="off"
+                    className="mt-1 tabular"
+                    aria-invalid={Boolean(rowErrors[index])}
+                  />
+                </div>
+
+                <div className="sm:col-span-1">
+                  <Label htmlFor={`${row.key}-weight`}>Weight</Label>
+                  <Input
+                    id={`${row.key}-weight`}
+                    name="variantWeight"
+                    value={row.weight}
+                    onChange={(event) =>
+                      updateRow(row.key, { weight: event.target.value })
+                    }
+                    placeholder="kg"
+                    aria-label="Weight in kilograms"
+                    inputMode="decimal"
                     autoComplete="off"
                     className="mt-1 tabular"
                     aria-invalid={Boolean(rowErrors[index])}

@@ -71,6 +71,7 @@ export default async function EditProductPage(
           slug: product.slug,
           description: product.description,
           status: product.status,
+          requiresShipping: product.requiresShipping,
           images: product.images.map((image) => ({
             id: image.id,
             url: image.url,
@@ -83,6 +84,7 @@ export default async function EditProductPage(
             priceCents: variant.priceCents,
             compareAtPriceCents: variant.compareAtPriceCents,
             inventoryQty: variant.inventoryQty,
+            weightGrams: variant.weightGrams,
           })),
           collectionIds: product.collections.map((entry) => entry.collectionId),
         }}

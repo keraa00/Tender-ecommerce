@@ -23,15 +23,19 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "@supabase/supabase-js";
 
 import { PrismaClient, type Prisma } from "../src/generated/prisma/client";
+import { regionName } from "../src/lib/address/regions";
+import type { PostalAddress } from "../src/lib/address/types";
 import { calculatePlatformFee } from "../src/lib/money";
+import { chooseRate, eligibleRates, zoneFor, type ZoneRule } from "../src/lib/shipping/rates";
 import {
   PLATFORM_ADMIN,
   SEED_PASSWORD,
   SEED_STORES,
   type SeedDiscount,
   type SeedStore,
+  type SeedZone,
 } from "./seed-catalog";
-import { SEED_ORDERS } from "./seed-orders";
+import { SEED_ORDERS, type SeedOrder } from "./seed-orders";
 
 type SeedImage = {
   url: string;
@@ -145,35 +149,56 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
   const banner = images[`store:${store.slug}:banner`]?.[0];
   const logo = images[`store:${store.slug}:logo`]?.[0];
 
+  const settings = {
+    currency: store.currency,
+    contactEmail: store.contactEmail,
+    checkoutPhone: store.checkout.phone,
+    checkoutCompany: store.checkout.company,
+    checkoutFirstName: store.checkout.firstName,
+    checkoutAddress2: store.checkout.address2,
+    checkoutMarketingOptIn: store.checkout.marketingOptIn,
+    checkoutOrderNote: store.checkout.orderNote,
+  } satisfies Prisma.StoreUncheckedUpdateInput;
+
   const record = await db.store.upsert({
     where: { slug: store.slug },
     create: {
       slug: store.slug,
       name: store.name,
       description: store.description,
+      ...settings,
       accentColor: store.accentColor,
       bannerUrl: banner?.url ?? null,
       logoUrl: logo?.url ?? null,
       commissionBps: store.commissionBps,
       ownerId: owner.id,
-      // Fixture values, replaced once onboarding lands with a real test-mode
-      // connected account from the Connect OAuth flow. The `acct_seed_` prefix
-      // is deliberately not a valid Stripe id, so any accidental API call
-      // against a demo store fails loudly instead of doing something subtle.
+      // No connected account: demo stores browse fine but cannot check out
+      // until their owner connects a test-mode Stripe account from
+      // Settings → Payments, exactly like a real seller.
       status: "ACTIVE",
-      stripeAccountId: `acct_seed_${store.slug.replace(/-/g, "_")}`,
-      stripeOnboardingComplete: true,
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
     },
     update: {
       name: store.name,
       description: store.description,
+      ...settings,
       accentColor: store.accentColor,
       bannerUrl: banner?.url ?? null,
       logoUrl: logo?.url ?? null,
       commissionBps: store.commissionBps,
       ownerId: owner.id,
+    },
+  });
+
+  // Earlier seeds wrote placeholder `acct_seed_*` ids with every Stripe flag
+  // set, which made demo stores look payable to a checkout that now really
+  // charges. Clear them; a real connected account is left alone.
+  await db.store.updateMany({
+    where: { id: record.id, stripeAccountId: { startsWith: "acct_seed_" } },
+    data: {
+      stripeAccountId: null,
+      stripeOnboardingComplete: false,
+      stripeChargesEnabled: false,
+      stripePayoutsEnabled: false,
     },
   });
 
@@ -207,17 +232,20 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
         title: product.title,
         description: product.description,
         status: "ACTIVE",
+        requiresShipping: product.requiresShipping ?? true,
       },
       update: {
         title: product.title,
         description: product.description,
         status: "ACTIVE",
+        requiresShipping: product.requiresShipping ?? true,
       },
     });
 
     // Images are positional and small in number; replacing them wholesale is
     // simpler and cheaper than diffing.
-    const productImages = images[`product:${store.slug}:${product.slug}`] ?? [];
+    const productImages =
+      images[product.imageFrom ?? `product:${store.slug}:${product.slug}`] ?? [];
     await db.productImage.deleteMany({ where: { productId: saved.id } });
     if (productImages.length > 0) {
       await db.productImage.createMany({
@@ -241,6 +269,7 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
           priceCents: variant.priceCents,
           compareAtPriceCents: variant.compareAtPriceCents ?? null,
           inventoryQty: variant.inventoryQty,
+          weightGrams: variant.weightGrams ?? product.weightGrams,
           position: index,
         },
         update: {
@@ -249,6 +278,7 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
           priceCents: variant.priceCents,
           compareAtPriceCents: variant.compareAtPriceCents ?? null,
           inventoryQty: variant.inventoryQty,
+          weightGrams: variant.weightGrams ?? product.weightGrams,
           position: index,
         },
       });
@@ -272,21 +302,106 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
     await seedDiscount(record.id, discount, collectionIds);
   }
 
+  for (const [index, zone] of store.zones.entries()) {
+    await seedZone(record.id, zone, index);
+  }
+
   const productCount = store.products.length;
   const variantCount = store.products.reduce(
     (total, product) => total + product.variants.length,
     0,
   );
+  const rateCount = store.zones.reduce((total, zone) => total + zone.rates.length, 0);
   console.log(
     `  ${store.name.padEnd(22)} ${productCount} products, ${variantCount} variants, ` +
-      `${store.discounts.length} discounts`,
+      `${store.discounts.length} discounts, ${store.zones.length} shipping zones, ${rateCount} rates`,
   );
 }
 
 /**
- * Discounts are matched on (storeId, title) rather than (storeId, code) because
- * an automatic discount has no code, and a NULL never matches in a unique
- * lookup.
+ * A zone is matched on (storeId, name), its rates on (zone, position), so a
+ * reseed updates them in place and their ids — which carts and orders link
+ * to — stay put. Its countries are replaced: first taken from wherever they
+ * sit in this store, since a country belongs to one zone and a seller may
+ * have moved one since the last seed.
+ */
+async function seedZone(storeId: string, zone: SeedZone, position: number) {
+  const restOfWorld = zone.restOfWorld ? true : null;
+  const existing = restOfWorld
+    ? await db.shippingZone.findUnique({
+        where: { storeId_restOfWorld: { storeId, restOfWorld: true } },
+        select: { id: true },
+      })
+    : await db.shippingZone.findFirst({
+        where: { storeId, name: zone.name, restOfWorld: null },
+        select: { id: true },
+      });
+
+  const saved = existing
+    ? await db.shippingZone.update({
+        where: { id: existing.id },
+        data: { name: zone.name, position },
+        select: { id: true },
+      })
+    : await db.shippingZone.create({
+        data: { storeId, name: zone.name, restOfWorld, position },
+        select: { id: true },
+      });
+
+  const countries = zone.countries.map((entry) =>
+    typeof entry === "string"
+      ? { countryCode: entry, regionCodes: [] as string[] }
+      : { countryCode: entry.code, regionCodes: [...entry.regions] },
+  );
+  await db.shippingZoneCountry.deleteMany({
+    where: {
+      storeId,
+      OR: [{ zoneId: saved.id }, { countryCode: { in: countries.map((c) => c.countryCode) } }],
+    },
+  });
+  if (countries.length > 0) {
+    await db.shippingZoneCountry.createMany({
+      data: countries.map((country) => ({ ...country, storeId, zoneId: saved.id })),
+    });
+  }
+
+  const rates = await db.shippingRate.findMany({
+    where: { storeId, zoneId: saved.id },
+    orderBy: { position: "asc" },
+    select: { id: true, position: true },
+  });
+
+  for (const [index, rate] of zone.rates.entries()) {
+    const data = {
+      name: rate.name,
+      priceCents: rate.priceCents,
+      minDeliveryDays: rate.days?.[0] ?? null,
+      maxDeliveryDays: rate.days?.[1] ?? null,
+      minSubtotalCents: rate.subtotalCents?.[0] ?? null,
+      maxSubtotalCents: rate.subtotalCents?.[1] ?? null,
+      minWeightGrams: rate.weightGrams?.[0] ?? null,
+      maxWeightGrams: rate.weightGrams?.[1] ?? null,
+      position: index,
+    } satisfies Prisma.ShippingRateUncheckedUpdateInput;
+
+    const current = rates.find((entry) => entry.position === index);
+    if (current) {
+      await db.shippingRate.update({ where: { id: current.id }, data });
+    } else {
+      await db.shippingRate.create({ data: { storeId, zoneId: saved.id, ...data } });
+    }
+  }
+
+  await db.shippingRate.deleteMany({
+    where: { storeId, zoneId: saved.id, position: { gte: zone.rates.length } },
+  });
+}
+
+/**
+ * Discounts with a code are matched on (storeId, code), their real key, so a
+ * retitled one is updated rather than duplicated. Automatic discounts have no
+ * code — and a NULL never matches in a unique lookup — so they are matched on
+ * (storeId, title).
  */
 async function seedDiscount(
   storeId: string,
@@ -334,7 +449,9 @@ async function seedDiscount(
   ];
 
   const existing = await db.discount.findFirst({
-    where: { storeId, title: discount.title },
+    where: discount.code
+      ? { storeId, code: discount.code }
+      : { storeId, code: null, title: discount.title },
     select: { id: true },
   });
 
@@ -408,8 +525,16 @@ async function seedOrders(store: SeedStore) {
 
   const record = await db.store.findUniqueOrThrow({
     where: { slug: store.slug },
-    select: { id: true, commissionBps: true, stripeAccountId: true },
+    select: { id: true, commissionBps: true, stripeAccountId: true, currency: true },
   });
+
+  const zones: ZoneRule[] = (
+    await db.shippingZone.findMany({
+      where: { storeId: record.id },
+      orderBy: { position: "asc" },
+      include: { countries: true, rates: true },
+    })
+  ).map((zone) => ({ ...zone, restOfWorld: zone.restOfWorld === true }));
 
   const variants = new Map(
     (
@@ -420,9 +545,11 @@ async function seedOrders(store: SeedStore) {
           sku: true,
           title: true,
           priceCents: true,
+          weightGrams: true,
           product: {
             select: {
               title: true,
+              requiresShipping: true,
               images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
             },
           },
@@ -461,7 +588,29 @@ async function seedOrders(store: SeedStore) {
     }
     const discountCents = discount ? orderDiscountCents(discount, subtotalCents) : 0;
     const lineDiscounts = splitAcrossLines(discountCents, lineTotals);
-    const totalCents = subtotalCents - discountCents;
+
+    // Shipped at the cheapest rate the order qualified for, chosen the way
+    // checkout chooses it, so seeded orders read like real ones.
+    const address = postalAddress(order.name, order.address);
+    const zone = zoneFor(zones, { countryCode: address.countryCode, regionCode: address.regionCode });
+    const rate = zone
+      ? chooseRate(
+          eligibleRates(zone, {
+            subtotalCents: subtotalCents - discountCents,
+            weightGrams: lines.reduce(
+              (sum, { variant, quantity }) =>
+                sum + (variant.product.requiresShipping ? variant.weightGrams * quantity : 0),
+              0,
+            ),
+          }),
+          null,
+        )
+      : null;
+    if (!zone || !rate) {
+      throw new Error(`Seed order "${order.key}" ships to ${address.countryCode}, where no rate applies.`);
+    }
+
+    const totalCents = subtotalCents - discountCents + rate.priceCents;
     const platformFeeCents = calculatePlatformFee(totalCents, record.commissionBps);
 
     const email = order.email.toLowerCase();
@@ -480,9 +629,10 @@ async function seedOrders(store: SeedStore) {
       userId: account?.id ?? null,
       email: order.email,
       status: order.status,
+      currency: record.currency,
       subtotalCents,
       discountCents,
-      shippingCents: 0,
+      shippingCents: rate.priceCents,
       totalCents,
       platformFeeCents,
       sellerNetCents: totalCents - platformFeeCents,
@@ -500,15 +650,13 @@ async function seedOrders(store: SeedStore) {
           ]
         : [],
       stripeAccountId: record.stripeAccountId,
-      shippingAddress: {
-        name: order.name,
-        line1: order.address.line1,
-        line2: order.address.line2 ?? null,
-        city: order.address.city,
-        region: order.address.region ?? null,
-        postalCode: order.address.postalCode,
-        country: order.address.country,
-      },
+      shippingAddress: address,
+      billingAddress: address,
+      shippingRateId: rate.id,
+      shippingRateName: rate.name,
+      shippingZoneName: zone.name,
+      shippingMinDays: rate.minDeliveryDays,
+      shippingMaxDays: rate.maxDeliveryDays,
       paidAt: settled ? later(2 * 60 * 1000) : null,
       fulfilledAt: order.status === "FULFILLED" ? later(2 * DAY_MS) : null,
       cancelledAt: order.status === "CANCELLED" ? later(60 * 60 * 1000) : null,
@@ -560,6 +708,14 @@ async function seedOrders(store: SeedStore) {
     }
   }
 
+  // Demo data: a store's currency is set by the seed, so every order in it —
+  // including any placed by hand since the last seed — is relabelled to match,
+  // rather than leaving a store whose history mixes two currencies.
+  await db.order.updateMany({
+    where: { storeId: record.id, currency: { not: record.currency } },
+    data: { currency: record.currency },
+  });
+
   // Checkout keeps `usageCount` equal to the redemptions, so recount rather
   // than add: a reseed must not count the same orders twice.
   for (const discount of discounts.values()) {
@@ -573,6 +729,25 @@ async function seedOrders(store: SeedStore) {
       .map((order) => order.email.toLowerCase()),
   );
   console.log(`  ${store.name.padEnd(22)} ${orders.length} orders, ${customers.size} customers`);
+}
+
+/** A seed buyer's address in the shape checkout stores. */
+function postalAddress(name: string, address: SeedOrder["address"]): PostalAddress {
+  const space = name.lastIndexOf(" ");
+  const regionCode = address.region ?? null;
+  return {
+    firstName: space > 0 ? name.slice(0, space) : null,
+    lastName: space > 0 ? name.slice(space + 1) : name,
+    company: null,
+    line1: address.line1,
+    line2: address.line2 ?? null,
+    city: address.city,
+    regionCode,
+    region: regionCode ? (regionName(address.countryCode, regionCode) ?? regionCode) : null,
+    postalCode: address.postalCode,
+    countryCode: address.countryCode,
+    phone: null,
+  };
 }
 
 // ---------------------------------------------------------------------------

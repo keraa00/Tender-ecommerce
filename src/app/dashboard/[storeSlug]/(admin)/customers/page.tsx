@@ -232,7 +232,7 @@ export default async function CustomersPage(
                       </div>
 
                       <div className="shrink-0 text-right font-medium tabular">
-                        {formatMoney(customer.spentCents)}
+                        {formatMoney(customer.spentCents, store.currency)}
                       </div>
                     </Link>
                   </li>

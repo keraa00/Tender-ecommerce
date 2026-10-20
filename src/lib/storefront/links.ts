@@ -12,6 +12,8 @@ export const storefrontPaths = (slug: string) => {
     searchSuggestions: `${base}/search/suggestions`,
     cart: `${base}/cart`,
     checkout: `${base}/checkout`,
+    /** Checkout for one item, from its own cart — see "Buy it now". */
+    checkoutBuyNow: `${base}/checkout/buy-now`,
     checkoutComplete: `${base}/checkout/complete`,
     product: (productSlug: string) => `${base}/p/${productSlug}`,
     collection: (collectionSlug: string) => `${base}/collections/${collectionSlug}`,

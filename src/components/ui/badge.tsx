@@ -79,7 +79,7 @@ const orderStatusTone: Record<OrderStatus, Tone> = {
 };
 
 const orderStatusLabel: Record<OrderStatus, string> = {
-  PENDING: "Unpaid",
+  PENDING: "Awaiting payment",
   PAID: "Paid",
   FULFILLED: "Fulfilled",
   CANCELLED: "Cancelled",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
@@ -11,6 +12,7 @@ import {
   StatGrid,
 } from "@/components/admin/page-shell";
 import { Badge, OrderStatusBadge } from "@/components/ui/badge";
+import { formatAddressLines } from "@/lib/address/validate";
 import { storeAdminPath } from "@/lib/admin/links";
 import { customerEmailFromParam, customerSegments } from "@/lib/customers/filters";
 import { getStoreCustomer } from "@/lib/customers/queries";
@@ -67,7 +69,7 @@ export default async function CustomerPage(
       <StatGrid>
         <Stat
           label="Total spent"
-          value={formatMoney(customer.spentCents)}
+          value={formatMoney(customer.spentCents, store.currency)}
           hint="Paid and fulfilled orders"
         />
         <Stat
@@ -81,7 +83,7 @@ export default async function CustomerPage(
         />
         <Stat
           label="Average order"
-          value={formatMoney(Math.round(customer.spentCents / customer.orders))}
+          value={formatMoney(Math.round(customer.spentCents / customer.orders), store.currency)}
         />
         <Stat
           label="Last order"
@@ -110,14 +112,18 @@ export default async function CustomerPage(
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-muted tabular">
+                  <Link
+                    href={storeAdminPath(store.slug, `orders/${order.id}`)}
+                    className="block truncate text-sm text-muted tabular hover:text-foreground"
+                  >
                     {formatDate(order.createdAt)} · {order.itemCount}{" "}
                     {order.itemCount === 1 ? "item" : "items"}
-                  </p>
+                    {order.shippingRateName ? ` · ${order.shippingRateName}` : ""}
+                  </Link>
                 </div>
 
                 <div className="shrink-0 text-right font-medium tabular">
-                  {formatMoney(order.totalCents)}
+                  {formatMoney(order.totalCents, order.currency)}
                 </div>
 
                 <div className="shrink-0">
@@ -151,28 +157,17 @@ export default async function CustomerPage(
             {lastAddress ? (
               <>
                 <address className="text-sm not-italic">
-                  {[
-                    lastAddress.address.name,
-                    lastAddress.address.line1,
-                    lastAddress.address.line2,
-                    [
-                      lastAddress.address.city,
-                      lastAddress.address.region,
-                      lastAddress.address.postalCode,
-                    ]
-                      .filter(Boolean)
-                      .join(", "),
-                    lastAddress.address.country,
-                  ]
-                    .filter(Boolean)
-                    .map((line, index) => (
-                      <span key={index} className="block">
-                        {line}
-                      </span>
-                    ))}
+                  {formatAddressLines(lastAddress.address, "en").map((line, index) => (
+                    <span key={index} className="block">
+                      {line}
+                    </span>
+                  ))}
+                  {lastAddress.address.phone ? (
+                    <span className="mt-1 block text-muted">{lastAddress.address.phone}</span>
+                  ) : null}
                 </address>
                 <p className="mt-2 text-xs text-muted">
-                  From order #{lastAddress.orderNumber}, their most recent.
+                  From order #{lastAddress.orderNumber}, their most recent delivery.
                 </p>
               </>
             ) : (

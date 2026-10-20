@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { StorefrontFrame } from "@/components/storefront/storefront-frame";
 import { getStoreBySlug } from "@/lib/stores/queries";
 import { isStorePubliclyVisible } from "@/lib/stores/policy";
-import { getPublishedTheme } from "@/lib/theme/queries";
 
+/**
+ * One storefront, whichever chrome it is drawn in: the themed header, footer
+ * and cart drawer of `(shop)`, or the pared-down header of `(checkout)`, where
+ * the store's navigation would only be a way out of paying.
+ *
+ * What both share is decided here, once: the store exists, and a suspended
+ * one shows buyers nothing but that it is closed.
+ */
 export default async function StorefrontLayout({
   children,
   params,
@@ -36,12 +42,5 @@ export default async function StorefrontLayout({
     );
   }
 
-  // Buyers only ever see the published theme.
-  const theme = await getPublishedTheme(store.id);
-
-  return (
-    <StorefrontFrame store={store} theme={theme}>
-      {children}
-    </StorefrontFrame>
-  );
+  return children;
 }

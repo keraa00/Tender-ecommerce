@@ -12,22 +12,22 @@ describe("formatDiscountValue", () => {
   it("reads a percentage out of basis points", () => {
     // 1000 bps is 10%. Printing `value` raw would announce 1000% off.
     expect(
-      formatDiscountValue({ type: DiscountType.PERCENTAGE, value: 1000 }),
+      formatDiscountValue({ type: DiscountType.PERCENTAGE, value: 1000 }, "USD"),
     ).toBe("10% off");
     expect(
-      formatDiscountValue({ type: DiscountType.PERCENTAGE, value: 1250 }),
+      formatDiscountValue({ type: DiscountType.PERCENTAGE, value: 1250 }, "USD"),
     ).toBe("12.5% off");
   });
 
   it("formats a fixed amount as money", () => {
     expect(
-      formatDiscountValue({ type: DiscountType.FIXED_AMOUNT, value: 500 }),
+      formatDiscountValue({ type: DiscountType.FIXED_AMOUNT, value: 500 }, "USD"),
     ).toBe("$5.00 off");
   });
 
   it("ignores the value for free shipping", () => {
     expect(
-      formatDiscountValue({ type: DiscountType.FREE_SHIPPING, value: 0 }),
+      formatDiscountValue({ type: DiscountType.FREE_SHIPPING, value: 0 }, "USD"),
     ).toBe("Free shipping");
   });
 
@@ -38,7 +38,7 @@ describe("formatDiscountValue", () => {
         value: 10_000,
         buyQuantity: 2,
         getQuantity: 1,
-      }),
+      }, "USD"),
     ).toBe("Buy 2, get 1 free");
     expect(
       formatDiscountValue({
@@ -46,7 +46,7 @@ describe("formatDiscountValue", () => {
         value: 5_000,
         buyQuantity: 1,
         getQuantity: 1,
-      }),
+      }, "USD"),
     ).toBe("Buy 1, get 1 at 50% off");
   });
 });
@@ -77,7 +77,7 @@ describe("describeDiscount", () => {
   };
 
   it("reads a plain order discount", () => {
-    expect(describeDiscount(summary)).toEqual([
+    expect(describeDiscount(summary, "USD")).toEqual([
       "20% off the entire order",
       "No minimum purchase",
       "For all customers",
@@ -100,7 +100,7 @@ describe("describeDiscount", () => {
         usageLimit: 100,
         perCustomerLimit: 1,
         combinable: true,
-      }),
+      }, "USD"),
     ).toEqual([
       "$10.00 off 2 collections",
       "Taken once per order, across the matching items",
@@ -125,7 +125,7 @@ describe("describeDiscount", () => {
       maxUsesPerOrder: 1,
       eligibility: "CUSTOMERS",
       customerCount: 1,
-    });
+    }, "USD");
     expect(lines.slice(0, 4)).toEqual([
       "Buy 2 items from 3 products",
       "Get 1 item free from any product",

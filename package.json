@@ -19,11 +19,14 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "seed:images": "tsx scripts/fetch-seed-images.ts",
-    "storage:setup": "tsx scripts/setup-storage.ts"
+    "storage:setup": "tsx scripts/setup-storage.ts",
+    "stripe:listen": "stripe listen --events-from @accounts --events account.updated,account.application.deauthorized,payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled --forward-connect-to localhost:3000/api/webhooks/stripe"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@stripe/react-stripe-js": "^7.0.0",
+    "@stripe/stripe-js": "^10.1.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.2",
     "next": "16.3.0",
@@ -31,6 +34,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "stripe": "^23.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

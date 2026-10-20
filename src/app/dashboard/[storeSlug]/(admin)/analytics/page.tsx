@@ -40,23 +40,23 @@ export default async function AnalyticsPage(
   return (
     <AdminPage
       title="Analytics"
-      description={`Settled orders over the last ${WINDOW_DAYS} days. Unpaid and cancelled orders are excluded.`}
+      description={`Settled orders over the last ${WINDOW_DAYS} days. Orders awaiting payment and cancelled orders are excluded.`}
     >
       <StatGrid>
-        <Stat label="Revenue" value={formatMoney(window.grossCents)} />
+        <Stat label="Revenue" value={formatMoney(window.grossCents, store.currency)} />
         <Stat label="Orders" value={String(window.orders)} />
         <Stat
           label="Average order"
           value={
             window.averageOrderCents === null
               ? "—"
-              : formatMoney(window.averageOrderCents)
+              : formatMoney(window.averageOrderCents, store.currency)
           }
         />
         <Stat
           label="Your earnings"
-          value={formatMoney(window.netCents)}
-          hint={`${formatMoney(window.feeCents)} commission`}
+          value={formatMoney(window.netCents, store.currency)}
+          hint={`${formatMoney(window.feeCents, store.currency)} commission`}
         />
       </StatGrid>
 
@@ -90,7 +90,7 @@ export default async function AnalyticsPage(
                     </p>
                   </div>
                   <div className="shrink-0 text-right font-medium tabular">
-                    {formatMoney(product.revenueCents)}
+                    {formatMoney(product.revenueCents, store.currency)}
                   </div>
                 </Row>
               ))}
@@ -104,9 +104,9 @@ export default async function AnalyticsPage(
         <p className="mt-1 text-sm text-muted text-pretty tabular">
           {allTime.orders} settled{" "}
           {allTime.orders === 1 ? "order" : "orders"} ·{" "}
-          {formatMoney(allTime.grossCents)} taken ·{" "}
-          {formatMoney(allTime.netCents)} yours after{" "}
-          {formatMoney(allTime.feeCents)} commission.
+          {formatMoney(allTime.grossCents, store.currency)} taken ·{" "}
+          {formatMoney(allTime.netCents, store.currency)} yours after{" "}
+          {formatMoney(allTime.feeCents, store.currency)} commission.
         </p>
       </div>
     </AdminPage>

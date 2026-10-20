@@ -86,10 +86,10 @@ export default async function EditDiscountPage(
             }
           />
           <Stat label="Paid orders" value={String(performance.paidOrders)} />
-          <Stat label="Discount given" value={formatMoney(performance.discountCents)} />
+          <Stat label="Discount given" value={formatMoney(performance.discountCents, store.currency)} />
           <Stat
             label="Sales"
-            value={formatMoney(performance.salesCents)}
+            value={formatMoney(performance.salesCents, store.currency)}
             hint="Paid orders that used it"
           />
         </StatGrid>
@@ -106,6 +106,7 @@ export default async function EditDiscountPage(
         usageCount={discount.usageCount}
         now={now.toISOString()}
         initialNotice={created ? "Discount created." : undefined}
+        currency={store.currency}
       />
 
       <details className="mt-10 rounded-xl border border-danger/30 bg-danger/5 p-4">

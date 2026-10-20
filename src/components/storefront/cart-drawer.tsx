@@ -15,6 +15,7 @@ export function CartDrawer({
   cartHref,
   catalogHref,
   checkoutHref,
+  checkoutBlockedNote,
 }: {
   cart: CartDisplay;
   t: CartMessages;
@@ -23,6 +24,8 @@ export function CartDrawer({
   catalogHref: string;
   /** Null while the store cannot take orders. */
   checkoutHref: string | null;
+  /** Why `checkoutHref` is null, when it is for a reason worth naming. */
+  checkoutBlockedNote?: string | null;
 }) {
   const { panel, setPanel } = usePanel();
   const close = () => setPanel(null);
@@ -78,7 +81,7 @@ export function CartDrawer({
           <div className="shrink-0 space-y-3 border-t border-border px-4 py-4 sm:px-6">
             <CartSummary cart={cart} t={t} />
             <p className="text-xs text-muted">{t.shippingNote}</p>
-            <CheckoutButton t={t} href={checkoutHref} onNavigate={close} />
+            <CheckoutButton t={t} href={checkoutHref} reason={checkoutBlockedNote} onNavigate={close} />
             <Link
               href={cartHref}
               onClick={close}

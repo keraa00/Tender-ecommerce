@@ -5,11 +5,13 @@ import type { Messages } from "@/lib/i18n/messages";
 export function ProductGrid({
   products,
   storeSlug,
+  currency,
   locale,
   t,
 }: {
   products: ProductCardProduct[];
   storeSlug: string;
+  currency: string;
   locale: Locale;
   t: Messages["product"];
 }) {
@@ -20,6 +22,7 @@ export function ProductGrid({
           key={product.id}
           product={product}
           storeSlug={storeSlug}
+          currency={currency}
           locale={locale}
           t={t}
         />

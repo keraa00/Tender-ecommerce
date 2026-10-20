@@ -4,7 +4,8 @@
 // constraint that a tenant can influence is composite with it. Two stores may
 // both own a product at `/p/black-tee` and both define the code `WELCOME10`.
 //
-// Money is always integer cents. Never floats.
+// Money is always integer cents in the store's currency. Never floats. Weight
+// is integer grams, and countries are ISO 3166-1 alpha-2 codes.
 
 generator client {
   provider = "prisma-client"
@@ -106,6 +107,26 @@ enum CustomerSegment {
   @@map("customer_segment")
 }
 
+/// Whether a checkout field is asked for, and whether the buyer may skip it.
+/// Not every mode suits every field: first name is never hidden and address
+/// line 2 is never required — see the CHECKs in `20261006120000_checkout_shipping`.
+enum CheckoutFieldMode {
+  HIDDEN
+  OPTIONAL
+  REQUIRED
+
+  @@map("checkout_field_mode")
+}
+
+/// A browser's everyday cart, or the single-item one "Buy it now" checks out
+/// without touching it.
+enum CartKind {
+  STANDARD
+  BUY_NOW
+
+  @@map("cart_kind")
+}
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
@@ -155,6 +176,24 @@ model Store {
   stripeChargesEnabled     Boolean @default(false) @map("stripe_charges_enabled")
   stripePayoutsEnabled     Boolean @default(false) @map("stripe_payouts_enabled")
 
+  /// ISO 4217. Every price, rate and order in the store is in it — one
+  /// currency per store, never converted. Locked once the store has an order
+  /// (`canChangeCurrency()`), and snapshotted onto each order regardless.
+  currency     String  @default("USD") @db.Char(3)
+  /// The address buyers are shown at checkout and on the contact page. Null
+  /// falls back to the owner's account email.
+  contactEmail String? @map("contact_email")
+
+  // Checkout form options, defaulting to what Shopify does out of the box.
+  checkoutPhone          CheckoutFieldMode @default(HIDDEN) @map("checkout_phone")
+  checkoutCompany        CheckoutFieldMode @default(HIDDEN) @map("checkout_company")
+  /// OPTIONAL or REQUIRED. The last name is always required.
+  checkoutFirstName      CheckoutFieldMode @default(OPTIONAL) @map("checkout_first_name")
+  /// HIDDEN or OPTIONAL.
+  checkoutAddress2       CheckoutFieldMode @default(OPTIONAL) @map("checkout_address2")
+  checkoutMarketingOptIn Boolean           @default(false) @map("checkout_marketing_opt_in")
+  checkoutOrderNote      Boolean           @default(false) @map("checkout_order_note")
+
   /// Platform commission in basis points. 500 = 5.00%.
   commissionBps Int         @default(500) @map("commission_bps")
   status        StoreStatus @default(PENDING)
@@ -166,7 +205,7 @@ model Store {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  owner         User           @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  owner         User                  @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   members       StoreMember[]
   products      Product[]
   variants      Variant[]
@@ -176,6 +215,9 @@ model Store {
   discounts     Discount[]
   theme         StoreTheme?
   themePreviews ThemePreview[]
+  shippingZones ShippingZone[]
+  zoneCountries ShippingZoneCountry[]
+  shippingRates ShippingRate[]
 
   @@index([ownerId])
   @@index([status])
@@ -267,14 +309,17 @@ model ThemePreview {
 // ---------------------------------------------------------------------------
 
 model Product {
-  id          String        @id @default(uuid(7)) @db.Uuid
-  storeId     String        @map("store_id") @db.Uuid
-  title       String
-  slug        String
-  description String?
-  status      ProductStatus @default(DRAFT)
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id               String        @id @default(uuid(7)) @db.Uuid
+  storeId          String        @map("store_id") @db.Uuid
+  title            String
+  slug             String
+  description      String?
+  status           ProductStatus @default(DRAFT)
+  /// False for digital products and services. A cart where nothing requires
+  /// shipping skips delivery at checkout and ships free.
+  requiresShipping Boolean       @default(true) @map("requires_shipping")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
   store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
   images        ProductImage[]
@@ -313,6 +358,8 @@ model Variant {
   priceCents          Int     @map("price_cents")
   compareAtPriceCents Int?    @map("compare_at_price_cents")
   inventoryQty        Int     @default(0) @map("inventory_qty")
+  /// Shipping weight in grams, judged against weight-based shipping rates.
+  weightGrams         Int     @default(0) @map("weight_grams")
   position            Int     @default(0)
 
   store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -359,30 +406,43 @@ model ProductOnCollection {
 // Cart
 // ---------------------------------------------------------------------------
 
-/// One cart per (store, session). There is deliberately no cross-store cart:
-/// a single payment cannot be split across multiple connected accounts without
-/// a materially harder settlement design. See README "Out of scope".
+/// One cart per (store, session, kind). There is deliberately no cross-store
+/// cart: a single payment cannot be split across multiple connected accounts
+/// without a materially harder settlement design. See README "Out of scope".
+///
+/// `kind` lets "Buy it now" check out one item from a cart of its own, so the
+/// buyer's everyday cart is still there afterwards.
 model Cart {
-  id            String   @id @default(uuid(7)) @db.Uuid
-  storeId       String   @map("store_id") @db.Uuid
-  userId        String?  @map("user_id") @db.Uuid
-  sessionId     String   @map("session_id")
+  id             String   @id @default(uuid(7)) @db.Uuid
+  storeId        String   @map("store_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  sessionId      String   @map("session_id")
+  kind           CartKind @default(STANDARD)
   /// Codes the buyer entered, upper-case, in the order entered. Kept on the
   /// cart so they follow the buyer from cart to checkout; whether each one
   /// applies is decided afresh by the discount engine on every render.
-  discountCodes String[] @default([]) @map("discount_codes")
+  discountCodes  String[] @default([]) @map("discount_codes")
   /// The email given at checkout, lower-case. Segment and per-customer
   /// discounts are judged against it, in the cart as well as at checkout.
-  email         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  email          String?
+  /// The checkout in progress — addresses, note, opt-in — so a refresh loses
+  /// nothing. Its shape is owned by `src/lib/checkout/draft.ts`, which reads
+  /// it leniently: it is the buyer's unvalidated typing, never trusted.
+  checkoutDraft  Json?    @map("checkout_draft") @db.JsonB
+  /// The shipping rate the buyer picked. Re-checked against the address and
+  /// cart on every pricing; one that no longer applies is simply ignored.
+  shippingRateId String?  @map("shipping_rate_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  store Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  user  User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  lines CartLine[]
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shippingRate ShippingRate? @relation(fields: [shippingRateId], references: [id], onDelete: SetNull)
+  lines        CartLine[]
 
-  @@unique([storeId, sessionId])
+  @@unique([storeId, sessionId, kind])
   @@index([storeId, userId])
+  @@index([shippingRateId])
   @@map("carts")
 }
 
@@ -400,11 +460,104 @@ model CartLine {
 }
 
 // ---------------------------------------------------------------------------
+// Shipping
+// ---------------------------------------------------------------------------
+
+/// Where a store ships and what it charges there. The countries a store sells
+/// to are exactly the countries its zones cover — there is no separate list.
+///
+/// `restOfWorld` is true or null, never false (a CHECK says so). With the
+/// composite unique below that allows any number of ordinary zones but at most
+/// one rest-of-world zone per store, without a partial index Prisma cannot
+/// describe. A rest-of-world zone lists no countries: it covers every country
+/// no other zone names.
+model ShippingZone {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  name        String
+  restOfWorld Boolean? @map("rest_of_world")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store     Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  countries ShippingZoneCountry[]
+  rates     ShippingRate[]
+
+  /// The target of the children's composite foreign keys: a country or rate
+  /// row cannot name one store and a zone belonging to another.
+  @@unique([id, storeId])
+  @@unique([storeId, restOfWorld])
+  @@map("shipping_zones")
+}
+
+/// A country a zone covers — all of it, or only the regions listed. A country
+/// belongs to at most one zone per store: the primary key says so. Regions a
+/// narrowed country leaves out are not shipped to; the country is still
+/// claimed, so the rest-of-world zone does not pick them up.
+model ShippingZoneCountry {
+  storeId     String   @map("store_id") @db.Uuid
+  zoneId      String   @map("zone_id") @db.Uuid
+  /// ISO 3166-1 alpha-2, upper-case.
+  countryCode String   @map("country_code") @db.Char(2)
+  /// ISO 3166-2 subdivision codes without the country prefix — "CA", not
+  /// "US-CA". Empty means the whole country.
+  regionCodes String[] @default([]) @map("region_codes")
+
+  store Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  zone  ShippingZone @relation(fields: [zoneId, storeId], references: [id, storeId], onDelete: Cascade)
+
+  @@id([storeId, countryCode])
+  @@index([zoneId, storeId])
+  @@map("shipping_zone_countries")
+}
+
+/// A delivery option inside a zone. The buyer picks one of the rates whose
+/// conditions their order meets; `src/lib/shipping/rates.ts` decides which.
+///
+/// At most one kind of condition — subtotal or weight — and both bounds are
+/// inclusive. The subtotal is after item discounts. The shape rules are CHECKs
+/// in `20261006120000_checkout_shipping`; `src/lib/shipping/form.ts` applies
+/// the same rules with readable messages.
+model ShippingRate {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  storeId          String   @map("store_id") @db.Uuid
+  zoneId           String   @map("zone_id") @db.Uuid
+  /// What buyers see: "Standard", "Express".
+  name             String
+  /// 0 means free.
+  priceCents       Int      @map("price_cents")
+  /// Business days. Both or neither.
+  minDeliveryDays  Int?     @map("min_delivery_days")
+  maxDeliveryDays  Int?     @map("max_delivery_days")
+  minSubtotalCents Int?     @map("min_subtotal_cents")
+  maxSubtotalCents Int?     @map("max_subtotal_cents")
+  minWeightGrams   Int?     @map("min_weight_grams")
+  maxWeightGrams   Int?     @map("max_weight_grams")
+  position         Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  store  Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  zone   ShippingZone @relation(fields: [zoneId, storeId], references: [id, storeId], onDelete: Cascade)
+  carts  Cart[]
+  orders Order[]
+
+  @@index([zoneId, storeId])
+  @@index([storeId])
+  @@map("shipping_rates")
+}
+
+// ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
 
 /// `platformFeeCents` and `sellerNetCents` are stored, never recomputed. The
 /// store's commission rate may change; a settled order must not.
+///
+/// Like the lines, everything about delivery is a snapshot: the addresses, the
+/// rate's name, zone and estimate, the currency. Editing a zone or deleting a
+/// rate later must not change what an old order says.
 model Order {
   id          String      @id @default(uuid(7)) @db.Uuid
   storeId     String      @map("store_id") @db.Uuid
@@ -412,6 +565,8 @@ model Order {
   userId      String?     @map("user_id") @db.Uuid
   email       String
   status      OrderStatus @default(PENDING)
+  /// ISO 4217, from the store at the moment of the order.
+  currency    String      @default("USD") @db.Char(3)
 
   subtotalCents    Int @map("subtotal_cents")
   discountCents    Int @default(0) @map("discount_cents")
@@ -425,7 +580,25 @@ model Order {
   stripePaymentIntentId String? @unique @map("stripe_payment_intent_id")
   stripeAccountId       String? @map("stripe_account_id")
 
-  shippingAddress Json @map("shipping_address") @db.JsonB
+  /// A `PostalAddress` (`src/lib/address/types.ts`), with the ISO country
+  /// code. Null when nothing on the order needed shipping. Orders from before
+  /// structured addresses hold `{ name, line1, …, country }` with the country
+  /// as typed; `readAddress()` reads both.
+  shippingAddress Json? @map("shipping_address") @db.JsonB
+  billingAddress  Json? @map("billing_address") @db.JsonB
+
+  /// The rate as chosen. `shippingCents` above is its price before any
+  /// free-shipping discount. The id is only a link — it goes null when the
+  /// rate is deleted, and the snapshot columns keep saying what was chosen.
+  shippingRateId   String? @map("shipping_rate_id") @db.Uuid
+  shippingRateName String? @map("shipping_rate_name")
+  shippingZoneName String? @map("shipping_zone_name")
+  shippingMinDays  Int?    @map("shipping_min_days")
+  shippingMaxDays  Int?    @map("shipping_max_days")
+
+  /// Whether the buyer ticked the marketing opt-in at checkout.
+  marketingConsent Boolean @default(false) @map("marketing_consent")
+  note             String?
 
   /// What each applied discount was and took, as charged:
   /// `[{ discountId, code, title, type, amountCents, shippingCents }]`.
@@ -440,16 +613,18 @@ model Order {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  store       Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  user        User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  discount    Discount?            @relation(fields: [discountId], references: [id], onDelete: SetNull)
-  lines       OrderLine[]
-  redemptions DiscountRedemption[]
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  user         User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  discount     Discount?            @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  shippingRate ShippingRate?        @relation(fields: [shippingRateId], references: [id], onDelete: SetNull)
+  lines        OrderLine[]
+  redemptions  DiscountRedemption[]
 
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt])
   @@index([userId, createdAt])
   @@index([email])
+  @@index([shippingRateId])
   @@map("orders")
 }
 

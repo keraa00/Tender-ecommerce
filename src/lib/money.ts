@@ -3,12 +3,17 @@
  * on the wire. Formatting to a decimal string happens only at the edge, here.
  */
 
-const DEFAULT_CURRENCY = "USD";
 const DEFAULT_LOCALE = "en-US";
 
+/**
+ * `currency` has no default on purpose: every store has its own, and an amount
+ * printed in the wrong one is a wrong price. Orders pass their own snapshot,
+ * everything else the store's.
+ */
 export function formatMoney(
   cents: number,
-  currency: string = DEFAULT_CURRENCY,
+  /** ISO 4217 — the store's, or the order's. */
+  currency: string,
   /** A BCP 47 tag. The storefront passes the buyer's language here. */
   locale: string = DEFAULT_LOCALE,
 ): string {
@@ -16,6 +21,21 @@ export function formatMoney(
     style: "currency",
     currency,
   }).format(cents / 100);
+}
+
+/**
+ * The symbol a price input is prefixed with — "$", "€", "kr". Narrow, because
+ * the field's label already says which store it is.
+ */
+export function currencySymbol(currency: string, locale: string = DEFAULT_LOCALE): string {
+  const part = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+  })
+    .formatToParts(0)
+    .find((entry) => entry.type === "currency");
+  return part?.value ?? currency;
 }
 
 /**

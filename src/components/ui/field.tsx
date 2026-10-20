@@ -25,6 +25,21 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
   );
 }
 
+export function Select({ className, ...props }: ComponentProps<"select">) {
+  return (
+    <select
+      className={cn(
+        "h-10 w-full cursor-pointer rounded-lg border border-border-strong bg-surface px-3",
+        "text-sm text-foreground",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        "aria-[invalid=true]:border-danger",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return (
     <textarea

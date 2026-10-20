@@ -6,8 +6,9 @@ Stripe account; the platform takes a commission at the moment of the charge.
 
 > **Status: in active development.** Schema, tenancy, auth, store creation, slug
 > routing, product management, discounts (admin, engine, cart and checkout),
-> order placement and seed data are in. Stripe Connect — card payment — and the
-> remaining admin surfaces are next — see [Roadmap](#roadmap).
+> shipping zones and rates, a Shopify-style checkout, Stripe Connect onboarding,
+> card payments with the platform's commission, and seed data are in. Order
+> emails and the remaining admin surfaces are next — see [Roadmap](#roadmap).
 
 ---
 
@@ -16,14 +17,18 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | | |
 |---|---|
 | Platform landing | Lists live stores at `/` |
-| Storefronts | `/s/nordhavn-supply`, `/s/rosewater-ceramics` — branded per store, 15 products each |
+| Storefronts | `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR) — branded per store, priced in each store's own currency |
 | Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
-| Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived |
+| Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived; a weight per option (kg in, integer grams stored) and a "requires shipping" flag for digital products and services |
+| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email. **Payments**: connect a Stripe account through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
 | Discounts | `admin.<host>/[storeSlug]/discounts` — codes and automatic discounts: percentage, fixed amount, buy X get Y, free shipping; whole order, products or collections; minimum spend or quantity; all customers, segments or named customers; total and per-customer limits; schedule; on/off; stacking. The pricing engine is pure and tested, ready for checkout |
-| Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout; the checkout email re-prices segment and per-customer offers. "Place order" creates an **Unpaid** order — line and discount snapshots, commission on the discounted total, usage limits enforced in the order transaction — and nothing is charged until Stripe lands |
-| Seed | Two stores, 30 products, 56 variants, 6 collections, 9 discounts — idempotent |
+| Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout. Checkout is one page, Shopify-style, under its own pared-down header: contact (with the optional marketing opt-in), delivery — a country select of only the countries the store ships to, named in the buyer's language, then address fields that follow the country (labels, region lists, postal-code formats for 30+ countries) — shipping method, billing address, payment and the order summary, which folds into a bar on phones. Every change is saved on the cart and re-priced on the server, so a refresh loses nothing and the server's total is the only one. Payment is Stripe's **Payment Element**, embedded in the page and themed to the store. "Pay now" places the order — line, discount, address and rate snapshots, commission on the discounted total, usage limits enforced and the rate re-checked in the order transaction — creates its PaymentIntent on the seller's Stripe account, and confirms it in place (3-D Secure included). The order turns **Paid** — stock taken, cart emptied — when the payment succeeds; a declined card leaves the cart and the order for another try. An order discounts bring to zero is placed paid without Stripe |
+| Shipping | The chosen rate is charged; a free-shipping discount takes exactly that rate off. Rates are judged on the subtotal after item discounts and on the weight of what ships. A cart of digital products skips delivery entirely. A store that ships nowhere can still sell those, and says so for anything else |
+| Buy it now | On every product page: checks out that one option and quantity from a cart of its own, so the buyer's cart is still there afterwards |
+| Orders | `admin.<host>/[storeSlug]/orders` — list, and a page per order with its lines, totals, commission, discounts, customer, shipping address and method, billing address, note and a link to the payment in the seller's Stripe Dashboard. The buyer's confirmation page reads the payment from Stripe — paid, processing, or failed with a way back to try again — and shows the same delivery details |
+| Seed | Two stores, 31 products (one of them a service), 58 variants with weights, 6 collections, 9 discounts, 7 shipping zones with domestic and international rates — idempotent |
 
 ---
 
@@ -36,11 +41,11 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | Database | PostgreSQL (Supabase) | |
 | ORM | Prisma 7 | Client Extensions let the scoped data-access layer be enforced in one place rather than remembered at every call site |
 | Auth | Supabase Auth | Same vendor as the database, and it keeps Postgres RLS reachable as a defence-in-depth stretch goal |
-| Payments | Stripe Connect (Standard) | See below |
+| Payments | Stripe Connect (Standard-equivalent accounts), Payment Element | See below |
 | Email | Resend | |
 | Hosting | Vercel | |
 
-### Why Connect **Standard**
+### Why Standard-equivalent accounts
 
 Account type is the payments decision that is expensive to reverse. It fixes who
 owns identity verification, who absorbs a chargeback, and how much onboarding UI
@@ -49,42 +54,60 @@ becomes the platform's problem.
 | | Standard | Express | Custom |
 |---|---|---|---|
 | KYC | Stripe | Stripe, in a flow you trigger | The platform |
-| Onboarding | Stripe OAuth redirect | Account Links, lightly branded | Built from scratch |
+| Onboarding | Stripe-hosted (Account Links) | Stripe-hosted, lightly branded | Built from scratch |
 | Seller dashboard | Full Stripe Dashboard | Cut-down Express dashboard | Built from scratch |
-| Disputes, negative balances | Seller | Usually the platform | Platform |
-| Pre-existing Stripe account | Reusable | No | No |
+| Disputes | Seller | Seller, via the platform | Platform |
+| Negative balances | Stripe | Platform | Platform |
 | Per-account monthly fee | None | Yes | Yes |
 
 **Standard was chosen.** At this scope the differentiator is *where the risk
-sits*, not the onboarding UI. Identity verification and payout disputes belong
-with Stripe, and a seller who already has a Stripe account keeps it. The price
-is an onboarding hop that visibly leaves the app and looks like Stripe, plus
-sellers handling disputes in Stripe's dashboard rather than this one — a cheap
-trade when [refunds are out of scope](#out-of-scope) anyway.
+sits*, not the onboarding UI. Identity verification, payouts and disputes
+belong with Stripe and the seller, and the seller gets the full Stripe
+Dashboard to handle them — a cheap trade when [refunds are out of
+scope](#out-of-scope) here anyway.
 
-**Express** would be right if onboarding conversion were the business. Here it
-would buy branding in exchange for Account Link plumbing: link expiry, resume-
-setup states, polling `charges_enabled` before the seller is allowed to sell.
+Accounts are created through the API with Stripe's **controller properties**
+rather than `type: "standard"` — `stripe_dashboard.type: "full"`,
+`fees.payer: "account"`, `losses.payments: "stripe"`,
+`requirement_collection: "stripe"`, the combination Stripe documents as
+Standard's — and onboarded through **Account Links**, Stripe-hosted onboarding.
+Stripe's docs say OAuth "isn't recommended for new Connect platforms", so it is
+not used. The cost: a seller who already has a Stripe account signs in with it
+but gets a new account for Tender, rather than connecting the old one.
+
+**Express** would be right if onboarding conversion were the business, and
 **Custom** means owning KYC and a regulatory surface this project has no
 business taking on.
 
 What that choice commits the code to:
 
-- **Direct charges.** The Checkout Session is created *on* the connected
-  account — `{ stripeAccount: store.stripeAccountId }` — with commission taken
+- **Direct charges.** Each order's PaymentIntent is created *on* the connected
+  account — `{ stripeContext: store.stripeAccountId }` — with commission taken
   as `application_fee_amount`. Stripe's processing fee comes out of the
-  seller's side, not the platform's.
+  seller's side, not the platform's. Stripe.js loads as the same account, so the
+  Payment Element can confirm it.
 - **The buyer's card statement shows the seller,** not the platform. Correct
   for a marketplace, and worth knowing before the first "what is this charge"
   email.
-- **Connect webhooks are their own endpoint.** Connect events carry an
-  `account` field identifying the seller and are signed with a different secret
-  than the platform's own events.
+- **One webhook endpoint, for connected accounts.** With direct charges, every
+  event Tender acts on — `account.updated`, `account.application.deauthorized`,
+  `payment_intent.succeeded`, `payment_intent.canceled` — happens on a seller's
+  account. They arrive at `/api/webhooks/stripe` with an `account` field naming
+  the seller. Connect also delivers the seller's own payments taken elsewhere;
+  PaymentIntents without Tender's order id in their metadata are ignored.
 - **This database is the source of truth for orders.** Charges live on the
   connected account and aren't queryable from the platform account by default.
-- **A store cannot sell until Stripe says so.** `stripeChargesEnabled` is set
-  from `account.updated`, and publishing and checkout are gated on it — a row
-  with a `stripeAccountId` is not the same thing as a store that can take money.
+- **A store cannot sell until Stripe says so.** `stripeChargesEnabled` is
+  copied from the account — on `account.updated`, and whenever the owner opens
+  Settings → Payments — and checkout is gated on it. A row with a
+  `stripeAccountId` is not the same thing as a store that can take money.
+  Finishing onboarding is also what moves a new store from PENDING to ACTIVE.
+- **Stock is taken when the money is in, not when the order is placed.** An
+  order is placed unpaid with its discounts redeemed, then paid by its
+  PaymentIntent; the transaction that flips it to PAID takes the stock and
+  empties the cart. An abandoned payment holds no stock, and placing the order
+  again cancels the old attempt — PaymentIntent first — and gives its discount
+  uses back.
 
 ---
 
@@ -106,9 +129,9 @@ flowchart TB
     SCOPED --> PG[(PostgreSQL)]
     ROOT --> PG
 
-    Stripe[Stripe Connect] -.->|"webhooks, signature-verified"| WH["/api/webhooks/*"]
-    WH --> IDEM[WebhookEvent<br/>idempotency table]
-    IDEM --> PG
+    Stripe[Stripe Connect] -.->|"connected-account events, signature-verified"| WH["/api/webhooks/stripe"]
+    WH --> SETTLE["settleOrder / cancelUnpaidOrder<br/>conditional on status = PENDING"]
+    SETTLE --> PG
 ```
 
 The important edge is `getStoreContext`. Seller-admin requests resolve their
@@ -228,8 +251,14 @@ and unable to upload, list or delete. Verified against the live project.
 4. **Commission is charged on the post-discount total.** The platform takes a
    cut of what the buyer actually paid. A seller running a 20% promotion is not
    billed commission on the 20% they gave away.
-5. **`WebhookEvent` exists solely for idempotency.** Stripe retries; a replayed
-   event must not decrement inventory twice.
+5. **Stock moves only in the transaction that flips an order to PAID.** Stripe
+   retries webhooks, and the confirmation page settles the order too, so the
+   same payment can arrive twice at once. Settling is a conditional
+   `UPDATE … WHERE status = 'PENDING'`, and only the call whose update actually
+   changed the row takes stock, empties the cart or — for a cancellation — gives
+   discount uses back. A replay finds the order already moved and does nothing.
+   `WebhookEvent` records which events were handled and short-circuits
+   redeliveries; it is not what makes them safe.
 6. **The cart is store-scoped.** One cart per store, no cross-store checkout —
    see [Out of scope](#out-of-scope).
 7. **Non-members get 404, not 403,** on `/dashboard/[storeSlug]`. A seller
@@ -249,6 +278,22 @@ and unable to upload, list or delete. Verified against the live project.
    usage_limit`, so two buyers racing for the last use cannot both get it.
    Customer segments are rules over order history, not stored lists — there is
    no customers table to keep in step.
+10. **Shipping is quoted in one pure function, and the client only ever
+    requests.** `quoteCheckout` (`src/lib/checkout/quote.ts`) prices item
+    discounts first, picks the zone and the rates the order qualifies for, then
+    prices again with the chosen rate so a free-shipping discount takes
+    exactly that off. A rate id from the browser is a request: one that is not
+    among the eligible rates for this store, address and cart is never
+    charged, and the order transaction re-reads the rate by id, store, zone and
+    price. Addresses, the rate's name, zone and estimate, and the currency are
+    snapshotted onto the order like its lines. Tax will be one more term in
+    `summarisePricing` and one more column.
+11. **"Buy it now" is a second cart, not a detour around the first.** A
+    `BUY_NOW` cart beside the buyer's own, keyed the same way, so checkout,
+    discount codes, re-pricing and the saved draft all work on it unchanged
+    and paying for the order deletes only it. The cost is one more row per
+    session; stashing and restoring the everyday cart instead would risk
+    losing it on any failure in between.
 
 ---
 
@@ -364,7 +409,43 @@ Both stores also get about a year of orders (`prisma/seed-orders.ts`), so
 Customers, Orders and Analytics have something to show. Their dates count back
 from when the seed runs, so reseeding keeps recent customers recent.
 
-**5. Run.**
+The demo stores start without a Stripe account, so their storefronts browse but
+checkout says payments aren't set up — step 5 connects one.
+
+**5. Payments (Stripe test mode).**
+
+1. In a Stripe sandbox or test mode, copy the keys from Developers → API keys
+   into `STRIPE_SECRET_KEY` (`sk_test_…`) and
+   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_…`).
+2. Turn on Connect (Dashboard → Connect → Get started) and fill in the
+   platform's branding under Connect settings — name, icon, colour. Stripe-hosted
+   onboarding will not start without it.
+3. Forward connected-account webhooks to the dev server with the
+   [Stripe CLI](https://docs.stripe.com/stripe-cli), and keep it running while
+   you test:
+
+   ```bash
+   stripe login
+   npm run stripe:listen
+   ```
+
+   The script is `stripe listen --events-from @accounts --events …
+   --forward-connect-to localhost:3000/api/webhooks/stripe`, with the five
+   event types the app handles.
+
+   Recent CLI versions refuse to listen without an explicit event list. CLI
+   1.50+ also needs **Settings → Team and security → MCP and CLI access**
+   switched on before `stripe login` works. Put the `whsec_…` it prints (or
+   `stripe listen --print-secret`) in `STRIPE_CONNECT_WEBHOOK_SECRET`. Without it the
+   app still works — Settings → Payments and the confirmation page read Stripe
+   directly — but stores and orders only update when someone looks.
+4. Sign in as a store owner, open Settings → Payments, **Connect with Stripe**
+   and finish test onboarding (Stripe offers test values for every field). Back
+   in the admin, the store shows **Live**.
+5. Check out with `4242 4242 4242 4242`, any future expiry and any CVC.
+   `4000 0025 0000 3155` asks for 3-D Secure; `4000 0000 0000 9995` is declined.
+
+**6. Run.**
 
 ```bash
 npm run dev
@@ -416,6 +497,8 @@ anywhere:
 | `NEXT_PUBLIC_ADMIN_HOST` | empty, so the admin host is derived as `admin.your-domain.com` |
 | DNS | an `admin.` record pointing at the same deployment |
 | Supabase → Authentication → URL Configuration | `https://your-domain.com/auth/confirm` and `/auth/callback` |
+| Stripe → Workbench → Webhooks | an endpoint at `https://your-domain.com/api/webhooks/stripe`, **Events from: Connected accounts**, for `account.updated`, `account.application.deauthorized`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `payment_intent.canceled`; its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| Stripe keys | live `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, once Stripe has reviewed the platform profile |
 
 The auth cookie's `Domain` is derived from the host (`your-domain.com`), so one
 session covers the platform and the admin. A real domain has a real parent, so
@@ -433,6 +516,7 @@ the public-suffix problem that rules out `localhost` does not arise.
 | `npm run db:deploy` | Apply existing migrations — hosted Postgres, CI, production |
 | `npm run db:seed` | Seed the demo stores and their orders (idempotent) |
 | `npm run seed:images` | Refresh seed photography from Openverse |
+| `npm run stripe:listen` | Forward connected-account webhooks from Stripe to the dev server (needs the Stripe CLI, logged in) |
 
 ---
 
@@ -443,8 +527,8 @@ the public-suffix problem that rules out `localhost` does not arise.
 | Foundation | Scaffold, multi-tenant schema, auth, store creation, slug routing, seed | ✅ |
 | Data layer | Product CRUD with images and variants ✅; scoped data-access layer + isolation tests still to come | ◐ |
 | Storefront | Listing, search, filters, detail, cart | |
-| Connect | Stripe Connect onboarding, `account.updated` webhook, activation gating | |
-| Checkout | Order placement with discounts ✅; direct charges with application fee, `payment_intent.succeeded`, inventory, emails still to come | ◐ |
+| Connect | Stripe-hosted onboarding (Account Links), `account.updated` webhook, activation gating | ✅ |
+| Checkout | Order placement with discounts, Payment Element with direct charges and application fee, `payment_intent.succeeded`, inventory ✅; order emails and a sweep for abandoned unpaid orders still to come | ◐ |
 | Discounts | Discount engine + tests, discount admin, cart and checkout integration | ✅ |
 | Surfaces | Seller dashboard, platform admin, buyer order history, mobile pass | |
 

@@ -90,6 +90,7 @@ export default defineSection({
             <ProductGrid
               products={products.slice(0, settings.limit)}
               storeSlug={ctx.store.slug}
+              currency={ctx.store.currency}
               locale={ctx.locale}
               t={t.product}
             />

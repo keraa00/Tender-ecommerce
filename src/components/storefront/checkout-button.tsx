@@ -3,17 +3,21 @@ import Link from "next/link";
 import type { CartMessages } from "./types";
 
 /**
- * The way from the cart to checkout. `href` is null while the store cannot
- * take orders (setup unfinished, or suspended), and the button then says so
- * instead of leading to a page that would only turn the buyer away.
+ * The way from the cart to checkout. `href` is null while this cart cannot be
+ * checked out (setup unfinished, suspended, or nowhere to ship it), and the
+ * button then says why instead of leading to a page that would only turn the
+ * buyer away.
  */
 export function CheckoutButton({
   t,
   href,
+  reason,
   onNavigate,
 }: {
   t: CartMessages;
   href: string | null;
+  /** Why not, when there is something more specific to say. */
+  reason?: string | null;
   /** Lets the drawer close itself on the way out. */
   onNavigate?: () => void;
 }) {
@@ -41,7 +45,7 @@ export function CheckoutButton({
       >
         {t.checkout}
       </button>
-      <p className="mt-2 text-center text-xs text-muted">{t.checkoutUnavailable}</p>
+      <p className="mt-2 text-center text-xs text-muted">{reason ?? t.checkoutUnavailable}</p>
     </div>
   );
 }

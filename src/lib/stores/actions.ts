@@ -13,7 +13,14 @@ import { slugify, storeSlugSchema } from "@/lib/slug";
 import { requireSupabaseConfig } from "@/lib/supabase/config";
 import { logoRejectionReason } from "./logo";
 import { getStoreContext } from "./context";
+import { canChangeCurrency } from "./policy";
 import { isStoreSlugTaken } from "./queries";
+import {
+  parseCheckoutSettingsForm,
+  parseGeneralSettingsForm,
+  type CheckoutSettingsErrors,
+  type GeneralSettingsErrors,
+} from "./settings-form";
 
 const createStoreSchema = z.object({
   name: z.string().trim().min(2, "Give your store a name.").max(60),
@@ -135,12 +142,18 @@ async function attachLogo(storeId: string, logo: File): Promise<void> {
 }
 
 export type StoreSettingsState = {
-  fieldErrors?: { logo?: string };
+  fieldErrors?: { logo?: string } & GeneralSettingsErrors;
   formError?: string;
   notice?: string;
 };
 
-/** Saves the settings page: for now, a new logo or none. */
+/**
+ * Saves Settings → General: the logo, the currency and the contact email.
+ *
+ * The currency is checked against the store's orders here, on the server, not
+ * just disabled in the form: a forged post must not relabel a store that has
+ * already taken money in another currency.
+ */
 export async function updateStoreSettingsAction(
   storeSlug: string,
   _prev: StoreSettingsState,
@@ -148,34 +161,85 @@ export async function updateStoreSettingsAction(
 ): Promise<StoreSettingsState> {
   const { store } = await getStoreContext(storeSlug);
 
+  const parsed = parseGeneralSettingsForm(formData);
+  if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+  const { settings } = parsed;
+
+  if (settings.currency !== store.currency) {
+    const orderCount = await rootDb.order.count({ where: { storeId: store.id } });
+    if (!canChangeCurrency({ orderCount })) {
+      return {
+        fieldErrors: {
+          currency: "Your store has taken orders, so its currency can no longer change.",
+        },
+      };
+    }
+  }
+
   const logo = logoFrom(formData);
   const removeLogo = formData.get("removeLogo") === "1";
-  if (!logo && !removeLogo) return { notice: "Saved." };
+  const logoChanged = Boolean(logo) || removeLogo;
 
   const logoError = logo ? logoRejectionReason(logo) : null;
   if (logoError) return { fieldErrors: { logo: logoError } };
 
-  let logoUrl: string | null = null;
+  let logoUrl: string | null = store.logoUrl;
+  let uploaded: string | null = null;
   try {
-    if (logo) logoUrl = await uploadStoreLogo(store.id, logo);
-    await rootDb.store.update({ where: { id: store.id }, data: { logoUrl } });
+    if (logoChanged) {
+      uploaded = logo ? await uploadStoreLogo(store.id, logo) : null;
+      logoUrl = uploaded;
+    }
+    await rootDb.store.update({
+      where: { id: store.id },
+      data: { logoUrl, currency: settings.currency, contactEmail: settings.contactEmail },
+    });
   } catch (error) {
     console.error("updateStoreSettingsAction failed", error);
-    if (logoUrl) await deleteProductImageObjects([logoUrl], requireSupabaseConfig().url);
-    return { formError: "Could not save the logo. Please try again." };
+    if (uploaded) await deleteProductImageObjects([uploaded], requireSupabaseConfig().url);
+    return { formError: "Could not save your settings. Please try again." };
   }
 
   // Nothing points at the old file any more. Only objects this app uploaded
   // are deleted; a seeded logo hosted elsewhere is left alone.
-  if (store.logoUrl) {
+  if (logoChanged && store.logoUrl) {
     await deleteProductImageObjects([store.logoUrl], requireSupabaseConfig().url);
   }
 
-  // Every place the mark is drawn: the store list and this store's admin.
-  // The storefront never shows it.
+  // The store list and this store's admin draw the mark; prices everywhere
+  // in the admin follow the currency. The storefront reads the store fresh on
+  // every request.
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/${storeSlug}`, "layout");
 
+  return { notice: "Saved." };
+}
+
+export type CheckoutSettingsState = {
+  fieldErrors?: CheckoutSettingsErrors;
+  formError?: string;
+  notice?: string;
+};
+
+/** Saves Settings → Checkout: which fields buyers are asked for. */
+export async function updateCheckoutSettingsAction(
+  storeSlug: string,
+  _prev: CheckoutSettingsState,
+  formData: FormData,
+): Promise<CheckoutSettingsState> {
+  const { store } = await getStoreContext(storeSlug);
+
+  const parsed = parseCheckoutSettingsForm(formData);
+  if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+
+  try {
+    await rootDb.store.update({ where: { id: store.id }, data: parsed.settings });
+  } catch (error) {
+    console.error("updateCheckoutSettingsAction failed", error);
+    return { formError: "Could not save your checkout settings. Please try again." };
+  }
+
+  revalidatePath(`/dashboard/${storeSlug}/settings/checkout`);
   return { notice: "Saved." };
 }
 

@@ -2,48 +2,84 @@ import "server-only";
 
 import { cache } from "react";
 
+import type { ShippingDestination } from "@/lib/address/types";
 import { getCart, type CartView } from "@/lib/cart/queries";
-import { applyDiscounts } from "@/lib/discounts/engine";
 import { loadCustomerProfile, loadDiscountRules } from "@/lib/discounts/queries";
-import {
-  SHIPPING_CENTS,
-  emptyPricing,
-  summarisePricing,
-  toPricedLines,
-  type CartPricing,
-} from "./totals";
+import { loadZoneRules } from "@/lib/shipping/queries";
+import { quoteCheckout, type CheckoutQuote } from "./quote";
+import { emptyPricing, toPricedLines, type CartPricing } from "./totals";
 
 /**
- * Prices a cart through the discount engine: automatic discounts plus the
- * codes on the cart, for the given buyer. The drawer, the cart page, the
- * checkout summary and the order itself all come through here, so the buyer
- * never sees one total and is charged another.
+ * Loads what pricing needs — the store's discount rules, the buyer's history,
+ * the store's shipping zones — and hands it to `quoteCheckout`, which does the
+ * arithmetic. The drawer, the cart page, the checkout summary and the order
+ * itself all come through here, so the buyer never sees one total and is
+ * charged another.
+ */
+
+type Buyer = { email: string | null; userId: string | null };
+
+/**
+ * A checkout's price, shipping included: what the address and the picked rate
+ * come to, with every discount applied. `destination` is null until the
+ * address is complete enough to say where the order is going.
+ */
+export async function priceCheckout(
+  storeId: string,
+  cart: Pick<CartView, "lines" | "discountCodes">,
+  buyer: Buyer,
+  shipping: { destination: ShippingDestination | null; requestedRateId: string | null },
+  now: Date = new Date(),
+): Promise<CheckoutQuote> {
+  const [rules, customer, zones] = await Promise.all([
+    loadDiscountRules(storeId, cart.discountCodes, now),
+    loadCustomerProfile(storeId, buyer),
+    loadZoneRules(storeId),
+  ]);
+
+  return quoteCheckout({
+    lines: cart.lines,
+    enteredCodes: cart.discountCodes,
+    rules,
+    customer: customer.profile,
+    customerRedemptions: customer.redemptions,
+    now,
+    zones,
+    destination: shipping.destination,
+    requestedRateId: shipping.requestedRateId,
+  });
+}
+
+/**
+ * A cart's price before anyone has said where it is going: discounts, and
+ * shipping left to checkout. What the drawer and the cart page show.
  */
 export async function priceCart(
   storeId: string,
   cart: Pick<CartView, "lines" | "discountCodes">,
-  buyer: { email: string | null; userId: string | null },
+  buyer: Buyer,
   now: Date = new Date(),
 ): Promise<CartPricing> {
-  const lines = toPricedLines(cart.lines);
-  // Nothing to discount: skip the two queries on every page of a browsing
+  // Nothing to discount: skip the queries on every page of a browsing
   // visitor's session.
-  if (lines.length === 0) return emptyPricing(cart.discountCodes);
+  if (toPricedLines(cart.lines).length === 0) return emptyPricing(cart.discountCodes);
 
   const [rules, customer] = await Promise.all([
     loadDiscountRules(storeId, cart.discountCodes, now),
     loadCustomerProfile(storeId, buyer),
   ]);
 
-  const selection = applyDiscounts(rules, {
-    lines,
-    shippingCents: SHIPPING_CENTS,
+  return quoteCheckout({
+    lines: cart.lines,
+    enteredCodes: cart.discountCodes,
+    rules,
     customer: customer.profile,
     customerRedemptions: customer.redemptions,
     now,
-  });
-
-  return summarisePricing(lines, cart.discountCodes, rules, selection, SHIPPING_CENTS);
+    zones: [],
+    destination: null,
+    requestedRateId: null,
+  }).pricing;
 }
 
 /**

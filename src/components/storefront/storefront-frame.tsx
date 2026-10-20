@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { CartDrawer } from "@/components/storefront/cart-drawer";
 import { StorefrontUIProvider } from "@/components/storefront/storefront-ui";
 import { updateCartLineAction } from "@/lib/cart/actions";
+import { cartCheckoutBlock } from "@/lib/checkout/availability";
 import { getCartPricing } from "@/lib/checkout/pricing";
 import { cn } from "@/lib/cn";
 import type { Store } from "@/lib/db/types";
@@ -43,6 +44,7 @@ export async function StorefrontFrame({
     getCartPricing(store.id),
   ]);
   const { locale, t, paths } = ctx;
+  const blocked = await cartCheckoutBlock(store, cart);
 
   const appearance = storefrontAppearance(theme.settings, store.accentColor);
   const updateLine = updateCartLineAction.bind(null, store.slug);
@@ -72,12 +74,13 @@ export async function StorefrontFrame({
         <ThemeSectionView section={theme.layout.footer} ctx={ctx} preview={preview} />
 
         <CartDrawer
-          cart={toCartDisplay(cart, pricing, store.slug, locale)}
+          cart={toCartDisplay(cart, pricing, store, locale)}
           t={t.cart}
           updateLine={updateLine}
           cartHref={paths.cart}
           catalogHref={paths.catalog}
-          checkoutHref={canAcceptOrders(store) ? paths.checkout : null}
+          checkoutHref={blocked ? null : paths.checkout}
+          checkoutBlockedNote={blocked === "no-shipping" ? t.cart.noShipping : null}
         />
       </div>
     </StorefrontUIProvider>

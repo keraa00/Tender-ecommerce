@@ -4,11 +4,13 @@ import { cookies } from "next/headers";
 
 import { getCart } from "@/lib/cart/queries";
 import { rootDb } from "@/lib/db/root";
-import { OrderStatus, ProductStatus, type Prisma } from "@/lib/db/types";
+import { OrderStatus, Prisma, ProductStatus, type CartKind } from "@/lib/db/types";
 import { DiscountRedemptionError, redeemDiscounts } from "@/lib/discounts/redemption";
 import { isUuid } from "@/lib/ids";
-import type { ShippingAddress } from "./form";
-import { priceCart } from "./pricing";
+import { createOrderPaymentIntent } from "@/lib/payments/intents";
+import { cancelUnpaidOrder, settleOrder } from "@/lib/payments/settle";
+import type { CheckoutDetails } from "./form";
+import { priceCheckout } from "./pricing";
 import {
   appliedDiscountsSnapshot,
   orderAmounts,
@@ -17,13 +19,17 @@ import {
 } from "./totals";
 
 /**
- * Turning a cart into an order.
+ * Turning a cart into an order, and the order into a PaymentIntent.
  *
- * The order is created Unpaid (PENDING). Card payment arrives with Stripe
- * Connect; until then placing an order records it, reserves its discounts and
- * empties the cart, and the seller settles payment with the buyer directly.
- * Stock is not taken here — the README puts inventory with
- * `payment_intent.succeeded`, so an unpaid order does not hold stock forever.
+ * The order is created Unpaid (PENDING) with its discounts redeemed, then a
+ * PaymentIntent for its total is created on the seller's Stripe account and
+ * its client secret handed back for the Payment Element to confirm. The order
+ * becomes PAID — stock taken, cart emptied — in `settleOrder`, when the
+ * payment succeeds. So an abandoned payment holds no stock, and the cart is
+ * still there for the buyer to try again.
+ *
+ * An order that comes to nothing (a 100% discount with free delivery) has no
+ * payment to take and settles in the transaction that creates it.
  */
 
 export type PlaceOrderError =
@@ -31,25 +37,49 @@ export type PlaceOrderError =
   | "stock-changed"
   | "total-changed"
   | "discount-unavailable"
+  /** The store does not deliver to the address, or no rate fits the order. */
+  | "shipping-unavailable"
+  /** The rate the buyer picked no longer applies, or its price moved. */
+  | "shipping-changed"
+  /** Stripe could not create the payment. The order was cancelled. */
+  | "payment-unavailable"
+  /** The total is under Stripe's minimum charge for the currency. */
+  | "below-minimum"
   | "failed";
 
 export type PlaceOrderResult =
-  | { ok: true; orderId: string; orderNumber: number }
+  | {
+      ok: true;
+      orderId: string;
+      orderNumber: number;
+      /** For the Payment Element to confirm; null when there was nothing to pay. */
+      clientSecret: string | null;
+    }
   | { ok: false; error: PlaceOrderError; totalCents?: number };
 
 class StockChanged extends Error {}
+class ShippingChanged extends Error {}
 
 export async function placeOrder(input: {
-  store: { id: string; commissionBps: number; stripeAccountId: string | null };
+  store: {
+    id: string;
+    name: string;
+    commissionBps: number;
+    stripeAccountId: string | null;
+    currency: string;
+  };
   sessionId: string;
+  /** Which of this browser's carts is being checked out. */
+  kind: CartKind;
   buyer: { email: string; userId: string | null };
-  address: ShippingAddress;
-  expectedTotalCents: number;
+  details: CheckoutDetails;
 }): Promise<PlaceOrderResult> {
-  const { store, buyer } = input;
+  const { store, buyer, details } = input;
 
   const cartRow = await rootDb.cart.findUnique({
-    where: { storeId_sessionId: { storeId: store.id, sessionId: input.sessionId } },
+    where: {
+      storeId_sessionId_kind: { storeId: store.id, sessionId: input.sessionId, kind: input.kind },
+    },
     select: { id: true, email: true },
   });
   if (!cartRow) return { ok: false, error: "empty" };
@@ -61,18 +91,49 @@ export async function placeOrder(input: {
     await rootDb.cart.update({ where: { id: cartRow.id }, data: { email: buyer.email } });
   }
 
-  const cart = await getCart(store.id);
+  const cart = await getCart(store.id, input.kind);
   const lines = toPricedLines(cart.lines);
   if (lines.length === 0) return { ok: false, error: "empty" };
 
-  // Priced outside the transaction: loading rules and history is reads only,
-  // and the transaction below holds the store's order counter and each
+  // The form was parsed for the cart the page showed. If what ships has
+  // changed since — a digital item swapped for a mug in another tab — the
+  // address it asked for is the wrong one.
+  const needsShipping = cart.lines.some((line) => line.available && line.requiresShipping);
+  if (needsShipping !== (details.shippingAddress !== null)) {
+    return { ok: false, error: "stock-changed" };
+  }
+
+  // Priced outside the transaction: loading rules, history and zones is reads
+  // only, and the transaction below holds the store's order counter and each
   // discount's row lock, which should be held for as short a time as possible.
-  const pricing = await priceCart(store.id, cart, buyer);
-  if (pricing.totalCents !== input.expectedTotalCents) {
+  // The rate id is the buyer's request; the quote decides whether this store
+  // offers it, to this address, for this order — and at what price.
+  const quote = await priceCheckout(store.id, cart, buyer, {
+    destination: details.shippingAddress
+      ? {
+          countryCode: details.shippingAddress.countryCode,
+          regionCode: details.shippingAddress.regionCode,
+        }
+      : null,
+    requestedRateId: details.shippingRateId,
+  });
+  const { pricing, shipping } = quote;
+
+  if (needsShipping) {
+    if (shipping.state !== "ready") return { ok: false, error: "shipping-unavailable" };
+    // `chooseRate` falls back to the cheapest when the pick no longer
+    // applies. That is right for showing a page, wrong for taking an order.
+    if (shipping.selected.id !== details.shippingRateId) {
+      return { ok: false, error: "shipping-changed", totalCents: pricing.totalCents };
+    }
+  }
+
+  if (pricing.totalCents !== details.expectedTotalCents) {
     return { ok: false, error: "total-changed", totalCents: pricing.totalCents };
   }
 
+  const rate = shipping.state === "ready" ? shipping.selected : null;
+  const zone = shipping.state === "ready" ? shipping.zone : null;
   const amounts = orderAmounts(pricing, store.commissionBps);
   const byLine = new Map(cart.lines.map((line) => [line.id, line]));
 
@@ -126,6 +187,17 @@ export async function placeOrder(input: {
         };
       });
 
+      // The rate as priced must still exist, in this store and zone, at this
+      // price. A seller editing it mid-checkout changes the next quote, not
+      // this order.
+      if (rate && zone) {
+        const current = await tx.shippingRate.findFirst({
+          where: { id: rate.id, storeId: store.id, zoneId: zone.id, priceCents: rate.priceCents },
+          select: { id: true },
+        });
+        if (!current) throw new ShippingChanged();
+      }
+
       // The per-store order number. The increment locks the store row, so two
       // orders at once are numbered one after the other, never the same.
       const { orderSequence } = await tx.store.update({
@@ -141,13 +213,32 @@ export async function placeOrder(input: {
           userId: buyer.userId,
           email: buyer.email,
           status: OrderStatus.PENDING,
+          currency: store.currency,
           ...amounts,
           discountId: primaryDiscountId(pricing.applied),
           appliedDiscounts: appliedDiscountsSnapshot(pricing.applied),
           stripeAccountId: store.stripeAccountId,
-          shippingAddress: input.address,
+          // Snapshots, like the lines: editing the zone or the rate later
+          // must not change what this order says.
+          shippingAddress: details.shippingAddress ?? Prisma.DbNull,
+          billingAddress: details.billingAddress,
+          shippingRateId: rate?.id ?? null,
+          shippingRateName: rate?.name ?? null,
+          shippingZoneName: zone?.name ?? null,
+          shippingMinDays: rate?.minDeliveryDays ?? null,
+          shippingMaxDays: rate?.maxDeliveryDays ?? null,
+          marketingConsent: details.marketingConsent,
+          note: details.note,
         },
-        select: { id: true, orderNumber: true },
+        select: {
+          id: true,
+          storeId: true,
+          orderNumber: true,
+          email: true,
+          currency: true,
+          totalCents: true,
+          platformFeeCents: true,
+        },
       });
 
       // One insert, in cart order. Line ids are uuid v7, so ordering a placed
@@ -167,14 +258,49 @@ export async function placeOrder(input: {
         discountIds: pricing.applied.map((entry) => entry.discountId),
       });
 
-      await tx.cart.delete({ where: { id: cartRow.id } });
+      // The cart stays until the payment succeeds: a declined card sends the
+      // buyer back to a checkout that still has everything in it.
+      if (created.totalCents === 0) {
+        await settleOrder(tx, created, { cartId: cartRow.id, paidAt: new Date() });
+      }
 
       return created;
     });
 
-    return { ok: true, orderId: order.id, orderNumber: order.orderNumber };
+    if (order.totalCents === 0) {
+      return { ok: true, orderId: order.id, orderNumber: order.orderNumber, clientSecret: null };
+    }
+
+    // After the transaction, never inside it: it holds the store's order
+    // counter and each discount's row lock, and Stripe is a network call.
+    const intent = store.stripeAccountId
+      ? await createOrderPaymentIntent(
+          order,
+          { name: store.name, stripeAccountId: store.stripeAccountId },
+          { id: cartRow.id, kind: input.kind },
+        )
+      : ({ ok: false, error: "payment-unavailable" } as const);
+
+    if (!intent.ok) {
+      // Nothing can pay this order now; give its discount uses back.
+      await rootDb.$transaction((tx) => cancelUnpaidOrder(tx, order));
+      return { ok: false, error: intent.error };
+    }
+
+    await rootDb.order.updateMany({
+      where: { id: order.id, stripePaymentIntentId: null },
+      data: { stripePaymentIntentId: intent.id },
+    });
+
+    return {
+      ok: true,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      clientSecret: intent.clientSecret,
+    };
   } catch (error) {
     if (error instanceof StockChanged) return { ok: false, error: "stock-changed" };
+    if (error instanceof ShippingChanged) return { ok: false, error: "shipping-changed" };
     if (error instanceof DiscountRedemptionError) {
       return { ok: false, error: "discount-unavailable" };
     }
@@ -204,16 +330,34 @@ export async function rememberPlacedOrder(storeSlug: string, orderId: string) {
   });
 }
 
+/** The id in the cookie, when it is one. Not yet checked against any store. */
+export async function placedOrderId(): Promise<string | null> {
+  const orderId = (await cookies()).get(LAST_ORDER_COOKIE)?.value;
+  return isUuid(orderId) ? orderId : null;
+}
+
 /** The remembered order, scoped to the store it was placed in. */
 export async function getPlacedOrder(storeId: string) {
-  const orderId = (await cookies()).get(LAST_ORDER_COOKIE)?.value;
-  if (!isUuid(orderId)) return null;
+  const orderId = await placedOrderId();
+  if (!orderId) return null;
 
   return rootDb.order.findFirst({
     where: { id: orderId, storeId },
     select: {
+      id: true,
+      storeId: true,
+      status: true,
+      stripePaymentIntentId: true,
+      stripeAccountId: true,
       orderNumber: true,
       email: true,
+      currency: true,
+      shippingAddress: true,
+      billingAddress: true,
+      shippingRateName: true,
+      shippingMinDays: true,
+      shippingMaxDays: true,
+      note: true,
       subtotalCents: true,
       discountCents: true,
       shippingCents: true,

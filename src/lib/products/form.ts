@@ -3,6 +3,7 @@ import * as z from "zod";
 import { ProductStatus } from "@/lib/db/types";
 import { parseMoneyToCents } from "@/lib/money";
 import { resourceSlugSchema, slugify } from "@/lib/slug";
+import { MAX_WEIGHT_GRAMS, parseWeightToGrams } from "@/lib/weight";
 import { MAX_VARIANTS } from "./constants";
 
 /**
@@ -32,6 +33,8 @@ export type VariantDraft = {
   priceCents: number;
   compareAtPriceCents: number | null;
   inventoryQty: number;
+  /** Typed in kilograms; blank is 0. */
+  weightGrams: number;
 };
 
 export type ProductDraft = {
@@ -39,6 +42,8 @@ export type ProductDraft = {
   slug: string;
   description: string | null;
   status: ProductStatus;
+  /** False for digital products and services — see the Product model. */
+  requiresShipping: boolean;
   variants: VariantDraft[];
 };
 
@@ -135,6 +140,7 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
   const prices = column(formData, "variantPrice");
   const compareAts = column(formData, "variantCompareAt");
   const stocks = column(formData, "variantStock");
+  const weights = column(formData, "variantWeight");
 
   const variants: VariantDraft[] = [];
   const variantRows: Record<number, string> = {};
@@ -192,6 +198,13 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
       continue;
     }
 
+    const weight = (weights[row] ?? "").trim();
+    const weightGrams = weight === "" ? 0 : parseWeightToGrams(weight);
+    if (weightGrams === null || weightGrams > MAX_WEIGHT_GRAMS) {
+      variantRows[row] = "Enter the weight in kilograms, like 0.35.";
+      continue;
+    }
+
     const id = (ids[row] ?? "").trim();
 
     variants.push({
@@ -201,6 +214,7 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
       priceCents,
       compareAtPriceCents,
       inventoryQty,
+      weightGrams,
     });
   }
 
@@ -234,6 +248,8 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
       slug: parsed.success ? parsed.data.slug : "",
       description: parsed.success ? (parsed.data.description ?? null) : null,
       status: parsed.success ? parsed.data.status : ProductStatus.DRAFT,
+      // A checkbox: present when ticked. The form always carries it.
+      requiresShipping: formData.get("requiresShipping") !== null,
       variants,
     },
   };

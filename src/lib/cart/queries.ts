@@ -3,7 +3,8 @@ import "server-only";
 import { cache } from "react";
 
 import { rootDb } from "@/lib/db/root";
-import { ProductStatus } from "@/lib/db/types";
+import { readCheckoutDraft, type CheckoutDraft } from "@/lib/checkout/draft";
+import { CartKind, ProductStatus } from "@/lib/db/types";
 import { cartTotals, MAX_LINE_QUANTITY } from "./rules";
 import { readCartSessionId } from "./session";
 
@@ -25,6 +26,10 @@ export type CartLineView = {
   /** False once the product is unpublished or the option has sold out. */
   available: boolean;
   maxQuantity: number;
+  /** False for a digital product or a service. */
+  requiresShipping: boolean;
+  /** Per item. */
+  weightGrams: number;
 };
 
 export type CartView = {
@@ -35,6 +40,10 @@ export type CartView = {
   discountCodes: string[];
   /** Given at checkout; null until then. */
   email: string | null;
+  /** What checkout has been given so far, unvalidated. */
+  checkoutDraft: CheckoutDraft;
+  /** The rate picked at checkout, if any — a request, re-checked on pricing. */
+  shippingRateId: string | null;
 };
 
 const EMPTY_CART: CartView = {
@@ -43,6 +52,8 @@ const EMPTY_CART: CartView = {
   subtotalCents: 0,
   discountCodes: [],
   email: null,
+  checkoutDraft: readCheckoutDraft(null),
+  shippingRateId: null,
 };
 
 /**
@@ -50,31 +61,34 @@ const EMPTY_CART: CartView = {
  * from the variant, not stored on the line — a cart is a wish list with
  * quantities, and the price that counts is the one at checkout.
  */
-export const getCart = cache(async (storeId: string): Promise<CartView> => {
-  const sessionId = await readCartSessionId();
-  if (!sessionId) return EMPTY_CART;
+export const getCart = cache(
+  async (storeId: string, kind: CartKind = CartKind.STANDARD): Promise<CartView> => {
+    const sessionId = await readCartSessionId();
+    if (!sessionId) return EMPTY_CART;
 
-  const cart = await rootDb.cart.findUnique({
-    where: { storeId_sessionId: { storeId, sessionId } },
-    include: {
-      lines: {
-        // Ids are uuid v7, so this is the order things were added in.
-        orderBy: { id: "asc" },
-        include: {
-          variant: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  title: true,
-                  slug: true,
-                  status: true,
-                  collections: { select: { collectionId: true } },
-                  _count: { select: { variants: true } },
-                  images: {
-                    orderBy: { position: "asc" },
-                    take: 1,
-                    select: { url: true, altText: true },
+    const cart = await rootDb.cart.findUnique({
+      where: { storeId_sessionId_kind: { storeId, sessionId, kind } },
+      include: {
+        lines: {
+          // Ids are uuid v7, so this is the order things were added in.
+          orderBy: { id: "asc" },
+          include: {
+            variant: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    title: true,
+                    slug: true,
+                    status: true,
+                    requiresShipping: true,
+                    collections: { select: { collectionId: true } },
+                    _count: { select: { variants: true } },
+                    images: {
+                      orderBy: { position: "asc" },
+                      take: 1,
+                      select: { url: true, altText: true },
+                    },
                   },
                 },
               },
@@ -82,50 +96,54 @@ export const getCart = cache(async (storeId: string): Promise<CartView> => {
           },
         },
       },
-    },
-  });
-
-  if (!cart) return EMPTY_CART;
-
-  const lines = cart.lines
-    // Belt and braces: the add action already refuses foreign variants.
-    .filter((line) => line.variant.storeId === storeId)
-    .map((line): CartLineView => {
-      const { variant } = line;
-      const { product } = variant;
-      const image = product.images[0];
-      const available =
-        product.status === ProductStatus.ACTIVE && variant.inventoryQty > 0;
-      const maxQuantity = Math.min(
-        Math.max(variant.inventoryQty, 0),
-        MAX_LINE_QUANTITY,
-      );
-
-      return {
-        id: line.id,
-        variantId: variant.id,
-        productId: product.id,
-        collectionIds: product.collections.map((entry) => entry.collectionId),
-        // Stock can fall after something was added. Show what can actually be
-        // bought; the stored quantity is corrected on the next write.
-        quantity: available ? Math.min(line.quantity, maxQuantity) : line.quantity,
-        productTitle: product.title,
-        productSlug: product.slug,
-        variantTitle: variant.title,
-        showVariantTitle:
-          product._count.variants > 1 || variant.title.toLowerCase() !== "default",
-        imageUrl: image?.url ?? null,
-        imageAlt: image?.altText ?? product.title,
-        unitPriceCents: variant.priceCents,
-        available,
-        maxQuantity,
-      };
     });
 
-  return {
-    lines,
-    ...cartTotals(lines),
-    discountCodes: cart.discountCodes,
-    email: cart.email,
-  };
-});
+    if (!cart) return EMPTY_CART;
+
+    const lines = cart.lines
+      // Belt and braces: the add action already refuses foreign variants.
+      .filter((line) => line.variant.storeId === storeId)
+      .map((line): CartLineView => {
+        const { variant } = line;
+        const { product } = variant;
+        const image = product.images[0];
+        const available =
+          product.status === ProductStatus.ACTIVE && variant.inventoryQty > 0;
+        const maxQuantity = Math.min(
+          Math.max(variant.inventoryQty, 0),
+          MAX_LINE_QUANTITY,
+        );
+
+        return {
+          id: line.id,
+          variantId: variant.id,
+          productId: product.id,
+          collectionIds: product.collections.map((entry) => entry.collectionId),
+          // Stock can fall after something was added. Show what can actually be
+          // bought; the stored quantity is corrected on the next write.
+          quantity: available ? Math.min(line.quantity, maxQuantity) : line.quantity,
+          productTitle: product.title,
+          productSlug: product.slug,
+          variantTitle: variant.title,
+          showVariantTitle:
+            product._count.variants > 1 || variant.title.toLowerCase() !== "default",
+          imageUrl: image?.url ?? null,
+          imageAlt: image?.altText ?? product.title,
+          unitPriceCents: variant.priceCents,
+          available,
+          maxQuantity,
+          requiresShipping: product.requiresShipping,
+          weightGrams: variant.weightGrams,
+        };
+      });
+
+    return {
+      lines,
+      ...cartTotals(lines),
+      discountCodes: cart.discountCodes,
+      email: cart.email,
+      checkoutDraft: readCheckoutDraft(cart.checkoutDraft),
+      shippingRateId: cart.shippingRateId,
+    };
+  },
+);

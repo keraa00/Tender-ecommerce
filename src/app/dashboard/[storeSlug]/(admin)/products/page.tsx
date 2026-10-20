@@ -99,8 +99,8 @@ export default async function ProductsPage(
                     <p className="truncate text-sm text-muted tabular">
                       {price
                         ? price.varies
-                          ? `From ${formatMoney(price.min)}`
-                          : formatMoney(price.min)
+                          ? `From ${formatMoney(price.min, store.currency)}`
+                          : formatMoney(price.min, store.currency)
                         : "No price"}
                       {" · "}
                       {stock} in stock

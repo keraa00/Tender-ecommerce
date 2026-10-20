@@ -2,6 +2,7 @@ import "server-only";
 
 import { rootDb } from "@/lib/db/root";
 import { OrderStatus } from "@/lib/db/types";
+import { isUuid } from "@/lib/ids";
 
 /**
  * Seller-admin order reads. Like every other query module here, each function
@@ -30,8 +31,10 @@ export async function listStoreOrders(storeId: string, limit = 50) {
       email: true,
       status: true,
       totalCents: true,
+      currency: true,
       createdAt: true,
       paidAt: true,
+      shippingRateName: true,
       _count: { select: { lines: true } },
     },
   });
@@ -59,3 +62,21 @@ export async function countStoreOrdersByStatus(
   for (const row of rows) counts[row.status] = row._count._all;
   return counts;
 }
+
+/**
+ * One order with everything it snapshotted, for its admin page. The id comes
+ * from the URL, so it only ever narrows a lookup scoped to the store — another
+ * store's order id finds nothing, and the page 404s.
+ */
+export async function getStoreOrder(storeId: string, orderId: string) {
+  if (!isUuid(orderId)) return null;
+  return rootDb.order.findFirst({
+    where: { id: orderId, storeId },
+    include: {
+      lines: { orderBy: { id: "asc" } },
+      user: { select: { id: true } },
+    },
+  });
+}
+
+export type StoreOrderDetail = NonNullable<Awaited<ReturnType<typeof getStoreOrder>>>;

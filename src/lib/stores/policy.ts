@@ -32,20 +32,48 @@ export function canAcceptOrders(store: TradingFields): boolean {
   );
 }
 
-/** Why checkout is unavailable, for the storefront to explain to the buyer. */
-export function checkoutBlockedReason(store: TradingFields): string | null {
-  if (canAcceptOrders(store)) return null;
+/** Why checkout is unavailable. A code, so the storefront can say it in the buyer's language. */
+export type CheckoutBlock =
+  | "suspended"
+  | "payments-not-set-up"
+  | "payments-on-hold"
+  | "unavailable"
+  | "no-shipping";
 
-  if (store.status === StoreStatus.SUSPENDED) {
-    return "This store is suspended and cannot take orders.";
+/**
+ * Why this cart cannot be checked out, or null when it can. Payments come
+ * first — no order can be taken without them — then shipping: a store that
+ * delivers nowhere cannot sell anything that has to be delivered, but its
+ * digital products and services still sell.
+ */
+export function checkoutBlockedReason(
+  store: TradingFields,
+  cart: { requiresShipping: boolean; shipsAnywhere: boolean } = {
+    requiresShipping: false,
+    shipsAnywhere: true,
+  },
+): CheckoutBlock | null {
+  if (!canAcceptOrders(store)) {
+    if (store.status === StoreStatus.SUSPENDED) return "suspended";
+    if (store.stripeAccountId === null || !store.stripeOnboardingComplete) {
+      return "payments-not-set-up";
+    }
+    if (!store.stripeChargesEnabled) return "payments-on-hold";
+    return "unavailable";
   }
-  if (store.stripeAccountId === null || !store.stripeOnboardingComplete) {
-    return "This store hasn't finished setting up payments yet.";
-  }
-  if (!store.stripeChargesEnabled) {
-    return "This store's payment provider has payments on hold.";
-  }
-  return "This store isn't accepting orders right now.";
+
+  if (cart.requiresShipping && !cart.shipsAnywhere) return "no-shipping";
+  return null;
+}
+
+/**
+ * A store's currency is fixed once it has taken an order, of any status.
+ * Every order keeps its own currency, so nothing old would be relabelled —
+ * but revenue, analytics and customer totals add amounts across orders, and a
+ * sum of dollars and euros is not a number anyone should be shown.
+ */
+export function canChangeCurrency(store: { orderCount: number }): boolean {
+  return store.orderCount === 0;
 }
 
 /** Suspended stores are hidden from buyers entirely. */
@@ -74,4 +102,17 @@ export function canEditTheme(membership: Membership): boolean {
  */
 export function canPublishTheme(membership: Membership): boolean {
   return membership.role === StoreMemberRole.OWNER || membership.role === StoreMemberRole.STAFF;
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+/**
+ * Who may connect the store to a Stripe account, or continue its onboarding.
+ * The owner only: onboarding asks for the identity and bank details of the
+ * person the money is paid to, and the account it creates is theirs.
+ */
+export function canManagePayments(membership: Membership): boolean {
+  return membership.role === StoreMemberRole.OWNER;
 }

@@ -52,10 +52,11 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Every path except static assets and image files. Auth cookies must be
-     * refreshed on storefront routes too — a logged-in buyer browsing a store
-     * should stay logged in.
+     * Every path except static assets, image files and inbound webhooks.
+     * Auth cookies must be refreshed on storefront routes too — a logged-in
+     * buyer browsing a store should stay logged in. Webhooks carry no session
+     * and are verified by signature, so the Supabase round trip is skipped.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/webhooks/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif)$).*)",
   ],
 };

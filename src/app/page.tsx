@@ -12,7 +12,7 @@ const STEPS = [
   },
   {
     title: "Connect Stripe",
-    body: "One OAuth redirect. Stripe handles identity checks and payouts; we never touch your bank details.",
+    body: "A few minutes of Stripe-hosted onboarding. Stripe handles identity checks and payouts; we never touch your bank details.",
   },
   {
     title: "Get paid",

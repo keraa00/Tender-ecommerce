@@ -22,11 +22,13 @@ export type ProductCardProduct = {
 export function ProductCard({
   product,
   storeSlug,
+  currency,
   locale,
   t,
 }: {
   product: ProductCardProduct;
   storeSlug: string;
+  currency: string;
   locale: Locale;
   t: Messages["product"];
 }) {
@@ -39,7 +41,7 @@ export function ProductCard({
       variant.compareAtPriceCents > variant.priceCents,
   );
   const money = (cents: number) =>
-    formatMoney(cents, undefined, INTL_LOCALES[locale]);
+    formatMoney(cents, currency, INTL_LOCALES[locale]);
 
   // The struck-through price only makes sense against a single price.
   const compareAt =

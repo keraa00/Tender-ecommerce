@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseCheckoutForm } from "@/lib/checkout/form";
+import { quoteCheckout, type QuoteLine } from "@/lib/checkout/quote";
 import {
   appliedDiscountsSnapshot,
   emptyPricing,
@@ -10,7 +11,9 @@ import {
   toPricedLines,
 } from "@/lib/checkout/totals";
 import type { AppliedDiscount, DiscountRule, DiscountSelection } from "@/lib/discounts/engine";
+import { ANONYMOUS_CUSTOMER } from "@/lib/discounts/segments";
 import { MESSAGES } from "@/lib/i18n/messages";
+import type { RateRule, ZoneRule } from "@/lib/shipping/rates";
 import { codeStatusMessage } from "@/lib/storefront/discount-messages";
 
 const line = (id: string, unitPriceCents: number, quantity = 1, available = true) => ({
@@ -179,15 +182,28 @@ describe("the order's discount record", () => {
 });
 
 describe("parseCheckoutForm", () => {
-  const valid = {
+  const rules = { firstName: "OPTIONAL", company: "HIDDEN", line2: "OPTIONAL", phone: "OPTIONAL" } as const;
+  const options = {
+    needsShipping: true,
+    shippingRules: rules,
+    billingRules: { ...rules, phone: "HIDDEN" as const },
+    orderNote: true,
+    marketingOptIn: true,
+  };
+  const RATE = "01a11058-561a-73eb-81b0-a02d09e8ccce";
+  const valid: Record<string, string> = {
     email: "  Ana.Horvat@Example.COM ",
-    name: "Ana  Horvat",
-    address1: "Ferhadija 12",
-    address2: "",
-    city: "Sarajevo",
-    region: "",
-    postalCode: "71000",
-    country: "Bosnia and Herzegovina",
+    "shipping.countryCode": "PT",
+    "shipping.firstName": "Ana",
+    "shipping.lastName": "Horvat",
+    "shipping.line1": "Rua da Rosa  210",
+    "shipping.city": "Lisbon",
+    "shipping.postalCode": "1200385",
+    "shipping.phone": "+351 912 345 678",
+    shippingRateId: RATE,
+    billingAddress: "same",
+    note: " Leave with a neighbour ",
+    marketingOptIn: "on",
     expectedTotal: "8500",
   };
   const form = (fields: Record<string, string>) => {
@@ -196,41 +212,228 @@ describe("parseCheckoutForm", () => {
     return data;
   };
 
-  it("normalises the email and tidies the address", () => {
-    const result = parseCheckoutForm(form(valid));
+  it("normalises the email and reads a structured address, the rate and the extras", () => {
+    const result = parseCheckoutForm(form(valid), options);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.details).toMatchObject({
+      email: "ana.horvat@example.com",
+      marketingConsent: true,
+      note: "Leave with a neighbour",
+      shippingRateId: RATE,
+      expectedTotalCents: 8500,
+      shippingAddress: {
+        firstName: "Ana",
+        lastName: "Horvat",
+        line1: "Rua da Rosa 210",
+        postalCode: "1200-385",
+        countryCode: "PT",
+        phone: "+351 912 345 678",
+      },
+    });
+    // Same as shipping, by default.
+    expect(result.details.billingAddress).toEqual(result.details.shippingAddress);
+  });
+
+  it("reads a separate billing address, which never asks for the phone", () => {
+    const result = parseCheckoutForm(
+      form({
+        ...valid,
+        billingAddress: "different",
+        "billing.countryCode": "US",
+        "billing.lastName": "Horvat",
+        "billing.line1": "1 Main St",
+        "billing.city": "Austin",
+        "billing.region": "TX",
+        "billing.postalCode": "78701",
+        "billing.phone": "+1 512 555 0100",
+      }),
+      options,
+    );
+    expect(result.ok && result.details.billingAddress).toMatchObject({ countryCode: "US", regionCode: "TX", phone: null });
+  });
+
+  it("reports each problem under its field, prefixed by address", () => {
+    const result = parseCheckoutForm(
+      form({ ...valid, email: "not-an-email", "shipping.city": " ", "shipping.postalCode": "12", shippingRateId: "" }),
+      options,
+    );
     expect(result).toEqual({
-      ok: true,
-      details: {
-        email: "ana.horvat@example.com",
-        address: {
-          name: "Ana Horvat",
-          line1: "Ferhadija 12",
-          line2: null,
-          city: "Sarajevo",
-          region: null,
-          postalCode: "71000",
-          country: "Bosnia and Herzegovina",
-        },
-        expectedTotalCents: 8500,
+      ok: false,
+      fieldErrors: {
+        email: "email",
+        "shipping.city": "required",
+        "shipping.postalCode": "postalCode",
+        shippingRate: "required",
       },
     });
   });
 
-  it("reports each missing or malformed field", () => {
-    const result = parseCheckoutForm(form({ ...valid, email: "not-an-email", city: " ", country: "" }));
-    expect(result).toEqual({
-      ok: false,
-      fieldErrors: { email: "email", city: "required", country: "required" },
-    });
-    expect(parseCheckoutForm(form({ ...valid, postalCode: "1".repeat(21) }))).toEqual({
-      ok: false,
-      fieldErrors: { postalCode: "tooLong" },
+  it("asks only for a billing address when nothing ships", () => {
+    const digital = { ...options, needsShipping: false, billingRules: rules };
+    const result = parseCheckoutForm(
+      form({
+        email: "a@b.co",
+        "billing.countryCode": "GB",
+        "billing.lastName": "Clarke",
+        "billing.line1": "61 Victoria Street",
+        "billing.city": "Bristol",
+        "billing.postalCode": "bs16ad",
+        expectedTotal: "6500",
+      }),
+      digital,
+    );
+    expect(result.ok && result.details).toMatchObject({
+      shippingAddress: null,
+      shippingRateId: null,
+      billingAddress: { postalCode: "BS1 6AD", countryCode: "GB" },
     });
   });
 
+  it("ignores a note or opt-in the store does not offer", () => {
+    const result = parseCheckoutForm(form(valid), { ...options, orderNote: false, marketingOptIn: false });
+    expect(result.ok && [result.details.note, result.details.marketingConsent]).toEqual([null, false]);
+  });
+
   it("turns a missing total into one no cart can match", () => {
-    const result = parseCheckoutForm(form({ ...valid, expectedTotal: "" }));
+    const result = parseCheckoutForm(form({ ...valid, expectedTotal: "" }), options);
     expect(result.ok && result.details.expectedTotalCents).toBe(-1);
+  });
+});
+
+describe("quoteCheckout", () => {
+  const NOW = new Date("2026-10-06T12:00:00Z");
+  const quoteLine = (id: string, unitPriceCents: number, extra: Partial<QuoteLine> = {}): QuoteLine => ({
+    id,
+    productId: `p-${id}`,
+    collectionIds: [],
+    unitPriceCents,
+    quantity: 1,
+    available: true,
+    requiresShipping: true,
+    weightGrams: 500,
+    ...extra,
+  });
+  const shippingRate = (id: string, priceCents: number, extra: Partial<RateRule> = {}): RateRule => ({
+    id,
+    name: id,
+    priceCents,
+    minDeliveryDays: null,
+    maxDeliveryDays: null,
+    minSubtotalCents: null,
+    maxSubtotalCents: null,
+    minWeightGrams: null,
+    maxWeightGrams: null,
+    position: 0,
+    ...extra,
+  });
+  const discountRule = (overrides: Partial<DiscountRule>): DiscountRule => ({
+    id: "d",
+    code: null,
+    title: "Discount",
+    type: "PERCENTAGE",
+    value: 1000,
+    discounted: { appliesTo: "ALL", productIds: [], collectionIds: [] },
+    qualifying: null,
+    buyQuantity: null,
+    getQuantity: null,
+    maxUsesPerOrder: null,
+    minSubtotalCents: null,
+    minQuantity: null,
+    eligibility: "ALL",
+    segments: [],
+    customerEmails: [],
+    usageLimit: null,
+    usageCount: 0,
+    perCustomerLimit: null,
+    combinable: true,
+    startsAt: new Date("2026-01-01T00:00:00Z"),
+    endsAt: null,
+    active: true,
+    ...overrides,
+  });
+  const domestic: ZoneRule = {
+    id: "z-pt",
+    name: "Portugal",
+    restOfWorld: false,
+    countries: [{ countryCode: "PT", regionCodes: [] }],
+    rates: [
+      shippingRate("standard", 490),
+      shippingRate("express", 990),
+      shippingRate("free-over-50", 0, { minSubtotalCents: 5000 }),
+    ],
+  };
+  const lisbon = { countryCode: "PT", regionCode: null };
+  const quote = (overrides: Partial<Parameters<typeof quoteCheckout>[0]>) =>
+    quoteCheckout({
+      lines: [quoteLine("a", 3000)],
+      enteredCodes: [],
+      rules: [],
+      customer: ANONYMOUS_CUSTOMER,
+      customerRedemptions: new Map(),
+      now: NOW,
+      zones: [domestic],
+      destination: lisbon,
+      requestedRateId: null,
+      ...overrides,
+    });
+
+  it("adds the cheapest rate that applies, and lists them all", () => {
+    const result = quote({});
+    expect(result.shipping).toMatchObject({ state: "ready", selected: { id: "standard" } });
+    expect(result.shipping.state === "ready" && result.shipping.rates.map((r) => r.id)).toEqual(["standard", "express"]);
+    expect(result.pricing).toMatchObject({ subtotalCents: 3000, shippingCents: 490, totalCents: 3490 });
+  });
+
+  it("charges the rate the buyer picked", () => {
+    expect(quote({ requestedRateId: "express" }).pricing.totalCents).toBe(3990);
+  });
+
+  it("zeroes the chosen rate under a free-shipping discount", () => {
+    const freeShipping = discountRule({ id: "ship", type: "FREE_SHIPPING", value: 0 });
+    const result = quote({ rules: [freeShipping], requestedRateId: "express" });
+    expect(result.pricing).toMatchObject({
+      shippingCents: 990,
+      shippingDiscountCents: 990,
+      totalCents: 3000,
+      freeShipping: true,
+    });
+    const amounts = orderAmounts(result.pricing, 500);
+    expect(amounts.subtotalCents - amounts.discountCents + amounts.shippingCents).toBe(amounts.totalCents);
+  });
+
+  it("judges price-based rates on the subtotal after item discounts", () => {
+    const tenOff = discountRule({ id: "ten", type: "FIXED_AMOUNT", value: 1000 });
+    // €55 of goods qualifies for free shipping; €45 after the discount does not.
+    const result = quote({ lines: [quoteLine("a", 5500)], rules: [tenOff] });
+    expect(result.shipping.state === "ready" && result.shipping.rates.map((r) => r.id)).toEqual(["standard", "express"]);
+    expect(result.pricing).toMatchObject({ itemsDiscountCents: 1000, shippingCents: 490, totalCents: 4990 });
+    expect(quote({ lines: [quoteLine("a", 5500)] }).pricing.totalCents).toBe(5500);
+  });
+
+  it("weighs only what ships", () => {
+    const heavy: ZoneRule = { ...domestic, rates: [shippingRate("light", 500, { maxWeightGrams: 1000 })] };
+    const lines = [quoteLine("mug", 2000, { weightGrams: 800 }), quoteLine("class", 6500, { weightGrams: 5000, requiresShipping: false })];
+    const result = quote({ lines, zones: [heavy] });
+    expect(result.weightGrams).toBe(800);
+    expect(result.shipping.state).toBe("ready");
+  });
+
+  it("asks for nothing when nothing ships", () => {
+    const result = quote({ lines: [quoteLine("class", 6500, { requiresShipping: false })], destination: null });
+    expect(result.shipping).toEqual({ state: "not-required" });
+    expect(result.pricing).toMatchObject({ shippingCents: 0, totalCents: 6500 });
+  });
+
+  it("waits for an address, and says when the store cannot deliver to one", () => {
+    expect(quote({ destination: null }).shipping).toEqual({ state: "address-needed" });
+    expect(quote({ destination: { countryCode: "FR", regionCode: null } }).shipping).toEqual({ state: "not-shipped" });
+  });
+
+  it("says when a zone has nothing for this order", () => {
+    const minimum: ZoneRule = { ...domestic, rates: [shippingRate("over-150", 3500, { minSubtotalCents: 15_000 })] };
+    expect(quote({ zones: [minimum] }).shipping).toEqual({ state: "no-rates", zone: { id: "z-pt", name: "Portugal" } });
+    expect(quote({ zones: [minimum] }).pricing.totalCents).toBe(3000);
   });
 });
 

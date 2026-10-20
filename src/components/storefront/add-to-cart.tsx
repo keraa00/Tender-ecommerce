@@ -18,15 +18,17 @@ export type PurchasableVariant = {
 };
 
 /**
- * Option picker, price, quantity and the add button. The price shown follows
- * the selected option; the server re-reads the variant on add, so nothing
- * displayed here is trusted for the write.
+ * Option picker, price, quantity, and the two ways to buy: add to the cart, or
+ * "Buy it now" — straight to checkout with this option and quantity alone. The
+ * price shown follows the selected option; the server re-reads the variant on
+ * either, so nothing displayed here is trusted for the write.
  */
 export function AddToCart({
   variants,
   showOptions,
   maxQuantity,
   action,
+  buyNow,
   t,
   stepperLabels,
   errors,
@@ -36,6 +38,8 @@ export function AddToCart({
   showOptions: boolean;
   maxQuantity: number;
   action: (state: AddToCartState, formData: FormData) => Promise<AddToCartState>;
+  /** Null while the store cannot take orders: there is no checkout to go to. */
+  buyNow: ((state: AddToCartState, formData: FormData) => Promise<AddToCartState>) | null;
   t: Messages["product"];
   stepperLabels: { increase: string; decrease: string };
   errors: Record<NonNullable<AddToCartState["error"]>, string>;
@@ -157,11 +161,28 @@ export function AddToCart({
         </div>
 
         <SubmitButton
+          intent="add"
           soldOut={soldOut}
           label={soldOut ? t.soldOut : t.addToCart}
           pendingLabel={t.adding}
         />
       </div>
+
+      {buyNow && !soldOut ? (
+        <SubmitButton
+          intent="buy"
+          variant="secondary"
+          soldOut={soldOut}
+          label={t.buyNow}
+          pendingLabel={t.buyingNow}
+          // Same fields, another action. On success the server redirects to
+          // checkout; only an error comes back here.
+          formAction={async (formData) => {
+            const result = await buyNow({}, formData);
+            if (result.error) setError(errors[result.error]);
+          }}
+        />
+      ) : null}
 
       <p className={cn("text-sm", soldOut ? "text-muted" : lowStock ? "text-warning" : "text-success")}>
         {soldOut
@@ -181,23 +202,42 @@ export function AddToCart({
 }
 
 function SubmitButton({
+  intent,
+  variant = "primary",
   soldOut,
   label,
   pendingLabel,
+  formAction,
 }: {
+  /** Which button this is, so each can tell whether it was the one pressed. */
+  intent: "add" | "buy";
+  variant?: "primary" | "secondary";
   soldOut: boolean;
   label: string;
   pendingLabel: string;
+  formAction?: (formData: FormData) => Promise<void>;
 }) {
-  const { pending } = useFormStatus();
+  const { pending, data } = useFormStatus();
+  // React keeps the `name` of a button with an action of its own to route the
+  // submit, so only the add button posts an intent; any other submit is "buy".
+  const added = data?.get("intent") === "add";
+  const mine = pending && (intent === "add" ? added : !added);
 
   return (
     <button
       type="submit"
+      name={formAction ? undefined : "intent"}
+      value={formAction ? undefined : intent}
+      formAction={formAction}
       disabled={soldOut || pending}
-      className="h-12 min-w-48 flex-1 cursor-pointer rounded-lg px-6 text-base font-medium text-white bg-store-accent transition-colors hover:bg-store-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-store-accent"
+      className={cn(
+        "h-12 cursor-pointer rounded-lg px-6 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "primary"
+          ? "min-w-48 flex-1 text-white bg-store-accent hover:bg-store-accent-hover disabled:hover:bg-store-accent"
+          : "w-full border-2 border-foreground text-foreground hover:bg-foreground hover:text-background disabled:hover:bg-transparent disabled:hover:text-foreground",
+      )}
     >
-      {pending ? pendingLabel : label}
+      {mine ? pendingLabel : label}
     </button>
   );
 }

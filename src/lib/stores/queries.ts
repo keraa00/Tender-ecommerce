@@ -47,13 +47,18 @@ export async function listPublicStores(limit = 12) {
 }
 
 /**
- * The address the storefront's contact page offers buyers. Stores have no
- * separate contact field yet, so this is the owner's account email.
+ * The address buyers are offered — on the contact page and at checkout: the
+ * store's own contact email, falling back to the owner's account email.
+ * `ownerOnly` skips the store's, for the settings page to name the fallback.
  */
-export async function getStoreContactEmail(storeId: string) {
+export async function getStoreContactEmail(
+  storeId: string,
+  { ownerOnly = false }: { ownerOnly?: boolean } = {},
+) {
   const store = await rootDb.store.findUnique({
     where: { id: storeId },
-    select: { owner: { select: { email: true } } },
+    select: { contactEmail: true, owner: { select: { email: true } } },
   });
-  return store?.owner.email ?? null;
+  if (!store) return null;
+  return (ownerOnly ? null : store.contactEmail) ?? store.owner.email;
 }

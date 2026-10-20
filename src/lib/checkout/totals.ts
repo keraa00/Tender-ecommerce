@@ -13,13 +13,6 @@ import { calculatePlatformFee } from "@/lib/money";
  * so the rules are tested without a database — `pricing.ts` does the loading.
  */
 
-/**
- * Stores have no shipping rates yet, so nothing is charged for shipping. A
- * free-shipping discount still applies (and says so); it just saves nothing
- * until rates exist. This constant is the one place to replace.
- */
-export const SHIPPING_CENTS = 0;
-
 /** Codes one cart may hold. The column allows ten; five is plenty to type. */
 export const MAX_CART_CODES = 5;
 
@@ -64,6 +57,12 @@ export type CartPricing = {
   freeShipping: boolean;
 };
 
+/**
+ * The one place a total is added up: lines, less item discounts, plus the
+ * chosen shipping rate, less what a free-shipping discount took off it. Tax,
+ * when it comes (Stripe Tax, computed on this post-discount amount plus
+ * shipping), is one more term here and one more column on the order.
+ */
 export function summarisePricing(
   lines: readonly PricedLine[],
   enteredCodes: readonly string[],
@@ -118,9 +117,9 @@ export function emptyPricing(enteredCodes: readonly string[]): CartPricing {
   return {
     subtotalCents: 0,
     itemsDiscountCents: 0,
-    shippingCents: SHIPPING_CENTS,
+    shippingCents: 0,
     shippingDiscountCents: 0,
-    totalCents: SHIPPING_CENTS,
+    totalCents: 0,
     applied: [],
     lineDiscounts: {},
     codes: enteredCodes.map((code) => ({

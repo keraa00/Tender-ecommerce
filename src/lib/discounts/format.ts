@@ -44,12 +44,12 @@ type ValueFields = Pick<Discount, "type" | "value"> &
  * percentage is stored in basis points, so 1000 is 10%, and printing it raw is
  * how a 10% promotion is announced as 1000% off.
  */
-export function formatDiscountValue(discount: ValueFields): string {
+export function formatDiscountValue(discount: ValueFields, currency: string): string {
   switch (discount.type) {
     case "PERCENTAGE":
       return `${formatPercent(discount.value)}% off`;
     case "FIXED_AMOUNT":
-      return `${formatMoney(discount.value)} off`;
+      return `${formatMoney(discount.value, currency)} off`;
     case "FREE_SHIPPING":
       return "Free shipping";
     case "BUY_X_GET_Y": {
@@ -168,7 +168,7 @@ function joinOr(items: string[]): string {
  * The discount's rules in plain sentences, one per line, in the order a seller
  * reads them: what it gives, what it needs, who gets it, how often, and when.
  */
-export function describeDiscount(discount: DiscountSummary): string[] {
+export function describeDiscount(discount: DiscountSummary, currency: string): string[] {
   const lines: string[] = [];
 
   if (discount.type === "BUY_X_GET_Y") {
@@ -200,7 +200,7 @@ export function describeDiscount(discount: DiscountSummary): string[] {
     lines.push("Free shipping on the order");
   } else {
     lines.push(
-      `${formatDiscountValue(discount)} ${scopePhrase(
+      `${formatDiscountValue(discount, currency)} ${scopePhrase(
         discount.appliesTo,
         discount.productCount,
         discount.collectionCount,
@@ -214,7 +214,7 @@ export function describeDiscount(discount: DiscountSummary): string[] {
 
   if (discount.type !== "BUY_X_GET_Y") {
     if (discount.minSubtotalCents !== null) {
-      lines.push(`Minimum purchase of ${formatMoney(discount.minSubtotalCents)}`);
+      lines.push(`Minimum purchase of ${formatMoney(discount.minSubtotalCents, currency)}`);
     } else if (discount.minQuantity !== null) {
       lines.push(`Minimum of ${plural(discount.minQuantity, "item")}`);
     } else {

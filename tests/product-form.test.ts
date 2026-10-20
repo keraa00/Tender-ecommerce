@@ -9,6 +9,7 @@ type Row = Partial<{
   price: string;
   compareAt: string;
   stock: string;
+  weight: string;
 }>;
 
 function form(
@@ -17,6 +18,7 @@ function form(
     slug: string;
     description: string;
     status: string;
+    requiresShipping: boolean;
   }>,
   rows: Row[] = [{ title: "Default", price: "24.99", stock: "3" }],
 ) {
@@ -25,6 +27,7 @@ function form(
   data.set("slug", fields.slug ?? "");
   data.set("description", fields.description ?? "");
   if (fields.status !== undefined) data.set("status", fields.status);
+  if (fields.requiresShipping ?? true) data.set("requiresShipping", "on");
 
   for (const row of rows) {
     data.append("variantId", row.id ?? "");
@@ -33,6 +36,7 @@ function form(
     data.append("variantPrice", row.price ?? "");
     data.append("variantCompareAt", row.compareAt ?? "");
     data.append("variantStock", row.stock ?? "");
+    data.append("variantWeight", row.weight ?? "");
   }
 
   return data;
@@ -221,5 +225,35 @@ describe("parseProductForm", () => {
   it("only accepts the three real statuses", () => {
     expect(parseProductForm(form({ status: "ACTIVE" })).ok).toBe(true);
     expect(parseProductForm(form({ status: "PUBLISHED" })).ok).toBe(false);
+  });
+});
+
+describe("shipping fields", () => {
+  it("reads each option's weight in kilograms as grams, blank as 0", () => {
+    const result = parseProductForm(
+      form({}, [
+        { title: "Small", price: "10", weight: "0.35" },
+        { title: "Large", price: "12", weight: "1,2 kg" },
+        { title: "Gift card", price: "25" },
+      ]),
+    );
+    expect(result.ok && result.draft.variants.map((variant) => variant.weightGrams)).toEqual([
+      350, 1200, 0,
+    ]);
+  });
+
+  it("rejects a weight that is not a number of kilograms, on its row", () => {
+    const result = parseProductForm(form({}, [{ title: "Default", price: "10", weight: "heavy" }]));
+    expect(result).toEqual({
+      ok: false,
+      fieldErrors: { variantRows: { 0: "Enter the weight in kilograms, like 0.35." } },
+    });
+  });
+
+  it("treats an unticked box as a product that ships nothing", () => {
+    const physical = parseProductForm(form({}));
+    const digital = parseProductForm(form({ requiresShipping: false }));
+    expect(physical.ok && physical.draft.requiresShipping).toBe(true);
+    expect(digital.ok && digital.draft.requiresShipping).toBe(false);
   });
 });

@@ -171,6 +171,19 @@ export function useDiscard() {
   return { key, discard: () => setKey((current) => current + 1) };
 }
 
+/**
+ * Re-renders a form after React's own reset of it. When a form action
+ * settles, React resets the form, and a reset puts every field — controlled
+ * ones included — back to its HTML default. A controlled input is only put
+ * right on its component's next render, so until the seller types again a
+ * radio can show, and post, a choice they did not make. Spread the returned
+ * props onto the `<form>`.
+ */
+export function useResyncAfterReset() {
+  const [, setResets] = useState(0);
+  return { onReset: () => setResets((count) => count + 1) };
+}
+
 /** The form's data as one string: equal strings, nothing to save. */
 function snapshot(form: HTMLFormElement): string {
   const parts: string[] = [];

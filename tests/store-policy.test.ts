@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { StoreMemberRole, StoreStatus } from "@/lib/db/types";
 import {
   canAcceptOrders,
+  canChangeCurrency,
   canEditTheme,
+  canManagePayments,
   canPublishTheme,
   checkoutBlockedReason,
   isStorePubliclyVisible,
@@ -59,19 +61,40 @@ describe("checkoutBlockedReason", () => {
       status: StoreStatus.SUSPENDED,
       stripeChargesEnabled: false,
     });
-    expect(reason).toMatch(/suspended/i);
+    expect(reason).toBe("suspended");
   });
 
   it("explains incomplete onboarding", () => {
-    expect(
-      checkoutBlockedReason({ ...tradeable, stripeOnboardingComplete: false }),
-    ).toMatch(/setting up payments/i);
+    expect(checkoutBlockedReason({ ...tradeable, stripeOnboardingComplete: false })).toBe(
+      "payments-not-set-up",
+    );
   });
 
   it("distinguishes charges being on hold from onboarding", () => {
+    expect(checkoutBlockedReason({ ...tradeable, stripeChargesEnabled: false })).toBe(
+      "payments-on-hold",
+    );
+  });
+
+  it("blocks a cart that has to be delivered by a store that delivers nowhere", () => {
     expect(
-      checkoutBlockedReason({ ...tradeable, stripeChargesEnabled: false }),
-    ).toMatch(/on hold/i);
+      checkoutBlockedReason(tradeable, { requiresShipping: true, shipsAnywhere: false }),
+    ).toBe("no-shipping");
+  });
+
+  it("still sells digital products when nothing can be shipped", () => {
+    expect(
+      checkoutBlockedReason(tradeable, { requiresShipping: false, shipsAnywhere: false }),
+    ).toBeNull();
+  });
+
+  it("puts a payments problem ahead of a shipping one", () => {
+    expect(
+      checkoutBlockedReason(
+        { ...tradeable, stripeChargesEnabled: false },
+        { requiresShipping: true, shipsAnywhere: false },
+      ),
+    ).toBe("payments-on-hold");
   });
 });
 
@@ -96,5 +119,19 @@ describe("theme permissions", () => {
     const unknown = { role: "VIEWER" as StoreMemberRole };
     expect(canEditTheme(unknown)).toBe(false);
     expect(canPublishTheme(unknown)).toBe(false);
+  });
+});
+
+describe("canManagePayments", () => {
+  it("lets only the owner connect or change the Stripe account", () => {
+    expect(canManagePayments({ role: StoreMemberRole.OWNER })).toBe(true);
+    expect(canManagePayments({ role: StoreMemberRole.STAFF })).toBe(false);
+  });
+});
+
+describe("canChangeCurrency", () => {
+  it("lets a store change currency only before its first order", () => {
+    expect(canChangeCurrency({ orderCount: 0 })).toBe(true);
+    expect(canChangeCurrency({ orderCount: 1 })).toBe(false);
   });
 });

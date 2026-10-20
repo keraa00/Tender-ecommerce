@@ -30,11 +30,11 @@ export function discountCodeErrors(locale: Locale): Record<DiscountCodeError, st
 export function toCartDisplay(
   cart: CartView,
   pricing: CartPricing,
-  storeSlug: string,
+  store: { slug: string; currency: string },
   locale: Locale,
 ): CartDisplay {
-  const money = (cents: number) => formatMoney(cents, undefined, INTL_LOCALES[locale]);
-  const paths = storefrontPaths(storeSlug);
+  const money = (cents: number) => formatMoney(cents, store.currency, INTL_LOCALES[locale]);
+  const paths = storefrontPaths(store.slug);
   const t = MESSAGES[locale];
 
   return {

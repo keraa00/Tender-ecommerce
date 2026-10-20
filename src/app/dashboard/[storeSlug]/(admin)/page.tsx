@@ -12,6 +12,8 @@ import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
 import { getStoreTotals } from "@/lib/analytics/queries";
 import { rootDb } from "@/lib/db/root";
 import { formatMoney } from "@/lib/money";
+import { loadZoneRules } from "@/lib/shipping/queries";
+import { shipsAnywhere, shipsTo } from "@/lib/shipping/rates";
 import { getStoreContext } from "@/lib/stores/context";
 import { canAcceptOrders } from "@/lib/stores/policy";
 
@@ -42,13 +44,16 @@ export default async function StoreOverviewPage(
   const { storeSlug } = await props.params;
   const { store } = await getStoreContext(storeSlug);
 
-  const [productCount, totals] = await Promise.all([
+  const [productCount, totals, zones] = await Promise.all([
     rootDb.product.count({ where: { storeId: store.id } }),
     getStoreTotals(store.id),
+    loadZoneRules(store.id),
   ]);
 
   const paymentsLive = canAcceptOrders(store);
   const hasProducts = productCount > 0;
+  const shipping = shipsAnywhere(zones);
+  const coverage = shipsTo(zones);
 
   const steps: Step[] = [
     {
@@ -74,7 +79,16 @@ export default async function StoreOverviewPage(
         ? "Payments are live. Buyers can check out."
         : "Buyers can browse your store, but the buy button stays disabled until Stripe onboarding is finished.",
       done: paymentsLive,
-      shipped: false,
+      shipped: true,
+      action: (
+        <ButtonLink
+          href={storeAdminPath(store.slug, "settings/payments")}
+          variant={paymentsLive ? "secondary" : "primary"}
+          size="sm"
+        >
+          {paymentsLive ? "Manage" : "Set up"}
+        </ButtonLink>
+      ),
     },
     {
       title: "Add your first product",
@@ -93,6 +107,25 @@ export default async function StoreOverviewPage(
           size="sm"
         >
           {hasProducts ? "Manage" : "Add product"}
+        </ButtonLink>
+      ),
+    },
+    {
+      title: "Set up shipping",
+      body: shipping
+        ? coverage.everywhere
+          ? "You ship to every country."
+          : `You ship to ${coverage.countryCodes.length} ${coverage.countryCodes.length === 1 ? "country" : "countries"}.`
+        : "Add a shipping zone with at least one rate. Until then, buyers can only check out digital products and services.",
+      done: shipping,
+      shipped: true,
+      action: (
+        <ButtonLink
+          href={storeAdminPath(store.slug, "settings/shipping")}
+          variant={shipping ? "secondary" : "primary"}
+          size="sm"
+        >
+          {shipping ? "Manage" : "Set up"}
         </ButtonLink>
       ),
     },
@@ -124,10 +157,10 @@ export default async function StoreOverviewPage(
           hint={hasProducts ? undefined : "Nothing listed yet"}
         />
         <Stat label="Orders" value={String(totals.orders)} hint="Paid to date" />
-        <Stat label="Revenue" value={formatMoney(totals.grossCents)} />
+        <Stat label="Revenue" value={formatMoney(totals.grossCents, store.currency)} />
         <Stat
           label="Your earnings"
-          value={formatMoney(totals.netCents)}
+          value={formatMoney(totals.netCents, store.currency)}
           hint="After commission"
         />
       </StatGrid>
@@ -160,8 +193,7 @@ export default async function StoreOverviewPage(
         {blocked ? (
           <p className="mt-3 text-sm text-muted text-pretty">
             Steps marked <span className="font-medium">Coming soon</span> are not
-            in this build yet — Stripe Connect onboarding is the next milestone.
-            There is nothing to action on them for now.
+            in this build yet. There is nothing to action on them for now.
           </p>
         ) : null}
       </section>

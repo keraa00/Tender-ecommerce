@@ -33,6 +33,7 @@ export default async function NewDiscountPage(
         options={options}
         submitLabel="Save discount"
         now={now.toISOString()}
+        currency={store.currency}
       />
     </AdminPage>
   );
