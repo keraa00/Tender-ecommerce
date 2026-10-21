@@ -9,27 +9,46 @@ import { rootDb } from "@/lib/db/root";
 import type { Store } from "@/lib/db/types";
 import { getStripe } from "@/lib/stripe/server";
 import {
-  CONNECT_CONTROLLER,
+  ACCOUNT_INCLUDE,
+  connectedAccountParams,
   isAccountUnreachable,
   storeFieldsFromAccount,
   type StoreStripeFields,
 } from "./rules";
 
 /**
- * Connected accounts: creating one for a store, sending its owner through
- * Stripe-hosted onboarding, and copying what Stripe says about it onto the
- * store row that gates checkout.
+ * Connected accounts, through Stripe's Accounts v2 API: creating one for a
+ * store, sending its owner through Stripe-hosted onboarding, and copying what
+ * Stripe says about it onto the store row that gates checkout.
  *
  * Stripe is the source of truth for whether a seller can be paid. The store
- * columns are a cache of it, refreshed from `account.updated` and whenever the
- * owner opens Settings → Payments — so a missed webhook costs a page view, not
- * a store stuck closed.
+ * columns are a cache of it, refreshed from `account.updated` and
+ * `capability.updated`, and whenever the owner opens Settings → Payments — so
+ * a missed webhook costs a page view, not a store stuck closed.
+ *
+ * Accounts created earlier through Accounts v1 are read and onboarded the same
+ * way: Accounts v2 manages them too.
  */
 
-/** The account, or null when the stored id is unusable (see `isAccountUnreachable`). */
-export async function retrieveAccount(accountId: string): Promise<Stripe.Account | null> {
+export type ConnectedAccount = Stripe.V2.Core.Account;
+
+/** Thrown when an account has to be created and no country was chosen. */
+export class CountryRequiredError extends Error {
+  constructor() {
+    super("A country is required to create a connected account.");
+    this.name = "CountryRequiredError";
+  }
+}
+
+/**
+ * The account with its merchant configuration and requirements, or null when
+ * the stored id is unusable — see `isAccountUnreachable` — or the account was
+ * closed.
+ */
+export async function retrieveAccount(accountId: string): Promise<ConnectedAccount | null> {
   try {
-    return await getStripe().accounts.retrieve(accountId);
+    const account = await getStripe().v2.core.accounts.retrieve(accountId, { include: ACCOUNT_INCLUDE });
+    return account.closed ? null : account;
   } catch (error) {
     if (isAccountUnreachable(error)) return null;
     throw error;
@@ -38,36 +57,39 @@ export async function retrieveAccount(accountId: string): Promise<Stripe.Account
 
 /**
  * The store's connected account id, creating the account when there is none
- * or the stored one is unusable — a leftover placeholder, or a test id under a
- * live key.
+ * or the stored one is unusable — a leftover placeholder, a closed account, or
+ * a test id under a live key. Creating one needs the country the business is
+ * based in, which Accounts v2 asks for up front and never lets change.
  *
  * Two clicks racing here create one account: the idempotency key is the store,
- * the id being replaced and the current minute, so both get the same account
- * back, and the compare-and-set below lets only one of them write it. The
- * minute is there because Stripe replays a key's first response — errors
- * included — for a day: a request refused before the owner fixed their
+ * the id being replaced, the country and the current minute, so both get the
+ * same account back, and the compare-and-set below lets only one of them write
+ * it. The minute is there because Stripe replays a key's first response —
+ * errors included — for a day: a request refused before the owner fixed their
  * Stripe settings must not keep being refused after.
  */
-export async function ensureConnectedAccount(store: Store, ownerEmail: string): Promise<string> {
+export async function ensureConnectedAccount(
+  store: Store,
+  ownerEmail: string,
+  country: string | null,
+): Promise<string> {
   if (store.stripeAccountId) {
     const existing = await retrieveAccount(store.stripeAccountId);
     if (existing) return existing.id;
   }
+  if (!country) throw new CountryRequiredError();
 
-  const website = publicUrl(storefrontUrl(store.slug));
-  const account = await getStripe().accounts.create(
+  const account = await getStripe().v2.core.accounts.create(
+    connectedAccountParams({
+      storeId: store.id,
+      storeSlug: store.slug,
+      storeName: store.name,
+      ownerEmail,
+      country,
+      website: publicUrl(storefrontUrl(store.slug)),
+    }),
     {
-      controller: CONNECT_CONTROLLER,
-      email: ownerEmail,
-      business_profile: {
-        name: store.name,
-        // Stripe rejects localhost and other non-public URLs here.
-        ...(website ? { url: website } : {}),
-      },
-      metadata: { store_id: store.id, store_slug: store.slug },
-    },
-    {
-      idempotencyKey: `connect-account:${store.id}:${store.stripeAccountId ?? "none"}:${Math.floor(Date.now() / 60_000)}`,
+      idempotencyKey: `connect-account:${store.id}:${store.stripeAccountId ?? "none"}:${country}:${Math.floor(Date.now() / 60_000)}`,
     },
   );
 
@@ -101,11 +123,12 @@ export async function createOnboardingLink(slug: string, accountId: string): Pro
     adminAbsoluteUrl(slug, "settings/payments?onboarding=returned"),
   ]);
 
-  const link = await getStripe().accountLinks.create({
+  const link = await getStripe().v2.core.accountLinks.create({
     account: accountId,
-    type: "account_onboarding",
-    refresh_url: refreshUrl,
-    return_url: returnUrl,
+    use_case: {
+      type: "account_onboarding",
+      account_onboarding: { refresh_url: refreshUrl, return_url: returnUrl },
+    },
   });
   return link.url;
 }
@@ -114,7 +137,7 @@ export async function createOnboardingLink(slug: string, accountId: string): Pro
  * Copies the account's state onto the store it belongs to. Null when no store
  * holds the account — it was replaced, or belongs to another environment.
  */
-export async function syncStoreFromAccount(account: Stripe.Account): Promise<StoreStripeFields | null> {
+export async function syncStoreFromAccount(account: ConnectedAccount): Promise<StoreStripeFields | null> {
   const store = await rootDb.store.findUnique({
     where: { stripeAccountId: account.id },
     select: { id: true, status: true, stripeChargesEnabled: true },

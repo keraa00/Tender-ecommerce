@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { PostalAddress } from "@/lib/address/types";
 import { CartKind, OrderStatus, StoreStatus } from "@/lib/db/types";
 import {
-  CONNECT_CONTROLLER,
   ORDER_METADATA_KEY,
+  STRIPE_MERCHANT_COUNTRIES,
+  accountReadiness,
+  connectedAccountParams,
+  eventSignalsCardActive,
   isAccountUnreachable,
+  isStripeMerchantCountry,
   orderPaymentIntentParams,
   paymentMismatch,
   paymentOutcome,
@@ -15,27 +19,111 @@ import {
   supersedeAction,
 } from "@/lib/payments/rules";
 
-const onboarded = { details_submitted: true, charges_enabled: true, payouts_enabled: true };
+/** An Accounts v2 account, as far as readiness is concerned. */
+function account(input: {
+  card?: string;
+  payouts?: string;
+  entries?: Array<[from: "user" | "stripe", status: "currently_due" | "eventually_due" | "past_due"]>;
+}) {
+  return {
+    configuration: {
+      merchant: {
+        capabilities: {
+          ...(input.card ? { card_payments: { status: input.card } } : {}),
+          ...(input.payouts ? { stripe_balance: { payouts: { status: input.payouts } } } : {}),
+        },
+      },
+    },
+    requirements: {
+      entries: (input.entries ?? []).map(([from, status]) => ({
+        awaiting_action_from: from,
+        minimum_deadline: { status },
+      })),
+    },
+  };
+}
 
-describe("CONNECT_CONTROLLER", () => {
-  it("is the Standard-equivalent configuration", () => {
-    expect(CONNECT_CONTROLLER).toEqual({
-      stripe_dashboard: { type: "full" },
-      fees: { payer: "account" },
-      losses: { payments: "stripe" },
-      requirement_collection: "stripe",
+const live = account({ card: "active", payouts: "active" });
+
+describe("connectedAccountParams", () => {
+  const input = {
+    storeId: "store-1",
+    storeSlug: "nordhavn-supply",
+    storeName: "Nordhavn Supply",
+    ownerEmail: "owner@example.com",
+    country: "HR",
+    website: null,
+  };
+
+  it("creates a Standard-equivalent account: full Dashboard, Stripe collects fees and carries losses", () => {
+    const params = connectedAccountParams(input);
+    expect(params.dashboard).toBe("full");
+    expect(params.defaults?.responsibilities).toEqual({ fees_collector: "stripe", losses_collector: "stripe" });
+    expect(params.configuration).toEqual({ merchant: { capabilities: { card_payments: { requested: true } } } });
+  });
+
+  it("sets the country, lower-cased, and identifies the store", () => {
+    const params = connectedAccountParams(input);
+    expect(params.identity).toEqual({ country: "hr" });
+    expect(params.contact_email).toBe("owner@example.com");
+    expect(params.display_name).toBe("Nordhavn Supply");
+    expect(params.metadata).toEqual({ store_id: "store-1", store_slug: "nordhavn-supply" });
+    expect(params.include).toEqual(expect.arrayContaining(["configuration.merchant", "requirements"]));
+  });
+
+  it("only sends a website when there is a public one", () => {
+    expect(connectedAccountParams(input).defaults).not.toHaveProperty("profile");
+    expect(connectedAccountParams({ ...input, website: "https://tender.example/s/nordhavn-supply" }).defaults?.profile)
+      .toEqual({ business_url: "https://tender.example/s/nordhavn-supply" });
+  });
+});
+
+describe("STRIPE_MERCHANT_COUNTRIES", () => {
+  it("lists where sellers can take card payments, and nowhere Stripe only pays out to", () => {
+    expect(isStripeMerchantCountry("US")).toBe(true);
+    expect(isStripeMerchantCountry("HR")).toBe(true);
+    expect(isStripeMerchantCountry("BA")).toBe(false);
+    expect(isStripeMerchantCountry("RS")).toBe(false);
+    expect(isStripeMerchantCountry("us")).toBe(false);
+    expect(isStripeMerchantCountry(null)).toBe(false);
+    expect(new Set(STRIPE_MERCHANT_COUNTRIES).size).toBe(STRIPE_MERCHANT_COUNTRIES.length);
+  });
+});
+
+describe("accountReadiness", () => {
+  it("is live once card payments and payouts are active and nothing is due", () => {
+    expect(accountReadiness(live)).toEqual({
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      dueCount: 0,
     });
+  });
+
+  it("counts only what is waiting on the seller now", () => {
+    const fresh = account({
+      card: "restricted",
+      payouts: "restricted",
+      entries: [["user", "past_due"], ["user", "currently_due"], ["user", "eventually_due"], ["stripe", "currently_due"]],
+    });
+    expect(accountReadiness(fresh)).toMatchObject({ chargesEnabled: false, detailsSubmitted: false, dueCount: 2 });
+  });
+
+  it("is submitted while Stripe verifies — the rest is Stripe's to do", () => {
+    const reviewing = account({ card: "pending", entries: [["stripe", "currently_due"], ["user", "eventually_due"]] });
+    expect(accountReadiness(reviewing)).toMatchObject({ chargesEnabled: false, detailsSubmitted: true, dueCount: 0 });
+  });
+
+  it("is not submitted when card payments were never requested, even with nothing listed", () => {
+    expect(accountReadiness(account({}))).toMatchObject({ detailsSubmitted: false, chargesEnabled: false });
+    expect(accountReadiness({})).toMatchObject({ detailsSubmitted: false, payoutsEnabled: false });
   });
 });
 
 describe("storeFieldsFromAccount", () => {
-  it("copies the account's flags onto the store", () => {
-    expect(
-      storeFieldsFromAccount(
-        { details_submitted: true, charges_enabled: false, payouts_enabled: false },
-        StoreStatus.ACTIVE,
-      ),
-    ).toEqual({
+  it("copies the account's state onto the store", () => {
+    const reviewing = account({ card: "pending", entries: [["stripe", "currently_due"]] });
+    expect(storeFieldsFromAccount(reviewing, StoreStatus.ACTIVE)).toEqual({
       stripeOnboardingComplete: true,
       stripeChargesEnabled: false,
       stripePayoutsEnabled: false,
@@ -44,22 +132,22 @@ describe("storeFieldsFromAccount", () => {
   });
 
   it("opens a new store once onboarding is done and charges are enabled", () => {
-    expect(storeFieldsFromAccount(onboarded, StoreStatus.PENDING).status).toBe(StoreStatus.ACTIVE);
+    expect(storeFieldsFromAccount(live, StoreStatus.PENDING).status).toBe(StoreStatus.ACTIVE);
   });
 
-  it("leaves a new store pending while Stripe is still reviewing it", () => {
-    const reviewing = { ...onboarded, charges_enabled: false };
+  it("leaves a new store pending while Stripe is still reviewing it, or the seller hasn't finished", () => {
+    const reviewing = account({ card: "pending" });
     expect(storeFieldsFromAccount(reviewing, StoreStatus.PENDING).status).toBe(StoreStatus.PENDING);
-    const unfinished = { ...onboarded, details_submitted: false };
+    const unfinished = account({ card: "restricted", entries: [["user", "past_due"]] });
     expect(storeFieldsFromAccount(unfinished, StoreStatus.PENDING).status).toBe(StoreStatus.PENDING);
   });
 
   it("never reopens a store the platform suspended", () => {
-    expect(storeFieldsFromAccount(onboarded, StoreStatus.SUSPENDED).status).toBe(StoreStatus.SUSPENDED);
+    expect(storeFieldsFromAccount(live, StoreStatus.SUSPENDED).status).toBe(StoreStatus.SUSPENDED);
   });
 
   it("never closes an active store when charges are paused — the flag gates checkout", () => {
-    const paused = { ...onboarded, charges_enabled: false };
+    const paused = account({ card: "restricted", payouts: "active" });
     const fields = storeFieldsFromAccount(paused, StoreStatus.ACTIVE);
     expect(fields.status).toBe(StoreStatus.ACTIVE);
     expect(fields.stripeChargesEnabled).toBe(false);
@@ -67,10 +155,12 @@ describe("storeFieldsFromAccount", () => {
 });
 
 describe("isAccountUnreachable", () => {
-  it("is true when Stripe says the account is missing or out of reach", () => {
+  it("is true when Stripe says the account id is unusable", () => {
     expect(isAccountUnreachable({ code: "resource_missing" })).toBe(true);
     expect(isAccountUnreachable({ code: "account_invalid", statusCode: 403 })).toBe(true);
-    expect(isAccountUnreachable({ type: "StripePermissionError", statusCode: 403 })).toBe(true);
+    // Accounts v2: a malformed id (an old placeholder), and an unknown one.
+    expect(isAccountUnreachable({ code: "invalid_fields", statusCode: 400 })).toBe(true);
+    expect(isAccountUnreachable({ type: "StripePermissionError", code: "forbidden", statusCode: 403 })).toBe(true);
     expect(isAccountUnreachable({ statusCode: 404 })).toBe(true);
   });
 
@@ -226,5 +316,58 @@ describe("stripeLocale", () => {
     expect(stripeLocale("en")).toBe("en");
     expect(stripeLocale("ja")).toBe("ja");
     expect(stripeLocale("bs")).toBe("hr");
+  });
+});
+
+describe("eventSignalsCardActive", () => {
+  const now = new Date("2026-10-21T12:00:00Z");
+  const at = (secondsAgo: number) => now.getTime() / 1000 - secondsAgo;
+
+  it("is true for a recent event saying card payments are on", () => {
+    expect(
+      eventSignalsCardActive(
+        { type: "account.updated", created: at(5), data: { object: { charges_enabled: true } } },
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      eventSignalsCardActive(
+        { type: "capability.updated", created: at(5), data: { object: { id: "card_payments", status: "active" } } },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when the event says anything else", () => {
+    expect(
+      eventSignalsCardActive(
+        { type: "account.updated", created: at(5), data: { object: { charges_enabled: false } } },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      eventSignalsCardActive(
+        { type: "capability.updated", created: at(5), data: { object: { id: "transfers", status: "active" } } },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      eventSignalsCardActive(
+        { type: "capability.updated", created: at(5), data: { object: { id: "card_payments", status: "pending" } } },
+        now,
+      ),
+    ).toBe(false);
+    expect(eventSignalsCardActive({ type: "payment_intent.succeeded", created: at(5), data: { object: {} } }, now)).toBe(
+      false,
+    );
+  });
+
+  it("ignores old events, so a stale one is never retried for days", () => {
+    expect(
+      eventSignalsCardActive(
+        { type: "account.updated", created: at(11 * 60), data: { object: { charges_enabled: true } } },
+        now,
+      ),
+    ).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ import type Stripe from "stripe";
 import { rootDb } from "@/lib/db/root";
 import { isStripeTestMode } from "@/lib/stripe/server";
 import { disconnectAccount, retrieveAccount, syncStoreFromAccount } from "./accounts";
-import { ORDER_METADATA_KEY } from "./rules";
+import { accountReadiness, eventSignalsCardActive, ORDER_METADATA_KEY } from "./rules";
 import { cancelUnpaidOrder, markOrderPaid } from "./settle";
 
 /**
@@ -42,11 +42,31 @@ export async function handleConnectEvent(event: Stripe.Event): Promise<void> {
 /** True when the event concerned Tender and was acted on. */
 async function dispatch(event: Stripe.Event, accountId: string | null): Promise<boolean> {
   switch (event.type) {
-    case "account.updated": {
-      // Events arrive out of order; the account as it is now beats the
-      // snapshot in whichever event happened to land last.
-      const account = await retrieveAccount(event.data.object.id);
+    case "account.updated":
+    case "capability.updated": {
+      // Either can be the one that says card payments just switched on —
+      // `capability.updated` is the one Stripe sends when a capability
+      // becomes active. Events arrive out of order, so neither payload is
+      // trusted: the account as it is now beats whichever event landed last.
+      const id = accountId ?? (event.type === "account.updated" ? event.data.object.id : null);
+      if (!id) return false;
+      let account = await retrieveAccount(id);
       if (!account) return false;
+
+      // The v2 read can trail the event by a few seconds. When the event says
+      // card payments just went live, give the read a moment to catch up;
+      // failing that, throw — a 500 makes Stripe deliver the event again
+      // later, where marking it handled would leave the store closed.
+      if (eventSignalsCardActive(event)) {
+        for (let attempt = 0; attempt < 3 && !accountReadiness(account).chargesEnabled; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          account = (await retrieveAccount(id)) ?? account;
+        }
+        if (!accountReadiness(account).chargesEnabled) {
+          throw new Error(`Account ${id} is not active in Accounts v2 yet; leaving ${event.id} for Stripe to redeliver.`);
+        }
+      }
+
       return (await syncStoreFromAccount(account)) !== null;
     }
 

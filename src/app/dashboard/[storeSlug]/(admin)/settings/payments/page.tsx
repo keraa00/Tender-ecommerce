@@ -1,14 +1,23 @@
 import type { Metadata } from "next";
-import type Stripe from "stripe";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import { AdminPage } from "@/components/admin/page-shell";
 import { ConnectStripeButton } from "@/components/settings/connect-stripe-button";
 import { Badge } from "@/components/ui/badge";
 import { StoreStatus } from "@/lib/db/types";
-import { retrieveAccount, syncStoreFromAccount } from "@/lib/payments/accounts";
+import { acceptLanguageRegions } from "@/lib/checkout/country";
+import {
+  retrieveAccount,
+  syncStoreFromAccount,
+  type ConnectedAccount,
+} from "@/lib/payments/accounts";
 import { startStripeOnboardingAction } from "@/lib/payments/actions";
-import type { StoreStripeFields } from "@/lib/payments/rules";
+import {
+  accountReadiness,
+  STRIPE_MERCHANT_COUNTRIES,
+  type StoreStripeFields,
+} from "@/lib/payments/rules";
 import { getStoreContext } from "@/lib/stores/context";
 import { canManagePayments } from "@/lib/stores/policy";
 import { isStripeConfigured, isStripeTestMode } from "@/lib/stripe/server";
@@ -25,7 +34,23 @@ type Snapshot =
   | { kind: "unconfigured" }
   | { kind: "not-connected" }
   | { kind: "unreachable"; fields: StoreStripeFields }
-  | { kind: "connected"; account: Stripe.Account; fields: StoreStripeFields };
+  | { kind: "connected"; account: ConnectedAccount; fields: StoreStripeFields };
+
+type CountryOption = { code: string; name: string };
+
+/**
+ * The countries a seller can connect from, named in English like the rest of
+ * the admin, and a guess at theirs from the browser's languages.
+ */
+function countryChoices(acceptLanguage: string | null): { options: CountryOption[]; guess: string } {
+  const names = new Intl.DisplayNames(["en"], { type: "region" });
+  const options = STRIPE_MERCHANT_COUNTRIES.map((code) => ({ code, name: names.of(code) ?? code })).sort(
+    (a, b) => a.name.localeCompare(b.name, "en"),
+  );
+  const supported = new Set<string>(STRIPE_MERCHANT_COUNTRIES);
+  const guess = acceptLanguageRegions(acceptLanguage).find((region) => supported.has(region)) ?? "";
+  return { options, guess };
+}
 
 /**
  * Settings → Payments. Reads the connected account from Stripe on every view
@@ -39,6 +64,7 @@ export default async function PaymentsSettingsPage(
   const { store, membership } = await getStoreContext(storeSlug);
   const canManage = canManagePayments(membership);
   const action = startStripeOnboardingAction.bind(null, storeSlug);
+  const countries = countryChoices((await headers()).get("accept-language"));
 
   const cached: StoreStripeFields = {
     stripeOnboardingComplete: store.stripeOnboardingComplete,
@@ -70,7 +96,7 @@ export default async function PaymentsSettingsPage(
       description="Buyers pay by card and wallet through Stripe, straight into your own Stripe account."
     >
       <div className="space-y-6">
-        <Panel snapshot={snapshot} canManage={canManage} action={action} />
+        <Panel snapshot={snapshot} canManage={canManage} action={action} countries={countries} />
 
         {snapshot.kind === "connected" || snapshot.kind === "unreachable" ? (
           snapshot.fields.status === StoreStatus.SUSPENDED ? (
@@ -105,10 +131,12 @@ function Panel({
   snapshot,
   canManage,
   action,
+  countries,
 }: {
   snapshot: Snapshot;
   canManage: boolean;
   action: Parameters<typeof ConnectStripeButton>[0]["action"];
+  countries: { options: CountryOption[]; guess: string };
 }) {
   const ownerOnly = (
     <p className="text-sm text-muted">Only the store owner can connect or change the Stripe account.</p>
@@ -131,12 +159,34 @@ function Panel({
         <Card title="Connect Stripe" badge={<Badge tone="warning">Not connected</Badge>}>
           <p>
             Buyers can browse your store, but checkout stays closed until you connect a
-            Stripe account. Stripe will ask for your business details and a bank account for
+            Stripe account. Choose where your business is based — it can&apos;t be changed
+            later — and Stripe will ask for your business details and a bank account for
             payouts. It takes a few minutes.
           </p>
           <div className="mt-4">
-            {canManage ? <ConnectStripeButton action={action} label="Connect with Stripe" /> : ownerOnly}
+            {canManage ? (
+              <ConnectStripeButton
+                action={action}
+                label="Connect with Stripe"
+                countries={countries.options}
+                defaultCountry={countries.guess}
+              />
+            ) : (
+              ownerOnly
+            )}
           </div>
+          <p className="mt-3 text-xs">
+            Not listed? Stripe isn&apos;t available to businesses there yet —{" "}
+            <a
+              href="https://stripe.com/global"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              see where it is
+            </a>
+            .
+          </p>
         </Card>
       );
 
@@ -152,7 +202,7 @@ function Panel({
 
     case "connected": {
       const { account, fields } = snapshot;
-      const due = account.requirements?.currently_due?.length ?? 0;
+      const due = accountReadiness(account).dueCount;
       const live = fields.stripeChargesEnabled;
 
       return (
@@ -175,6 +225,15 @@ function Panel({
           <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
             <dt className="text-muted">Account</dt>
             <dd className="font-mono text-xs leading-5">{account.id}</dd>
+            {account.identity?.country ? (
+              <>
+                <dt className="text-muted">Country</dt>
+                <dd>
+                  {new Intl.DisplayNames(["en"], { type: "region" }).of(account.identity.country.toUpperCase()) ??
+                    account.identity.country.toUpperCase()}
+                </dd>
+              </>
+            ) : null}
             <dt className="text-muted">Charges</dt>
             <dd>{fields.stripeChargesEnabled ? "Enabled" : "Not yet enabled"}</dd>
             <dt className="text-muted">Payouts</dt>

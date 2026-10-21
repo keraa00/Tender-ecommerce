@@ -20,7 +20,7 @@
     "db:studio": "prisma studio",
     "seed:images": "tsx scripts/fetch-seed-images.ts",
     "storage:setup": "tsx scripts/setup-storage.ts",
-    "stripe:listen": "stripe listen --events-from @accounts --events account.updated,account.application.deauthorized,payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled --forward-connect-to localhost:3000/api/webhooks/stripe"
+    "stripe:listen": "stripe listen --events-from @accounts --events account.updated,capability.updated,account.application.deauthorized,payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled --forward-connect-to localhost:3000/api/webhooks/stripe"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

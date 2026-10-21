@@ -22,7 +22,7 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
 | Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived; a weight per option (kg in, integer grams stored) and a "requires shipping" flag for digital products and services |
-| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email. **Payments**: connect a Stripe account through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
+| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email. **Payments**: pick the business's country and connect a Stripe account (Accounts v2) through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
 | Discounts | `admin.<host>/[storeSlug]/discounts` — codes and automatic discounts: percentage, fixed amount, buy X get Y, free shipping; whole order, products or collections; minimum spend or quantity; all customers, segments or named customers; total and per-customer limits; schedule; on/off; stacking. The pricing engine is pure and tested, ready for checkout |
 | Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout. Checkout is one page, Shopify-style, under its own pared-down header: contact (with the optional marketing opt-in), delivery — a country select of only the countries the store ships to, named in the buyer's language, then address fields that follow the country (labels, region lists, postal-code formats for 30+ countries) — shipping method, billing address, payment and the order summary, which folds into a bar on phones. Every change is saved on the cart and re-priced on the server, so a refresh loses nothing and the server's total is the only one. Payment is Stripe's **Payment Element**, embedded in the page and themed to the store. "Pay now" places the order — line, discount, address and rate snapshots, commission on the discounted total, usage limits enforced and the rate re-checked in the order transaction — creates its PaymentIntent on the seller's Stripe account, and confirms it in place (3-D Secure included). The order turns **Paid** — stock taken, cart emptied — when the payment succeeds; a declined card leaves the cart and the order for another try. An order discounts bring to zero is placed paid without Stripe |
 | Shipping | The chosen rate is charged; a free-shipping discount takes exactly that rate off. Rates are judged on the subtotal after item discounts and on the weight of what ships. A cart of digital products skips delivery entirely. A store that ships nowhere can still sell those, and says so for anything else |
@@ -66,14 +66,30 @@ belong with Stripe and the seller, and the seller gets the full Stripe
 Dashboard to handle them — a cheap trade when [refunds are out of
 scope](#out-of-scope) here anyway.
 
-Accounts are created through the API with Stripe's **controller properties**
-rather than `type: "standard"` — `stripe_dashboard.type: "full"`,
-`fees.payer: "account"`, `losses.payments: "stripe"`,
-`requirement_collection: "stripe"`, the combination Stripe documents as
-Standard's — and onboarded through **Account Links**, Stripe-hosted onboarding.
-Stripe's docs say OAuth "isn't recommended for new Connect platforms", so it is
-not used. The cost: a seller who already has a Stripe account signs in with it
-but gets a new account for Tender, rather than connecting the old one.
+Accounts are created with Stripe's **Accounts v2 API** (`/v2/core/accounts`):
+`dashboard: "full"`, `defaults.responsibilities` of
+`fees_collector: "stripe"` and `losses_collector: "stripe"` — which makes
+Stripe responsible for KYC — and the `merchant` configuration with card
+payments requested. Stripe reports that combination as a Standard account.
+Owners onboard through v2 **Account Links**, Stripe-hosted onboarding.
+
+Why not the older routes: Stripe refuses Accounts v1 creation for new Connect
+platforms unless a compatibility setting is switched on, and its docs say OAuth
+"isn't recommended for new Connect platforms". The costs of v2:
+
+- **The owner picks their country before going to Stripe.** Accounts v2 needs
+  it to add the merchant configuration, and it can't change afterwards.
+  Settings → Payments offers the countries where Stripe takes merchants
+  (`STRIPE_MERCHANT_COUNTRIES` in `src/lib/payments/rules.ts`, from
+  stripe.com/global — Stripe's Country Specs API also lists countries it only
+  pays out to).
+- **A seller who already has a Stripe account** signs in with it but gets a new
+  account for Tender, rather than connecting the old one.
+- **Readiness is read from capabilities, not flags.** "Can take money" is
+  `configuration.merchant.capabilities.card_payments.status === "active"`;
+  "has submitted their details" is "card payments requested and no requirement
+  awaiting the seller" (`accountReadiness`). Accounts created earlier through
+  v1 read the same way — Accounts v2 manages them too.
 
 **Express** would be right if onboarding conversion were the business, and
 **Custom** means owning KYC and a regulatory surface this project has no
@@ -90,16 +106,23 @@ What that choice commits the code to:
   for a marketplace, and worth knowing before the first "what is this charge"
   email.
 - **One webhook endpoint, for connected accounts.** With direct charges, every
-  event Tender acts on — `account.updated`, `account.application.deauthorized`,
-  `payment_intent.succeeded`, `payment_intent.canceled` — happens on a seller's
-  account. They arrive at `/api/webhooks/stripe` with an `account` field naming
+  event Tender acts on — `account.updated`, `capability.updated`,
+  `account.application.deauthorized`, `payment_intent.succeeded`,
+  `payment_intent.canceled` — happens on a seller's account. (Accounts v2
+  accounts still send these v1 events, in the connected-accounts scope;
+  `capability.updated` is the one that says card payments switched on.) They arrive at `/api/webhooks/stripe` with an `account` field naming
   the seller. Connect also delivers the seller's own payments taken elsewhere;
   PaymentIntents without Tender's order id in their metadata are ignored.
 - **This database is the source of truth for orders.** Charges live on the
   connected account and aren't queryable from the platform account by default.
 - **A store cannot sell until Stripe says so.** `stripeChargesEnabled` is
-  copied from the account — on `account.updated`, and whenever the owner opens
-  Settings → Payments — and checkout is gated on it. A row with a
+  copied from the account — on `account.updated` and `capability.updated`,
+  and whenever the owner opens Settings → Payments — and checkout is gated on
+  it. The handler re-reads the account rather than trusting the payload, and
+  the v2 read can trail the v1 event by a few seconds: when a recent event says
+  card payments just went live but the read disagrees, the handler re-reads
+  for a few seconds, then answers 500 so Stripe redelivers instead of leaving
+  the store closed (`eventSignalsCardActive`). A row with a
   `stripeAccountId` is not the same thing as a store that can take money.
   Finishing onboarding is also what moves a new store from PENDING to ACTIVE.
 - **Stock is taken when the money is in, not when the order is placed.** An
@@ -439,9 +462,14 @@ checkout says payments aren't set up — step 5 connects one.
    `stripe listen --print-secret`) in `STRIPE_CONNECT_WEBHOOK_SECRET`. Without it the
    app still works — Settings → Payments and the confirmation page read Stripe
    directly — but stores and orders only update when someone looks.
-4. Sign in as a store owner, open Settings → Payments, **Connect with Stripe**
-   and finish test onboarding (Stripe offers test values for every field). Back
-   in the admin, the store shows **Live**.
+4. Sign in as a store owner, open Settings → Payments, choose the country the
+   business is based in (United States makes the test values below simplest),
+   click **Connect with Stripe** and finish test onboarding: SMS code
+   `000000`, date of birth `01/01/1901`, address line 1 `address_full_match`,
+   ID / SSN `000000000` (or `0000` for the last four), website
+   `https://accessible.stripe.com`, and the test bank account Stripe offers.
+   Back in the admin the store shows **Under review**, then **Live** within a
+   minute or two.
 5. Check out with `4242 4242 4242 4242`, any future expiry and any CVC.
    `4000 0025 0000 3155` asks for 3-D Secure; `4000 0000 0000 9995` is declined.
 
@@ -497,7 +525,7 @@ anywhere:
 | `NEXT_PUBLIC_ADMIN_HOST` | empty, so the admin host is derived as `admin.your-domain.com` |
 | DNS | an `admin.` record pointing at the same deployment |
 | Supabase → Authentication → URL Configuration | `https://your-domain.com/auth/confirm` and `/auth/callback` |
-| Stripe → Workbench → Webhooks | an endpoint at `https://your-domain.com/api/webhooks/stripe`, **Events from: Connected accounts**, for `account.updated`, `account.application.deauthorized`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `payment_intent.canceled`; its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| Stripe → Workbench → Webhooks | an endpoint at `https://your-domain.com/api/webhooks/stripe`, **Events from: Connected accounts**, for `account.updated`, `capability.updated`, `account.application.deauthorized`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `payment_intent.canceled`; its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET` |
 | Stripe keys | live `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, once Stripe has reviewed the platform profile |
 
 The auth cookie's `Domain` is derived from the host (`your-domain.com`), so one
