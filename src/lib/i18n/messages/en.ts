@@ -244,4 +244,11 @@ export const en = {
   footer: {
     poweredBy: "Powered by",
   },
+  store: {
+    pageNotFound: "This page isn’t available",
+    pageNotFoundHint: "It may have been removed, or the link may be mistyped.",
+    unavailable: "This store is unavailable",
+    suspended: "{store} has been suspended and is not currently trading.",
+    browseOther: "Browse other stores",
+  },
 };

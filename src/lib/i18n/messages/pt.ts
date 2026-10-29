@@ -255,4 +255,11 @@ export const pt: Messages = {
   footer: {
     poweredBy: "Desenvolvido com",
   },
+  store: {
+    pageNotFound: "Esta página não está disponível",
+    pageNotFoundHint: "Ela pode ter sido removida, ou o link pode estar incorreto.",
+    unavailable: "Esta loja não está disponível",
+    suspended: "A loja {store} foi suspensa e não está funcionando no momento.",
+    browseOther: "Ver outras lojas",
+  },
 };

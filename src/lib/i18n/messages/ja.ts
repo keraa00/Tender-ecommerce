@@ -237,4 +237,11 @@ export const ja: Messages = {
   footer: {
     poweredBy: "Powered by",
   },
+  store: {
+    pageNotFound: "このページはご利用いただけません",
+    pageNotFoundHint: "削除されたか、リンクが間違っている可能性があります。",
+    unavailable: "このストアはご利用いただけません",
+    suspended: "{store}は現在停止されており、営業していません。",
+    browseOther: "ほかのストアを見る",
+  },
 };

@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { CloseIcon } from "./icons";
@@ -26,13 +27,31 @@ const PanelContext = createContext<{
   setPanel: (panel: Panel) => void;
 } | null>(null);
 
+// Where sheets are portalled to. Without a layer they render in place.
+const SheetLayerContext = createContext<{
+  layer: HTMLElement | null;
+  setLayer: (layer: HTMLElement | null) => void;
+}>({ layer: null, setLayer: () => {} });
+
 export function StorefrontUIProvider({ children }: { children: ReactNode }) {
   const [panel, setPanel] = useState<Panel>(null);
+  const [layer, setLayer] = useState<HTMLElement | null>(null);
   return (
     <PanelContext.Provider value={{ panel, setPanel }}>
-      {children}
+      <SheetLayerContext.Provider value={{ layer, setLayer }}>
+        {children}
+      </SheetLayerContext.Provider>
     </PanelContext.Provider>
   );
+}
+
+/**
+ * The element every sheet is drawn into. It belongs inside the themed frame,
+ * so sheets keep the store's colours, fonts and reading direction.
+ */
+export function SheetLayer() {
+  const { setLayer } = useContext(SheetLayerContext);
+  return <div ref={setLayer} />;
 }
 
 export function usePanel() {
@@ -60,6 +79,10 @@ const enterFrom: Record<SheetSide, string> = {
  * A modal sheet sliding in from one side (or dropping from the top). Escape
  * and the backdrop close it; the page behind stops scrolling while it is open;
  * focus moves in on open and returns to where it was on close.
+ *
+ * It is portalled to the `<SheetLayer>`: opened from inside the header, whose
+ * `backdrop-filter` makes it the containing block for anything `fixed`, it
+ * would otherwise cover only the header's strip instead of the screen.
  */
 export function Sheet({
   open,
@@ -79,6 +102,7 @@ export function Sheet({
   children: ReactNode;
   className?: string;
 }) {
+  const { layer } = useContext(SheetLayerContext);
   const backdropRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   // Outlives `open` by the length of the closing slide, so there is something
@@ -141,7 +165,7 @@ export function Sheet({
 
   if (!present) return null;
 
-  return (
+  const sheet = (
     <div
       inert={!open}
       className={cn("fixed inset-0 z-50", !open && "pointer-events-none")}
@@ -181,6 +205,8 @@ export function Sheet({
       </div>
     </div>
   );
+
+  return layer ? createPortal(sheet, layer) : sheet;
 }
 
 export function SheetHeader({

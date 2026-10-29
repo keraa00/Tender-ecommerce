@@ -9,7 +9,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   useTransition,
   type FormEvent,
   type ReactNode,
@@ -56,13 +55,14 @@ import type {
  */
 export function CheckoutForm(props: CheckoutFormProps) {
   const { payment, cart } = props;
-  const dark = useColorScheme(payment.colorScheme) === "dark";
   const accent = payment.accentColor && /^#[0-9a-f]{3,8}$/i.test(payment.accentColor)
     ? payment.accentColor
     : undefined;
 
+  // The storefront is always light. The Payment Element is an iframe and
+  // cannot read the page's CSS, so it is told to match.
   const appearance: Appearance = {
-    theme: dark ? "night" : "stripe",
+    theme: "stripe",
     variables: accent ? { colorPrimary: accent } : {},
   };
 
@@ -670,29 +670,6 @@ function OrderSummary({
       </div>
     </div>
   );
-}
-
-const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-function subscribeToColorScheme(onChange: () => void): () => void {
-  const query = window.matchMedia(DARK_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-/**
- * The scheme the page is drawn in: the theme's, or the buyer's system's when
- * the theme follows it. The Payment Element is an iframe and cannot read the
- * page's CSS, so it has to be told.
- */
-function useColorScheme(scheme: PaymentProviderDisplay["colorScheme"]): "light" | "dark" {
-  const systemDark = useSyncExternalStore(
-    subscribeToColorScheme,
-    () => window.matchMedia(DARK_QUERY).matches,
-    () => false,
-  );
-  if (scheme !== "auto") return scheme;
-  return systemDark ? "dark" : "light";
 }
 
 /** The form's fields as one string, to tell whether anything needs saving. */

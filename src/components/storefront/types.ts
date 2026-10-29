@@ -88,8 +88,6 @@ export type PaymentProviderDisplay = {
   locale: string;
   /** The store's accent, for the Payment Element's primary colour. */
   accentColor: string | null;
-  /** The theme's scheme, so the Element is not a white box on a dark page. */
-  colorScheme: "light" | "dark" | "auto";
 };
 
 export type CartMessages = Messages["cart"];

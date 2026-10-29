@@ -6,6 +6,7 @@ import { AdminPage } from "@/components/admin/page-shell";
 import { ProductForm } from "@/components/products/product-form";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormError } from "@/components/ui/field";
 import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
 import { listCollectionOptions } from "@/lib/collections/queries";
 import { deleteProductAction, updateProductAction } from "@/lib/products/actions";
@@ -26,6 +27,7 @@ export default async function EditProductPage(
   props: PageProps<"/dashboard/[storeSlug]/products/[productId]">,
 ) {
   const { storeSlug, productId } = await props.params;
+  const { error } = await props.searchParams;
   const { store } = await getStoreContext(storeSlug);
 
   // `storeId` is part of the lookup, so another tenant's product id 404s here
@@ -62,6 +64,12 @@ export default async function EditProductPage(
         </span>
       }
     >
+      {error === "delete-failed" ? (
+        <div className="mb-6">
+          <FormError>Could not delete the product. Please try again.</FormError>
+        </div>
+      ) : null}
+
       <ProductForm
         action={action}
         submitLabel="Save changes"

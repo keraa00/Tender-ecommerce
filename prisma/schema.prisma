@@ -59,6 +59,21 @@ enum OrderStatus {
   @@map("order_status")
 }
 
+/// Something about an order the seller has to sort out by hand, raised by the
+/// code path that found it. Shown on the order until there are tools to clear
+/// it — refunds are done in the seller's Stripe Dashboard for now.
+enum OrderIssue {
+  /// Paid for more units of a variant than were left. Stock is taken when the
+  /// money is in, not at checkout, so two buyers can pay for the last one; the
+  /// count went to zero rather than below. Refund the difference or restock.
+  OVERSOLD
+  /// The payment succeeded after the order had been cancelled, so the buyer
+  /// paid for an order that will not be fulfilled. Refund it.
+  PAID_AFTER_CANCEL
+
+  @@map("order_issue")
+}
+
 enum DiscountType {
   PERCENTAGE
   FIXED_AMOUNT
@@ -133,7 +148,9 @@ enum CartKind {
 
 /// Mirrors `auth.users` from Supabase Auth. `id` is the Supabase user id, kept
 /// identical so Prisma relations line up with the JWT subject. Rows are created
-/// by a Postgres trigger on `auth.users` (see migration `supabase_auth_sync`).
+/// and kept in step when the user is read, by `mirrorAuthUser()` in
+/// `src/lib/auth/session.ts` — not by a trigger, which would tie migrations to
+/// Supabase's `auth` schema.
 model User {
   id           String       @id @db.Uuid
   email        String       @unique
@@ -169,8 +186,10 @@ model Store {
 
   ownerId String @map("owner_id") @db.Uuid
 
-  /// Connected Stripe account (Connect Standard). Unique so an inbound Connect
-  /// webhook's `account` field resolves to exactly one store in a single lookup.
+  /// Connected Stripe account: Standard-equivalent, created through Accounts v2
+  /// (see README "Why Standard-equivalent accounts"). Unique so an inbound
+  /// Connect webhook's `account` field resolves to exactly one store in a
+  /// single lookup.
   stripeAccountId          String? @unique @map("stripe_account_id")
   stripeOnboardingComplete Boolean @default(false) @map("stripe_onboarding_complete")
   stripeChargesEnabled     Boolean @default(false) @map("stripe_charges_enabled")
@@ -230,6 +249,12 @@ model StoreMember {
   userId    String          @map("user_id") @db.Uuid
   role      StoreMemberRole @default(STAFF)
   createdAt DateTime        @default(now()) @map("created_at")
+
+  /// Paid orders after this are "new" to this member: the count beside Orders
+  /// in the admin drawer. Moved forward when they open the orders list. It
+  /// starts at now() — on joining, and for members who predate the column — so
+  /// nobody's first look is the store's whole history marked new.
+  ordersSeenAt DateTime @default(now()) @map("orders_seen_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -600,6 +625,10 @@ model Order {
   marketingConsent Boolean @default(false) @map("marketing_consent")
   note             String?
 
+  /// What needs the seller's attention, in the order it was found. Empty for
+  /// almost every order.
+  issues OrderIssue[] @default([])
+
   /// What each applied discount was and took, as charged:
   /// `[{ discountId, code, title, type, amountCents, shippingCents }]`.
   /// A snapshot like the order lines — a discount edited or deleted later must
@@ -622,6 +651,8 @@ model Order {
 
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt])
+  /// The admin's new-order count: paid since a member last looked.
+  @@index([storeId, paidAt])
   @@index([userId, createdAt])
   @@index([email])
   @@index([shippingRateId])

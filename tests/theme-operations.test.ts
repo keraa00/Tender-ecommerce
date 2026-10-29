@@ -199,7 +199,7 @@ describe("updateSetting", () => {
     document = moveSection(document, "new", -1);
     document = setSectionHidden(document, "collections", true);
     document = removeSection(document, "hero");
-    document = updateSetting(document, { kind: "theme" }, "colorScheme", "dark");
+    document = updateSetting(document, { kind: "theme" }, "headingFont", "fraunces");
 
     const parsed = parseThemeForWrite(JSON.parse(JSON.stringify(document)));
     expect(parsed).toEqual({ ok: true, theme: document });

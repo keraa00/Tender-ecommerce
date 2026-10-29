@@ -3,7 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 
 import { rootDb } from "@/lib/db/root";
-import { OrderStatus, type Prisma } from "@/lib/db/types";
+import { OrderIssue, OrderStatus, type Prisma } from "@/lib/db/types";
 import { releaseDiscounts } from "@/lib/discounts/redemption";
 import { isUuid } from "@/lib/ids";
 import { ORDER_METADATA_KEY, paymentMismatch } from "./rules";
@@ -29,8 +29,8 @@ type OrderRef = { id: string; storeId: string };
  * Stock is checked when the order is placed but only taken here, so an
  * abandoned checkout holds none. The price of that is that two buyers can pay
  * for the last unit; the second payment still stands — the money is in — so the
- * count goes to zero rather than below, and the oversell is logged for the
- * seller to refund.
+ * count goes to zero rather than below, and the order is marked OVERSOLD for
+ * the seller to refund or restock.
  */
 export async function settleOrder(
   tx: Tx,
@@ -53,6 +53,7 @@ export async function settleOrder(
   }
 
   // A fixed lock order, so two orders sharing variants cannot deadlock.
+  let oversold = false;
   for (const variantId of [...quantities.keys()].sort()) {
     const quantity = quantities.get(variantId)!;
     const taken = await tx.variant.updateMany({
@@ -64,10 +65,19 @@ export async function settleOrder(
         where: { id: variantId, storeId: order.storeId },
         data: { inventoryQty: 0 },
       });
+      oversold = true;
       console.warn(
         `Order ${order.id} oversold variant ${variantId}: fewer than ${quantity} were left when it was paid.`,
       );
     }
+  }
+
+  // Only the call that flipped the order gets here, so this is raised once.
+  if (oversold) {
+    await tx.order.update({
+      where: { id: order.id },
+      data: { issues: { push: OrderIssue.OVERSOLD } },
+    });
   }
 
   // Only the cart that was checked out: "Buy it now" leaves the buyer's
@@ -94,24 +104,16 @@ export async function cancelUnpaidOrder(tx: Tx, order: OrderRef): Promise<boolea
   return true;
 }
 
-export type MarkPaidResult = "settled" | "already" | "ignored" | "mismatch";
-
 /**
- * Settles the order a succeeded PaymentIntent paid for.
- *
- * Found by PaymentIntent id, or by the order id in its metadata for the
- * moment between Stripe creating the PaymentIntent and the order row learning
- * its id. A PaymentIntent with neither is one of the seller's own payments
- * outside Tender — Connect delivers those too — and is ignored.
+ * The order a PaymentIntent was created for: by PaymentIntent id, or by the
+ * order id in its metadata for the moment between Stripe creating the
+ * PaymentIntent and the order row learning its id. A PaymentIntent with
+ * neither is one of the seller's own payments outside Tender — Connect
+ * delivers those too — and finds nothing.
  */
-export async function markOrderPaid(
-  intent: Stripe.PaymentIntent,
-  accountId: string | null,
-): Promise<MarkPaidResult> {
-  if (intent.status !== "succeeded") return "ignored";
-
+export async function findOrderForIntent(intent: Stripe.PaymentIntent) {
   const metadataOrderId = intent.metadata?.[ORDER_METADATA_KEY];
-  const order = await rootDb.order.findFirst({
+  return rootDb.order.findFirst({
     where: {
       OR: [
         { stripePaymentIntentId: intent.id },
@@ -128,6 +130,18 @@ export async function markOrderPaid(
       stripePaymentIntentId: true,
     },
   });
+}
+
+export type MarkPaidResult = "settled" | "already" | "ignored" | "mismatch";
+
+/** Settles the order a succeeded PaymentIntent paid for. */
+export async function markOrderPaid(
+  intent: Stripe.PaymentIntent,
+  accountId: string | null,
+): Promise<MarkPaidResult> {
+  if (intent.status !== "succeeded") return "ignored";
+
+  const order = await findOrderForIntent(intent);
   if (!order) return "ignored";
 
   const mismatch = paymentMismatch(order, intent, accountId);
@@ -152,8 +166,21 @@ export async function markOrderPaid(
 
   if (!settled && order.status === OrderStatus.CANCELLED) {
     // Cancelling the PaymentIntent comes before cancelling the order, so this
-    // should not happen; if it does, the buyer has paid for nothing.
+    // should not happen; if it does, the buyer has paid for nothing. The seller
+    // is told on the order — once, however often Stripe redelivers.
     console.error(`PaymentIntent ${intent.id} succeeded for cancelled order ${order.id}: refund it.`);
+    await rootDb.order.updateMany({
+      where: {
+        id: order.id,
+        status: OrderStatus.CANCELLED,
+        NOT: { issues: { has: OrderIssue.PAID_AFTER_CANCEL } },
+      },
+      data: {
+        issues: { push: OrderIssue.PAID_AFTER_CANCEL },
+        // Found by its metadata: keep the payment it was paid by.
+        ...(order.stripePaymentIntentId ? {} : { stripePaymentIntentId: intent.id }),
+      },
+    });
   }
 
   return settled ? "settled" : "already";

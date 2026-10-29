@@ -235,4 +235,11 @@ export const zh: Messages = {
   footer: {
     poweredBy: "技术支持",
   },
+  store: {
+    pageNotFound: "此页面不可用",
+    pageNotFoundHint: "该页面可能已被删除，或链接有误。",
+    unavailable: "该店铺暂不可用",
+    suspended: "{store} 已暂停营业，目前无法交易。",
+    browseOther: "浏览其他店铺",
+  },
 };

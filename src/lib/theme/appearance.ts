@@ -3,17 +3,18 @@ import { DEFAULT_THEME_FONT, themeFontStack, type ThemeFontId } from "./typograp
 
 /**
  * What the theme's global settings put on the storefront's wrapper element:
- * the accent, a forced colour scheme, and the font stacks. See the
- * "Storefront theme settings" rules in `globals.css`.
+ * the light palette, the accent, and the font stacks. See the "Storefront
+ * theme settings" rules in `globals.css`.
  *
- * Settings left at the platform default add nothing at all, so a store that
- * never touched its theme renders byte for byte as it did before themes.
+ * The storefront is always light, whatever the buyer's device prefers: only
+ * the platform's own chrome follows the system's dark mode. Fonts left at the
+ * platform default add nothing.
  */
 export function storefrontAppearance(
   settings: ThemeSettings,
   storeAccent: string | null,
 ): {
-  attributes: { "data-color-scheme"?: "light" | "dark"; "data-theme-fonts"?: "" };
+  attributes: { "data-color-scheme": "light"; "data-theme-fonts"?: "" };
   /** CSS custom properties for the wrapper's `style`. */
   style: Record<string, string>;
   /** Theme fonts whose `next/font` variables the wrapper must define. */
@@ -23,11 +24,9 @@ export function storefrontAppearance(
     // The theme's accent wins, then the store's own, then the platform's.
     "--store-accent": settings.accent ?? storeAccent ?? "var(--primary)",
   };
-  const attributes: { "data-color-scheme"?: "light" | "dark"; "data-theme-fonts"?: "" } = {};
-
-  if (settings.colorScheme !== "auto") {
-    attributes["data-color-scheme"] = settings.colorScheme;
-  }
+  const attributes: { "data-color-scheme": "light"; "data-theme-fonts"?: "" } = {
+    "data-color-scheme": "light",
+  };
 
   const fonts = [settings.headingFont, settings.bodyFont];
   const customFonts = fonts.some((font) => font !== DEFAULT_THEME_FONT);

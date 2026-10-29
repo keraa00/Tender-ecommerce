@@ -4,6 +4,7 @@ import {
   matchesAnySegment,
   type CustomerProfile,
 } from "@/lib/discounts/segments";
+import { parsePage } from "@/lib/pagination";
 
 /**
  * The customer list's filters, search, sort and paging, as pure functions over
@@ -82,11 +83,7 @@ export function parseCustomerSort(value: unknown): CustomerSort {
 }
 
 /** A 1-based page number. Anything that is not a positive whole number is 1. */
-export function parseCustomerPage(value: unknown): number {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) return 1;
-  const page = Number(value);
-  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
-}
+export const parseCustomerPage = parsePage;
 
 /** The same shape checkout judges segment discounts against. */
 export function customerProfile(customer: ListedCustomer): CustomerProfile {

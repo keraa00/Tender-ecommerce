@@ -269,4 +269,11 @@ export const ar: Messages = {
   footer: {
     poweredBy: "مدعوم من",
   },
+  store: {
+    pageNotFound: "هذه الصفحة غير متوفرة",
+    pageNotFoundHint: "ربما أُزيلت، أو أن الرابط غير صحيح.",
+    unavailable: "هذا المتجر غير متاح",
+    suspended: "تم تعليق {store} ولا يمارس نشاطه حاليًا.",
+    browseOther: "تصفح متاجر أخرى",
+  },
 };

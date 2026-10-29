@@ -1,7 +1,9 @@
+import { NewOrdersProvider } from "@/components/admin/new-orders";
 import { StoreShell } from "@/components/admin/store-shell";
 import { StoreStatusBadge } from "@/components/ui/badge";
 import { allStoresUrl, storefrontUrl } from "@/lib/admin/links";
 import { StoreStatus } from "@/lib/db/types";
+import { listUnseenOrderIds } from "@/lib/orders/queries";
 import { getStoreContext } from "@/lib/stores/context";
 
 /**
@@ -18,23 +20,33 @@ export default async function StoreAdminChromeLayout({
   params,
 }: LayoutProps<"/dashboard/[storeSlug]">) {
   const { storeSlug } = await params;
-  const { store, user } = await getStoreContext(storeSlug);
+  const { store, user, membership } = await getStoreContext(storeSlug);
+  const unseenOrderIds = await listUnseenOrderIds(store.id, membership.ordersSeenAt);
 
   return (
-    <StoreShell
-      store={{
-        slug: store.slug,
-        name: store.name,
-        logoUrl: store.logoUrl,
-        accentColor: store.accentColor,
+    <NewOrdersProvider
+      storeId={store.id}
+      storeSlug={store.slug}
+      initial={{
+        ids: unseenOrderIds,
+        seenThroughMs: membership.ordersSeenAt.getTime(),
       }}
-      allStoresUrl={allStoresUrl()}
-      storefrontUrl={storefrontUrl(store.slug)}
-      userEmail={user.email}
-      statusBadge={<StoreStatusBadge status={store.status} />}
-      setupIncomplete={store.status === StoreStatus.PENDING}
     >
-      {children}
-    </StoreShell>
+      <StoreShell
+        store={{
+          slug: store.slug,
+          name: store.name,
+          logoUrl: store.logoUrl,
+          accentColor: store.accentColor,
+        }}
+        allStoresUrl={allStoresUrl()}
+        storefrontUrl={storefrontUrl(store.slug)}
+        userEmail={user.email}
+        statusBadge={<StoreStatusBadge status={store.status} />}
+        setupIncomplete={store.status === StoreStatus.PENDING}
+      >
+        {children}
+      </StoreShell>
+    </NewOrdersProvider>
   );
 }

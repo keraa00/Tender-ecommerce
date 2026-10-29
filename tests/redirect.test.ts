@@ -15,6 +15,22 @@ describe("safeRedirectPath", () => {
     expect(safeRedirectPath("//evil.com/dashboard")).toBeNull();
   });
 
+  it("rejects backslash and control-character tricks browsers normalise away", () => {
+    // Browsers read `\` as `/`, so these are `//evil.com` in disguise.
+    expect(safeRedirectPath("/\\evil.com")).toBeNull();
+    expect(safeRedirectPath("/\\/evil.com")).toBeNull();
+    expect(safeRedirectPath("/\\\\evil.com")).toBeNull();
+    // ...and strip tabs and newlines before parsing.
+    expect(safeRedirectPath("/\t/evil.com")).toBeNull();
+    expect(safeRedirectPath("/\n/evil.com")).toBeNull();
+    expect(safeRedirectPath("/\r/evil.com")).toBeNull();
+    expect(safeRedirectPath("/dashboard\u0000")).toBeNull();
+  });
+
+  it("keeps an encoded backslash, which stays a path on this origin", () => {
+    expect(safeRedirectPath("/%5Cevil.com")).toBe("/%5Cevil.com");
+  });
+
   it("rejects absolute URLs", () => {
     expect(safeRedirectPath("https://evil.com")).toBeNull();
     expect(safeRedirectPath("javascript:alert(1)")).toBeNull();

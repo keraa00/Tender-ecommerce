@@ -206,15 +206,13 @@
 /* ---------------------------------------------------------------------------
    Storefront theme settings.
 
-   The storefront layout sets these attributes on its wrapper only when a
-   store's theme departs from the platform default, so a store that never
-   touched its theme renders exactly as before.
-
-   A forced colour scheme re-declares the core tokens on the wrapper — the same
-   trick as `.theme-home` — so a light store stays light on a phone in dark
-   mode, and the other way round. Only the tokens the storefront draws with;
-   the marketing-page ones stay with the marketing page. Keep these two blocks
-   in step with `:root` and its dark variant above.
+   The storefront is always light. Only the platform's own chrome — the
+   dashboard, sign-in, the marketing page — follows the system's dark mode; a
+   store looks the same to every buyer. The storefront wrapper re-declares the
+   core tokens with their light values — the same trick as `.theme-home` — so a
+   phone in dark mode cannot reach inside it. Only the tokens the storefront
+   draws with; the marketing-page ones stay with the marketing page. Keep this
+   block in step with `:root` above.
    --------------------------------------------------------------------------- */
 
 [data-color-scheme="light"] {
@@ -244,37 +242,20 @@
   --ring: #0c0a09;
 }
 
-[data-color-scheme="dark"] {
-  color-scheme: dark;
-
-  --background: #0c0a09;
-  --foreground: #fafaf9;
-
-  --surface: #1c1917;
-  --surface-subtle: #171412;
-  --surface-hover: #292524;
-
-  --border: #292524;
-  --border-strong: #44403c;
-
-  --muted: #a8a29e;
-
-  --primary: #fafaf9;
-  --primary-foreground: #1c1917;
-
-  --accent: #818cf8;
-
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
-
-  --ring: #fafaf9;
-}
-
 /* The tokens resolve on the wrapper, so it paints its own page. */
 [data-color-scheme] {
   background-color: var(--background);
   color: var(--foreground);
+}
+
+/*
+ * And the canvas behind it, which shows past the wrapper when the page is
+ * pulled beyond its ends. The theme editor's preview is an iframe, its own
+ * document, so the editor around it keeps the system's scheme.
+ */
+:root:has([data-color-scheme="light"]) {
+  color-scheme: light;
+  background-color: #ffffff;
 }
 
 /* Stacks come from `src/lib/theme/typography.ts`, set inline by the layout. */

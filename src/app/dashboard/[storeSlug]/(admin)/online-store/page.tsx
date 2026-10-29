@@ -39,7 +39,7 @@ export default async function OnlineStorePage(
   const badge = themeStatusBadge(draft.status);
   const { settings } = draft.document;
   const accent = settings.accent ?? store.accentColor;
-  const option = (key: "colorScheme" | "headingFont" | "bodyFont") =>
+  const option = (key: "headingFont" | "bodyFont") =>
     THEME_SETTINGS[key].options.find((entry) => entry.value === settings[key])?.label;
 
   return (
@@ -85,10 +85,6 @@ export default async function OnlineStorePage(
                 <dd className="font-medium text-foreground tabular">
                   {accent ?? "Default"}
                 </dd>
-              </div>
-              <div className="flex gap-1">
-                <dt>Scheme</dt>
-                <dd className="font-medium text-foreground">{option("colorScheme")}</dd>
               </div>
               <div className="flex gap-1">
                 <dt>Fonts</dt>

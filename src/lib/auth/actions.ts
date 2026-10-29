@@ -37,6 +37,15 @@ const NOT_CONFIGURED =
   "Authentication isn't configured yet. Add your Supabase keys to .env — " +
   "see README → Local setup.";
 
+/**
+ * Where a confirmation link sends the user: `/auth/confirm`, carrying the path
+ * they were headed for so confirming lands them there.
+ */
+function confirmRedirectUrl(next: string): string {
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${origin}/auth/confirm?next=${encodeURIComponent(next)}`;
+}
+
 export async function signUpAction(
   _prev: AuthState,
   formData: FormData,
@@ -67,7 +76,6 @@ export async function signUpAction(
   }
 
   const next = safeRedirectPath(formData.get("next")) ?? "/dashboard";
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({
@@ -75,7 +83,7 @@ export async function signUpAction(
     password: parsed.data.password,
     options: {
       data: { name: parsed.data.name },
-      emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(next)}`,
+      emailRedirectTo: confirmRedirectUrl(next),
     },
   });
 
@@ -120,8 +128,31 @@ export async function signInAction(
     };
   }
 
+  const next = safeRedirectPath(formData.get("next")) ?? "/dashboard";
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
+
+  // Supabase checks the password before whether the email is confirmed, so
+  // this only ever reaches someone who already knows both — it says nothing
+  // about which addresses have accounts. They are the person a fresh link is
+  // for: the old one expired, or opened in another browser.
+  if (error?.code === "email_not_confirmed") {
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email: parsed.data.email,
+      options: { emailRedirectTo: confirmRedirectUrl(next) },
+    });
+    if (resendError) console.warn("Could not resend the confirmation email", resendError);
+
+    return {
+      values,
+      notice: resendError
+        ? `Confirm your email first. Check ${parsed.data.email} for the link we sent, ` +
+          "or try again in a minute for a new one."
+        : `Confirm your email first. We've sent a new link to ${parsed.data.email}.`,
+    };
+  }
 
   if (error) {
     // Deliberately not distinguishing "no such account" from "wrong password":
@@ -130,7 +161,7 @@ export async function signInAction(
   }
 
   revalidatePath("/", "layout");
-  redirect(safeRedirectPath(formData.get("next")) ?? "/dashboard");
+  redirect(next);
 }
 
 export async function signOutAction() {

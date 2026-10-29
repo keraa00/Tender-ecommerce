@@ -63,7 +63,7 @@ export default async function AnalyticsPage(
       <section className="mt-8">
         <h2 className="text-lg font-medium tracking-tight">Best sellers</h2>
         <p className="mt-1 text-sm text-muted">
-          By revenue, over the same {WINDOW_DAYS} days.
+          By revenue after discounts, over the same {WINDOW_DAYS} days.
         </p>
 
         <div className="mt-4">

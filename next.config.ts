@@ -24,24 +24,43 @@ const adminDevOrigin = appUrl
   : null;
 
 /**
- * The theme editor and its draft preview may only be framed by the admin
- * itself — the editor frames the preview, and nothing else should frame
- * either.
+ * Sent on every response. Nothing here is framed by another site: the one
+ * frame the app draws is the theme editor's preview, on the admin's own host,
+ * so `frame-ancestors 'self'` keeps checkout and the admin out of a
+ * clickjacking page without breaking it. Stripe's iframes are pages we frame,
+ * which this does not touch.
+ *
+ * `payment` is deliberately absent from Permissions-Policy: Apple Pay and
+ * Google Pay run inside Stripe's iframe and need it delegated.
+ *
+ * Only `frame-ancestors` of a Content-Security-Policy so far — a `script-src`
+ * needs per-request nonces and Stripe's and Supabase's hosts allowlisted.
  */
-const sameOriginFramesOnly = [
+const securityHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // Production builds only: a dev server answers on plain http.
+  ...(process.env.NODE_ENV === "production"
+    ? [{ key: "Strict-Transport-Security", value: "max-age=63072000" }]
+    : []),
 ];
 
 const nextConfig: NextConfig = {
   ...(adminDevOrigin ? { allowedDevOrigins: [adminDevOrigin] } : {}),
+  experimental: {
+    serverActions: {
+      // Product photos post with the product form — up to eight at once, each
+      // already scaled down in the browser to `MAX_IMAGE_BYTES` (see
+      // `src/lib/products/constants.ts`). The default is 1MB for the whole
+      // request; this stays under Vercel's 4.5MB cap on a function's body.
+      bodySizeLimit: "4mb",
+    },
+  },
   async headers() {
-    return [
-      { source: "/dashboard/:storeSlug/editor/:path*", headers: sameOriginFramesOnly },
-      // These are matched against the URL as requested, before `src/proxy.ts`
-      // rewrites it — and on the admin host that URL has no `/dashboard`.
-      { source: "/:storeSlug/editor/:path*", headers: sameOriginFramesOnly },
-    ];
+    return [{ source: "/:path*", headers: securityHeaders }];
   },
   images: {
     remotePatterns: [

@@ -8,9 +8,9 @@ import { THEME_FONTS, themeFontStack } from "@/lib/theme/typography";
 const defaults = defaultTheme().settings;
 
 describe("storefrontAppearance", () => {
-  it("adds nothing but the accent for a theme left at its defaults", () => {
+  it("adds nothing but the light palette and the accent for a theme left at its defaults", () => {
     expect(storefrontAppearance(defaults, "#14504f")).toEqual({
-      attributes: {},
+      attributes: { "data-color-scheme": "light" },
       style: { "--store-accent": "#14504f" },
       fonts: [],
     });
@@ -24,18 +24,15 @@ describe("storefrontAppearance", () => {
     expect(style(null, null)).toBe("var(--primary)");
   });
 
-  it("forces a colour scheme only when one is chosen", () => {
-    expect(
-      storefrontAppearance({ ...defaults, colorScheme: "dark" }, null).attributes,
-    ).toEqual({ "data-color-scheme": "dark" });
-    expect(
-      storefrontAppearance({ ...defaults, colorScheme: "light" }, null).attributes,
-    ).toEqual({ "data-color-scheme": "light" });
+  it("always pins the light palette, so a buyer's dark mode never reaches the storefront", () => {
+    // A theme saved while the colour scheme setting existed still reads as light.
+    const stale = { ...defaults, colorScheme: "dark" } as typeof defaults;
+    expect(storefrontAppearance(stale, null).attributes["data-color-scheme"]).toBe("light");
   });
 
   it("sets both font stacks once either font departs from the default", () => {
     const appearance = storefrontAppearance({ ...defaults, headingFont: "fraunces" }, null);
-    expect(appearance.attributes).toEqual({ "data-theme-fonts": "" });
+    expect(appearance.attributes).toEqual({ "data-color-scheme": "light", "data-theme-fonts": "" });
     expect(appearance.style["--theme-font-heading"]).toBe(themeFontStack("fraunces"));
     expect(appearance.style["--theme-font-body"]).toBe(themeFontStack("geist"));
     expect(appearance.fonts).toEqual(["fraunces", "geist"]);

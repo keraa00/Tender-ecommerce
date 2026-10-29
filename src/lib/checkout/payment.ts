@@ -125,7 +125,15 @@ export async function syncPlacedOrderPayment(
   order: PlacedOrderPayment,
 ): Promise<{ outcome: PaymentOutcome; cartKind: CartKind }> {
   if (order.status !== OrderStatus.PENDING || !order.stripePaymentIntentId || !order.stripeAccountId) {
-    return { outcome: paymentOutcome(order.status, null), cartKind: CartKind.STANDARD };
+    return {
+      outcome: paymentOutcome(order.status, null),
+      // A cancelled order offers "Try again", which has to go back to the
+      // checkout it came from — and only the PaymentIntent remembers which.
+      cartKind:
+        order.status === OrderStatus.CANCELLED && order.stripePaymentIntentId && order.stripeAccountId
+          ? await cartKindOfPayment(order.stripePaymentIntentId, order.stripeAccountId)
+          : CartKind.STANDARD,
+    };
   }
 
   let intent: Stripe.PaymentIntent;
@@ -136,7 +144,7 @@ export async function syncPlacedOrderPayment(
     return { outcome: "processing", cartKind: CartKind.STANDARD };
   }
 
-  const cartKind = intent.metadata?.cart_kind === CartKind.BUY_NOW ? CartKind.BUY_NOW : CartKind.STANDARD;
+  const cartKind = cartKindOf(intent);
 
   if (intent.status === "succeeded") {
     const result = await markOrderPaid(intent, order.stripeAccountId);
@@ -144,4 +152,18 @@ export async function syncPlacedOrderPayment(
   }
 
   return { outcome: paymentOutcome(order.status, intent.status), cartKind };
+}
+
+/** Which cart the order was checked out from, as recorded on its PaymentIntent. */
+function cartKindOf(intent: Stripe.PaymentIntent): CartKind {
+  return intent.metadata?.cart_kind === CartKind.BUY_NOW ? CartKind.BUY_NOW : CartKind.STANDARD;
+}
+
+/** The same, for an order that is no longer pending. The everyday cart when Stripe cannot say. */
+async function cartKindOfPayment(intentId: string, accountId: string): Promise<CartKind> {
+  try {
+    return cartKindOf(await retrievePaymentIntent(intentId, accountId));
+  } catch {
+    return CartKind.STANDARD;
+  }
 }

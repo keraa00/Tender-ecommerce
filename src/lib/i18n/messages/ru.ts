@@ -259,4 +259,11 @@ export const ru: Messages = {
   footer: {
     poweredBy: "Работает на",
   },
+  store: {
+    pageNotFound: "Эта страница недоступна",
+    pageNotFoundHint: "Возможно, она была удалена или ссылка указана неверно.",
+    unavailable: "Этот магазин недоступен",
+    suspended: "Магазин «{store}» приостановлен и сейчас не работает.",
+    browseOther: "Посмотреть другие магазины",
+  },
 };

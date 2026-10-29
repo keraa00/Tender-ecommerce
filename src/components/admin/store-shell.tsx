@@ -1,15 +1,17 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { useSelectedLayoutSegment } from "next/navigation";
+import { useSelectedLayoutSegment, useSelectedLayoutSegments } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { NavIcon } from "@/components/admin/nav-icons";
+import { useNewOrders } from "@/components/admin/new-orders";
 import { StoreMark } from "@/components/store-mark";
 import { storeAdminPath } from "@/lib/admin/links";
 import { ADMIN_NAV } from "@/lib/admin/nav";
 import { signOutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/cn";
+import { describeNewOrders, formatNewOrderCount } from "@/lib/orders/live";
 
 /**
  * The seller admin's chrome: a permanent left drawer on desktop, an overlay one
@@ -50,7 +52,15 @@ export function StoreShell({
   children,
 }: StoreShellProps) {
   const segment = useSelectedLayoutSegment();
+  const segments = useSelectedLayoutSegments();
   const [menuOpen, setMenuOpen] = useState(false);
+  // The orders list marks everything it shows as seen as soon as it mounts,
+  // and says itself when more arrive. Counted here as well, the drawer would
+  // paint the old number for a moment before dropping to nothing — so on that
+  // page, from its first render on the server, there is no count.
+  const onOrdersList = segments.length === 1 && segments[0] === "orders";
+  const { count } = useNewOrders();
+  const newOrders = onOrdersList ? 0 : count;
 
   // Navigating is the usual reason the drawer should close, and on mobile the
   // destination is hidden behind it until it does. Adjusted during render
@@ -83,6 +93,7 @@ export function StoreShell({
       statusBadge={statusBadge}
       setupIncomplete={setupIncomplete}
       activeSegment={segment}
+      newOrders={newOrders}
     />
   );
 
@@ -116,10 +127,18 @@ export function StoreShell({
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
-            aria-label="Open menu"
+            aria-label={newOrders > 0 ? `Open menu, ${describeNewOrders(newOrders)}` : "Open menu"}
             aria-expanded={menuOpen}
-            className="-ml-1 grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground cursor-pointer"
+            className="relative -ml-1 grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground cursor-pointer"
           >
+            {/* The count itself is in the drawer; closed, this is all that
+                says there is something new in it. */}
+            {newOrders > 0 ? (
+              <span
+                aria-hidden
+                className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-background"
+              />
+            ) : null}
             <svg
               aria-hidden
               viewBox="0 0 24 24"
@@ -158,7 +177,8 @@ function DrawerContents({
   statusBadge,
   setupIncomplete,
   activeSegment,
-}: Omit<StoreShellProps, "children"> & { activeSegment: string | null }) {
+  newOrders,
+}: Omit<StoreShellProps, "children"> & { activeSegment: string | null; newOrders: number }) {
   // On the home page the setup steps are already on screen.
   const badgeLinksHome = setupIncomplete && activeSegment !== null;
 
@@ -226,6 +246,7 @@ function DrawerContents({
             <ul className="flex flex-col gap-0.5">
               {group.sections.map((section) => {
                 const active = section.segment === activeSegment;
+                const count = section.segment === "orders" ? newOrders : 0;
 
                 return (
                   <li key={section.label} className="relative">
@@ -242,6 +263,12 @@ function DrawerContents({
                     >
                       <NavIcon name={section.icon} className="h-[18px] w-[18px]" />
                       <span className="flex-1">{section.label}</span>
+                      {count > 0 ? (
+                        <span className="min-w-5 rounded-full bg-primary px-1.5 text-center text-xs font-medium leading-5 text-primary-foreground tabular">
+                          <span aria-hidden>{formatNewOrderCount(count)}</span>
+                          <span className="sr-only">, {describeNewOrders(count)}</span>
+                        </span>
+                      ) : null}
                       <PendingDot />
                     </Link>
                     {/* A sibling of the link, not inside it: an anchor cannot

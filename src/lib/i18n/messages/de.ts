@@ -246,4 +246,11 @@ export const de: Messages = {
   footer: {
     poweredBy: "Betrieben mit",
   },
+  store: {
+    pageNotFound: "Diese Seite ist nicht verfügbar",
+    pageNotFoundHint: "Sie wurde möglicherweise entfernt, oder der Link ist falsch.",
+    unavailable: "Dieser Shop ist nicht verfügbar",
+    suspended: "{store} wurde gesperrt und verkauft derzeit nicht.",
+    browseOther: "Andere Shops entdecken",
+  },
 };

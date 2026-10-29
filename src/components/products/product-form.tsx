@@ -1,21 +1,24 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
+import { shrinkImage } from "@/lib/images/shrink-image";
 import { centsToInputValue } from "@/lib/money";
 import { gramsToInputValue } from "@/lib/weight";
 import type { ProductFormState } from "@/lib/products/actions";
 import {
   IMAGE_ACCEPT_ATTRIBUTE,
-  MAX_IMAGE_MB,
+  MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_UPLOAD,
+  MAX_SOURCE_IMAGE_MB,
   MAX_VARIANTS,
+  PRODUCT_IMAGE_MAX_EDGE,
   PRODUCT_STATUS_OPTIONS,
-  imageRejectionReason,
+  sourceImageRejectionReason,
 } from "@/lib/products/constants";
 import { slugify } from "@/lib/slug";
 
@@ -139,6 +142,12 @@ function ProductFormBody({
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [fileError, setFileError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  // The chosen photos scaled down to fit the save request, which is what is
+  // actually sent. Each new choice starts a new run; a slower, older one that
+  // finishes afterwards is dropped.
+  const [preparedImages, setPreparedImages] = useState<File[]>([]);
+  const [preparing, setPreparing] = useState(false);
+  const prepareRun = useRef(0);
 
   // Object URLs hold the file in memory until revoked, so each batch is
   // released as soon as it is replaced, cleared or the form unmounts.
@@ -159,6 +168,36 @@ function ProductFormBody({
     );
   }
 
+  async function prepareImages(files: File[]) {
+    const run = ++prepareRun.current;
+    setPreparedImages([]);
+    setPreparing(files.length > 0);
+    if (files.length === 0) return;
+
+    try {
+      const prepared: File[] = [];
+      // One at a time: a decoded phone photo is tens of megabytes.
+      for (const file of files) {
+        prepared.push(
+          await shrinkImage(file, {
+            maxEdge: PRODUCT_IMAGE_MAX_EDGE,
+            maxBytes: MAX_IMAGE_BYTES,
+            baseName: "product-photo",
+          }),
+        );
+        if (run !== prepareRun.current) return;
+      }
+      setPreparedImages(prepared);
+    } catch (problem) {
+      if (run !== prepareRun.current) return;
+      setFileError(
+        problem instanceof Error ? problem.message : "Could not prepare those photos.",
+      );
+    } finally {
+      if (run === prepareRun.current) setPreparing(false);
+    }
+  }
+
   function toggleRemoved(id: string) {
     setRemoved((current) => {
       const next = new Set(current);
@@ -170,19 +209,31 @@ function ProductFormBody({
 
   return (
     <form
-      action={formAction}
+      action={(formData) => {
+        if (preparing) return;
+        // The picker holds the photos as chosen, which can be far larger than
+        // the request may be. Send the scaled-down copies in their place.
+        formData.delete("imageFile");
+        for (const file of preparedImages) formData.append("imageFile", file);
+        formAction(formData);
+      }}
       // React resets the form after every submission, which empties the file
       // input — the previews have to go with it or they'd show files that are
       // no longer selected. Setting state here also re-renders the form, which
       // puts the controlled fields the reset disturbed back as they were.
-      onReset={() => setPendingImages([])}
+      onReset={() => {
+        prepareRun.current += 1;
+        setPendingImages([]);
+        setPreparedImages([]);
+        setPreparing(false);
+      }}
       className="space-y-8"
       noValidate
     >
       <SaveBar
         label={submitLabel}
         pending={pending}
-        disabled={fileError !== null}
+        disabled={fileError !== null || preparing}
         onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
       />
@@ -567,7 +618,9 @@ function ProductFormBody({
                 <p className="truncate text-xs text-foreground" title={image.name}>
                   {image.name}
                 </p>
-                <p className="text-xs text-muted">Uploads on save</p>
+                <p className="text-xs text-muted">
+                  {preparing ? "Preparing…" : "Uploads on save"}
+                </p>
               </li>
             ))}
           </ul>
@@ -576,7 +629,7 @@ function ProductFormBody({
         <Field
           label={product ? "Add more photos" : "Add photos"}
           htmlFor="imageFile"
-          hint={`JPEG, PNG, WebP or AVIF. Up to ${MAX_IMAGES_PER_UPLOAD} at a time, ${MAX_IMAGE_MB}MB each.`}
+          hint={`JPEG, PNG, WebP or AVIF, up to ${MAX_SOURCE_IMAGE_MB}MB. Up to ${MAX_IMAGES_PER_UPLOAD} at a time; large photos are resized before upload.`}
         >
           <input
             id="imageFile"
@@ -588,21 +641,22 @@ function ProductFormBody({
               // Caught here so an oversized file is reported before the upload
               // is attempted rather than after it has been sent.
               const files = Array.from(event.target.files ?? []);
+              const tooMany = files.length > MAX_IMAGES_PER_UPLOAD;
               setFileError(
-                files.length > MAX_IMAGES_PER_UPLOAD
+                tooMany
                   ? `Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.`
-                  : (files.map(imageRejectionReason).find(Boolean) ?? null),
+                  : (files.map(sourceImageRejectionReason).find(Boolean) ?? null),
               );
-              // Only files the server would accept get a preview; the rest are
+              // Only files that can be used get a preview; the rest are
               // covered by the error above and would render as broken images.
+              const usable = files.filter((file) => sourceImageRejectionReason(file) === null);
               setPendingImages(
-                files
-                  .filter((file) => imageRejectionReason(file) === null)
-                  .map((file) => ({
-                    url: URL.createObjectURL(file),
-                    name: file.name,
-                  })),
+                usable.map((file) => ({
+                  url: URL.createObjectURL(file),
+                  name: file.name,
+                })),
               );
+              void prepareImages(tooMany ? [] : usable);
             }}
             className="block w-full cursor-pointer text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:transition-colors hover:file:bg-surface-hover"
           />

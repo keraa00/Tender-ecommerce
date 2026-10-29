@@ -11,6 +11,7 @@ import { formatAddressLines, readAddress } from "@/lib/address/validate";
 import { storeAdminPath } from "@/lib/admin/links";
 import { customerPathSegment } from "@/lib/customers/filters";
 import { formatDate } from "@/lib/dates";
+import type { OrderIssue } from "@/lib/db/types";
 import { formatMoney } from "@/lib/money";
 import { getStoreOrder } from "@/lib/orders/queries";
 import { formatEstimate } from "@/lib/shipping/format";
@@ -59,6 +60,23 @@ function discountSnapshot(value: unknown): DiscountSnapshot[] {
   });
 }
 
+/** What each issue means for the seller, and what to do about it. */
+const ISSUE_COPY: Record<OrderIssue, { title: string; body: string }> = {
+  OVERSOLD: {
+    title: "Oversold",
+    body:
+      "When this order was paid, fewer units were left than it asked for — another " +
+      "order had taken the last ones. The stock count is now 0. Restock and ship, or " +
+      "refund the missing items.",
+  },
+  PAID_AFTER_CANCEL: {
+    title: "Paid after it was cancelled",
+    body:
+      "The payment went through after this order had been cancelled, so the buyer was " +
+      "charged for an order that won't be fulfilled. Refund it.",
+  },
+};
+
 /**
  * One order, as it was placed. Everything here reads the order's own
  * snapshots — lines, discounts, addresses, the rate — so editing a product, a
@@ -85,6 +103,10 @@ export default async function OrderPage(
     maxDeliveryDays: order.shippingMaxDays,
   });
   const itemCount = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const paymentUrl = order.stripePaymentIntentId
+    ? `https://dashboard.stripe.com/${isStripeTestMode() ? "test/" : ""}payments/${order.stripePaymentIntentId}`
+    : null;
+  const paidAfterCancel = order.issues.includes("PAID_AFTER_CANCEL");
 
   return (
     <AdminPage
@@ -97,6 +119,33 @@ export default async function OrderPage(
         </span>
       }
     >
+      {order.issues.length > 0 ? (
+        <div className="mb-6 space-y-3">
+          {order.issues.map((issue) => (
+            <div
+              key={issue}
+              role="alert"
+              className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-pretty"
+            >
+              <p className="font-medium text-warning">{ISSUE_COPY[issue].title}</p>
+              <p className="mt-1">
+                {ISSUE_COPY[issue].body}{" "}
+                {paymentUrl ? (
+                  <a
+                    href={paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium underline underline-offset-4"
+                  >
+                    Open the payment in Stripe ↗
+                  </a>
+                ) : null}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Panel title={`${itemCount} ${itemCount === 1 ? "item" : "items"}`}>
@@ -189,17 +238,17 @@ export default async function OrderPage(
                 gone through yet. Don&apos;t ship it: it turns Paid by itself once Stripe confirms
                 the money.
               </p>
-            ) : order.status === "CANCELLED" && !order.paidAt ? (
+            ) : order.status === "CANCELLED" && !order.paidAt && !paidAfterCancel ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
                 Cancelled before payment — the buyer started again or the payment was abandoned.
                 Nothing was charged, and any discount uses were given back.
               </p>
             ) : null}
-            {order.stripePaymentIntentId ? (
+            {order.stripePaymentIntentId && paymentUrl ? (
               <p className="mt-3 text-xs text-muted">
                 Stripe payment{" "}
                 <a
-                  href={`https://dashboard.stripe.com/${isStripeTestMode() ? "test/" : ""}payments/${order.stripePaymentIntentId}`}
+                  href={paymentUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono underline-offset-4 hover:underline"

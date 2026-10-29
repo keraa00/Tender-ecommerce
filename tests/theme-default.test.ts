@@ -42,7 +42,6 @@ describe("defaultTheme", () => {
   it("leaves the theme settings at the platform's look", () => {
     expect(theme.settings).toEqual({
       accent: null,
-      colorScheme: "auto",
       headingFont: "geist",
       bodyFont: "geist",
     });

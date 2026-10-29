@@ -254,4 +254,11 @@ export const bs: Messages = {
   footer: {
     poweredBy: "Pokreće",
   },
+  store: {
+    pageNotFound: "Ova stranica nije dostupna",
+    pageNotFoundHint: "Možda je uklonjena ili je link pogrešno upisan.",
+    unavailable: "Ova prodavnica nije dostupna",
+    suspended: "Prodavnica {store} je suspendovana i trenutno ne posluje.",
+    browseOther: "Pogledaj druge prodavnice",
+  },
 };

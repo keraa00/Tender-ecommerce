@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   imageRejectionReason,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_UPLOAD,
+  sourceImageRejectionReason,
   storagePathFromPublicUrl,
 } from "@/lib/products/constants";
 
@@ -30,6 +33,25 @@ describe("imageRejectionReason", () => {
     expect(
       imageRejectionReason({ size: 6 * 1024 * 1024, type: "image/png" }),
     ).toBeTruthy();
+    expect(imageRejectionReason({ size: MAX_IMAGE_BYTES + 1, type: "image/webp" })).toBeTruthy();
+    expect(imageRejectionReason({ size: MAX_IMAGE_BYTES, type: "image/webp" })).toBeNull();
+  });
+
+  it("lets a full batch fit in the 4MB Server Action body set in next.config.ts", () => {
+    // Leaves room for the form's other fields and the multipart framing.
+    expect(MAX_IMAGES_PER_UPLOAD * MAX_IMAGE_BYTES).toBeLessThan(3.75 * 1024 * 1024);
+  });
+});
+
+describe("sourceImageRejectionReason", () => {
+  it("accepts a phone photo far larger than what is uploaded", () => {
+    expect(sourceImageRejectionReason({ size: 12 * 1024 * 1024, type: "image/jpeg" })).toBeNull();
+  });
+
+  it("still rejects empty, oversized and unsupported files", () => {
+    expect(sourceImageRejectionReason({ size: 0, type: "image/jpeg" })).toBeTruthy();
+    expect(sourceImageRejectionReason({ size: 21 * 1024 * 1024, type: "image/jpeg" })).toBeTruthy();
+    expect(sourceImageRejectionReason({ size: 1_000, type: "image/gif" })).toBeTruthy();
   });
 });
 

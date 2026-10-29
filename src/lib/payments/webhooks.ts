@@ -6,7 +6,7 @@ import { rootDb } from "@/lib/db/root";
 import { isStripeTestMode } from "@/lib/stripe/server";
 import { disconnectAccount, retrieveAccount, syncStoreFromAccount } from "./accounts";
 import { accountReadiness, eventSignalsCardActive, ORDER_METADATA_KEY } from "./rules";
-import { cancelUnpaidOrder, markOrderPaid } from "./settle";
+import { cancelUnpaidOrder, findOrderForIntent, markOrderPaid } from "./settle";
 
 /**
  * Events from connected accounts — the only ones Tender acts on, since charges
@@ -86,11 +86,10 @@ async function dispatch(event: Stripe.Event, accountId: string | null): Promise<
     case "payment_intent.canceled": {
       const intent = event.data.object;
       if (!isTenderPayment(intent)) return false;
-      const order = await rootDb.order.findFirst({
-        where: { stripePaymentIntentId: intent.id, stripeAccountId: accountId },
-        select: { id: true, storeId: true },
-      });
-      if (!order) return false;
+      // Found the same way a success is, so a PaymentIntent cancelled before
+      // the order learned its id still releases that order's discount uses.
+      const order = await findOrderForIntent(intent);
+      if (!order || !accountId || order.stripeAccountId !== accountId) return false;
       await rootDb.$transaction((tx) => cancelUnpaidOrder(tx, order));
       return true;
     }

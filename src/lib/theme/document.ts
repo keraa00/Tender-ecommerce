@@ -42,19 +42,6 @@ export const THEME_SETTINGS = {
     help: "Buttons and highlights. Publishing also makes it your store's colour across Tender.",
     nullLabel: "Use your store's colour",
   }),
-  // Light or dark as a whole, rather than free background and text colours:
-  // the platform's palette is built to hold its contrast in both, and a
-  // seller-picked pair would only be right in one.
-  colorScheme: field.select({
-    label: "Colour scheme",
-    help: "Automatic follows each buyer's device setting.",
-    options: [
-      { value: "auto", label: "Automatic" },
-      { value: "light", label: "Light" },
-      { value: "dark", label: "Dark" },
-    ],
-    default: "auto",
-  }),
   headingFont: field.select({
     label: "Heading font",
     options: THEME_FONTS.map(({ value, label }) => ({ value, label })),

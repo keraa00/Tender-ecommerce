@@ -245,4 +245,11 @@ export const es: Messages = {
   footer: {
     poweredBy: "Con la tecnología de",
   },
+  store: {
+    pageNotFound: "Esta página no está disponible",
+    pageNotFoundHint: "Puede que se haya eliminado o que el enlace sea incorrecto.",
+    unavailable: "Esta tienda no está disponible",
+    suspended: "La tienda {store} ha sido suspendida y no está operando en este momento.",
+    browseOther: "Ver otras tiendas",
+  },
 };

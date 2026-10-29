@@ -16,7 +16,7 @@ import type {
   LinkField,
   ThemeLink,
 } from "@/lib/theme/fields";
-import { shrinkImage } from "./shrink-image";
+import { shrinkImage } from "@/lib/images/shrink-image";
 
 /**
  * Inputs generated from field descriptors — a section's, a block's or the

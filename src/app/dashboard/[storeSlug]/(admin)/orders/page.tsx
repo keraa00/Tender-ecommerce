@@ -1,22 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { NewOrdersNotice } from "@/components/admin/new-orders";
 import {
   AdminPage,
   EmptyState,
+  Pager,
   Rows,
   Stat,
   StatGrid,
 } from "@/components/admin/page-shell";
-import { OrderStatusBadge } from "@/components/ui/badge";
+import { Badge, OrderStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { storeAdminPath } from "@/lib/admin/links";
+import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import {
   countStoreOrdersByStatus,
   listStoreOrders,
+  ORDERS_PAGE_SIZE,
 } from "@/lib/orders/queries";
+import { pageWindow, parsePage } from "@/lib/pagination";
 import { getStoreContext } from "@/lib/stores/context";
 import { canAcceptOrders } from "@/lib/stores/policy";
 
@@ -32,22 +37,40 @@ export default async function OrdersPage(
   props: PageProps<"/dashboard/[storeSlug]/orders">,
 ) {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
+  const { page: pageParam } = await props.searchParams;
+  const { store, membership } = await getStoreContext(storeSlug);
 
-  const [orders, counts] = await Promise.all([
-    listStoreOrders(store.id),
-    countStoreOrdersByStatus(store.id),
-  ]);
+  // `NewOrdersNotice` marks orders seen up to this moment. Taken before the
+  // reads, so everything it covers had been paid by the time the list was read
+  // and is on this render; at worst an order paid during the reads is both
+  // listed and counted as new once more.
+  const renderedAt = new Date();
+  // The counts come first: their sum is the total that says which pages exist.
+  const counts = await countStoreOrdersByStatus(store.id);
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const page = pageWindow(total, parsePage(pageParam), ORDERS_PAGE_SIZE);
+  const orders = await listStoreOrders(store.id, { skip: page.skip, take: page.take });
+  const listPath = storeAdminPath(store.slug, "orders");
+  const pageHref = (number: number) => (number === 1 ? listPath : `${listPath}?page=${number}`);
+
+  // Paid since this member last opened the list. The list is newest-placed
+  // first, and an order can be paid a while after it was placed, so this is how
+  // they find what the drawer's count was about.
+  const seenAt = membership.ordersSeenAt;
+  const isNew = (order: (typeof orders)[number]) =>
+    order.paidAt !== null && order.paidAt > seenAt;
 
   return (
     <AdminPage
       title="Orders"
       description={
-        orders.length === 0
+        total === 0
           ? "Every order placed with your store will appear here."
-          : `${orders.length} most recent ${orders.length === 1 ? "order" : "orders"}.`
+          : `${total} ${total === 1 ? "order" : "orders"}, newest first.`
       }
     >
+      <NewOrdersNotice renderedAt={renderedAt.toISOString()} />
+
       <StatGrid>
         <Stat label="Awaiting payment" value={String(counts.PENDING)} />
         <Stat label="Paid" value={String(counts.PAID)} />
@@ -85,10 +108,20 @@ export default async function OrdersPage(
               <li key={order.id}>
                 <Link
                   href={storeAdminPath(store.slug, `orders/${order.id}`)}
-                  className="flex items-center gap-4 bg-surface px-4 py-3 transition-colors hover:bg-surface-hover"
+                  className={cn(
+                    "relative flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface-hover",
+                    isNew(order) ? "bg-accent/5" : "bg-surface",
+                  )}
                 >
+                  {isNew(order) ? (
+                    <span
+                      aria-hidden
+                      className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent"
+                    />
+                  ) : null}
                   <div className="w-16 shrink-0 font-medium tabular">
                     #{order.orderNumber}
+                    {isNew(order) ? <span className="sr-only"> (new)</span> : null}
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -104,7 +137,10 @@ export default async function OrdersPage(
                     {formatMoney(order.totalCents, order.currency)}
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {order.issues.length > 0 ? (
+                      <Badge tone="warning">Needs attention</Badge>
+                    ) : null}
                     <OrderStatusBadge status={order.status} />
                   </div>
                 </Link>
@@ -112,6 +148,18 @@ export default async function OrdersPage(
             ))}
           </Rows>
         )}
+
+        {page.pageCount > 1 ? (
+          <div className="mt-4">
+            <Pager
+              from={page.from}
+              to={page.to}
+              total={page.total}
+              prevHref={page.page > 1 ? pageHref(page.page - 1) : null}
+              nextHref={page.page < page.pageCount ? pageHref(page.page + 1) : null}
+            />
+          </div>
+        ) : null}
       </div>
     </AdminPage>
   );

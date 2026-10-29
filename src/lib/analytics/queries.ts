@@ -2,6 +2,9 @@ import "server-only";
 
 import { rootDb } from "@/lib/db/root";
 import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
+import { foldTopProducts, type TopProduct } from "./top-products";
+
+export type { TopProduct } from "./top-products";
 
 /**
  * Store analytics, computed from settled orders only.
@@ -58,20 +61,14 @@ export async function getStoreTotals(
   };
 }
 
-export type TopProduct = {
-  title: string;
-  units: number;
-  revenueCents: number;
-};
-
 /**
  * Best sellers in the window.
  *
  * Grouping by `(title, unit price)` rather than by title alone is what makes
  * the revenue column exact: Prisma can sum a column but not a product of two,
- * and a line's revenue is `quantity × unitPriceCents`. One group per distinct
- * price a title has ever sold at is a small, bounded number, and folding them
- * together afterwards costs one pass.
+ * and a line's revenue is `quantity × unitPriceCents` less its discount. One
+ * group per distinct price a title has ever sold at is a small, bounded
+ * number, and folding them together afterwards costs one pass.
  */
 export async function listTopProducts(
   storeId: string,
@@ -81,25 +78,16 @@ export async function listTopProducts(
   const rows = await rootDb.orderLine.groupBy({
     by: ["titleSnapshot", "unitPriceCents"],
     where: { order: settledWhere(storeId, since) },
-    _sum: { quantity: true },
+    _sum: { quantity: true, discountCents: true },
   });
 
-  const byTitle = new Map<string, TopProduct>();
-
-  for (const row of rows) {
-    const units = row._sum.quantity ?? 0;
-    const existing = byTitle.get(row.titleSnapshot) ?? {
-      title: row.titleSnapshot,
-      units: 0,
-      revenueCents: 0,
-    };
-
-    existing.units += units;
-    existing.revenueCents += units * row.unitPriceCents;
-    byTitle.set(row.titleSnapshot, existing);
-  }
-
-  return [...byTitle.values()]
-    .sort((a, b) => b.revenueCents - a.revenueCents)
-    .slice(0, limit);
+  return foldTopProducts(
+    rows.map((row) => ({
+      titleSnapshot: row.titleSnapshot,
+      unitPriceCents: row.unitPriceCents,
+      quantity: row._sum.quantity ?? 0,
+      discountCents: row._sum.discountCents ?? 0,
+    })),
+    limit,
+  );
 }

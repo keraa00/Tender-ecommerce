@@ -36,6 +36,7 @@ export {
   DiscountEligibility,
   DiscountTargetRole,
   DiscountType,
+  OrderIssue,
   OrderStatus,
   PlatformRole,
   ProductStatus,

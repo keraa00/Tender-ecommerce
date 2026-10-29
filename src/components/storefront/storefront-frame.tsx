@@ -1,7 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import { CartDrawer } from "@/components/storefront/cart-drawer";
-import { StorefrontUIProvider } from "@/components/storefront/storefront-ui";
+import {
+  SheetLayer,
+  StorefrontUIProvider,
+} from "@/components/storefront/storefront-ui";
 import { updateCartLineAction } from "@/lib/cart/actions";
 import { cartCheckoutBlock } from "@/lib/checkout/availability";
 import { getCartPricing } from "@/lib/checkout/pricing";
@@ -82,6 +85,8 @@ export async function StorefrontFrame({
           checkoutHref={blocked ? null : paths.checkout}
           checkoutBlockedNote={blocked === "no-shipping" ? t.cart.noShipping : null}
         />
+
+        <SheetLayer />
       </div>
     </StorefrontUIProvider>
   );

@@ -147,7 +147,6 @@ export async function CheckoutView({ storeSlug, kind }: { storeSlug: string; kin
         currency: store.currency.toLowerCase(),
         locale: stripeLocale(locale),
         accentColor: theme.settings.accent ?? store.accentColor,
-        colorScheme: theme.settings.colorScheme,
       }}
       placeOrder={placeOrderAction.bind(null, store.slug, kind)}
       save={saveCheckoutAction.bind(null, store.slug, kind)}

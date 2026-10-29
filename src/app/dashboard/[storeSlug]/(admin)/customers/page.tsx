@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import {
   AdminPage,
   EmptyState,
+  Pager,
   Rows,
   Stat,
   StatGrid,
 } from "@/components/admin/page-shell";
 import { Badge } from "@/components/ui/badge";
-import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { storeAdminPath } from "@/lib/admin/links";
 import { cn } from "@/lib/cn";
@@ -240,32 +239,13 @@ export default async function CustomersPage(
               </Rows>
 
               {page.pageCount > 1 ? (
-                <nav
-                  aria-label="Pages"
-                  className="flex items-center justify-between gap-4 text-sm"
-                >
-                  <p className="text-muted tabular">
-                    {page.from}–{page.to} of {page.total}
-                  </p>
-                  <div className="flex gap-2">
-                    <PageLink
-                      href={page.page > 1 ? listHref({ page: page.page - 1 }) : null}
-                      rel="prev"
-                    >
-                      ← Previous
-                    </PageLink>
-                    <PageLink
-                      href={
-                        page.page < page.pageCount
-                          ? listHref({ page: page.page + 1 })
-                          : null
-                      }
-                      rel="next"
-                    >
-                      Next →
-                    </PageLink>
-                  </div>
-                </nav>
+                <Pager
+                  from={page.from}
+                  to={page.to}
+                  total={page.total}
+                  prevHref={page.page > 1 ? listHref({ page: page.page - 1 }) : null}
+                  nextHref={page.page < page.pageCount ? listHref({ page: page.page + 1 }) : null}
+                />
               ) : null}
             </div>
           )}
@@ -276,25 +256,3 @@ export default async function CustomersPage(
 }
 
 /** A pager button that is plain text, not a dead link, at either end. */
-function PageLink({
-  href,
-  rel,
-  children,
-}: {
-  href: string | null;
-  rel: "prev" | "next";
-  children: ReactNode;
-}) {
-  return href ? (
-    <ButtonLink href={href} rel={rel} variant="secondary" size="sm">
-      {children}
-    </ButtonLink>
-  ) : (
-    <span
-      aria-disabled
-      className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium text-muted opacity-60"
-    >
-      {children}
-    </span>
-  );
-}

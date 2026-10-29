@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 /**
@@ -131,5 +132,64 @@ export function Row({
     >
       {children}
     </li>
+  );
+}
+
+/**
+ * "51–100 of 173" with Previous and Next, under a list split into pages. The
+ * caller builds the links, so each list keeps its own filters in them.
+ */
+export function Pager({
+  from,
+  to,
+  total,
+  prevHref,
+  nextHref,
+}: {
+  from: number;
+  to: number;
+  total: number;
+  /** Null on the first page. */
+  prevHref: string | null;
+  /** Null on the last page. */
+  nextHref: string | null;
+}) {
+  return (
+    <nav aria-label="Pages" className="flex items-center justify-between gap-4 text-sm">
+      <p className="text-muted tabular">
+        {from}–{to} of {total}
+      </p>
+      <div className="flex gap-2">
+        <PageLink href={prevHref} rel="prev">
+          ← Previous
+        </PageLink>
+        <PageLink href={nextHref} rel="next">
+          Next →
+        </PageLink>
+      </div>
+    </nav>
+  );
+}
+
+function PageLink({
+  href,
+  rel,
+  children,
+}: {
+  href: string | null;
+  rel: "prev" | "next";
+  children: ReactNode;
+}) {
+  return href ? (
+    <ButtonLink href={href} rel={rel} variant="secondary" size="sm">
+      {children}
+    </ButtonLink>
+  ) : (
+    <span
+      aria-disabled
+      className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium text-muted opacity-60"
+    >
+      {children}
+    </span>
   );
 }

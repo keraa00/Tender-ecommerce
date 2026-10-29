@@ -246,4 +246,11 @@ export const tr: Messages = {
   footer: {
     poweredBy: "Altyapı:",
   },
+  store: {
+    pageNotFound: "Bu sayfa mevcut değil",
+    pageNotFoundHint: "Kaldırılmış olabilir veya bağlantı yanlış yazılmış olabilir.",
+    unavailable: "Bu mağaza kullanılamıyor",
+    suspended: "{store} askıya alındı ve şu anda satış yapmıyor.",
+    browseOther: "Diğer mağazalara göz at",
+  },
 };
