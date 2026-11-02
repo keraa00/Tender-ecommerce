@@ -5,14 +5,16 @@ import { notFound } from "next/navigation";
 import { cache, type ReactNode } from "react";
 
 import { AdminPage } from "@/components/admin/page-shell";
+import { CodOrderActions } from "@/components/orders/cod-order-actions";
 import { Badge, OrderStatusBadge } from "@/components/ui/badge";
 import type { PostalAddress } from "@/lib/address/types";
 import { formatAddressLines, readAddress } from "@/lib/address/validate";
 import { storeAdminPath } from "@/lib/admin/links";
 import { customerPathSegment } from "@/lib/customers/filters";
 import { formatDate } from "@/lib/dates";
-import type { OrderIssue } from "@/lib/db/types";
+import { PaymentMethod, type OrderIssue } from "@/lib/db/types";
 import { formatMoney } from "@/lib/money";
+import { cancelCodOrderAction, markCodOrderPaidAction } from "@/lib/orders/actions";
 import { getStoreOrder } from "@/lib/orders/queries";
 import { formatEstimate } from "@/lib/shipping/format";
 import { getStoreContext } from "@/lib/stores/context";
@@ -84,7 +86,9 @@ const ISSUE_COPY: Record<OrderIssue, { title: string; body: string }> = {
  *
  * No fulfilment or refund actions yet. Payments are direct charges on the
  * seller's own Stripe account, so refunds and disputes are handled in their
- * Stripe Dashboard, which this page links to.
+ * Stripe Dashboard, which this page links to. A cash-on-delivery order is the
+ * exception: nothing tells Tender the cash came in, so the seller says so
+ * here — or cancels it, and its stock goes back.
  */
 export default async function OrderPage(
   props: PageProps<"/dashboard/[storeSlug]/orders/[orderId]">,
@@ -107,6 +111,7 @@ export default async function OrderPage(
     ? `https://dashboard.stripe.com/${isStripeTestMode() ? "test/" : ""}payments/${order.stripePaymentIntentId}`
     : null;
   const paidAfterCancel = order.issues.includes("PAID_AFTER_CANCEL");
+  const cashOnDelivery = order.paymentMethod === PaymentMethod.CASH_ON_DELIVERY;
 
   return (
     <AdminPage
@@ -115,7 +120,7 @@ export default async function OrderPage(
       description={
         <span className="inline-flex flex-wrap items-center gap-2">
           <span>Placed {formatDate(order.createdAt)}</span>
-          <OrderStatusBadge status={order.status} />
+          <OrderStatusBadge status={order.status} paymentMethod={order.paymentMethod} />
         </span>
       }
     >
@@ -219,24 +224,51 @@ export default async function OrderPage(
                   value={order.shippingCents === 0 ? "Free" : money(order.shippingCents)}
                 />
               ) : null}
+              {order.paymentFeeCents > 0 ? (
+                <Sum label="Cash on delivery fee" value={money(order.paymentFeeCents)} />
+              ) : null}
               <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3">
                 <dt className="font-medium">Total</dt>
                 <dd className="text-lg font-semibold tabular">{money(order.totalCents)}</dd>
               </div>
-              <Sum label="Tender commission" value={money(-order.platformFeeCents)} muted />
+              <Sum
+                label={cashOnDelivery ? "Tender commission (billed separately)" : "Tender commission"}
+                value={money(-order.platformFeeCents)}
+                muted
+              />
               <Sum label="Your earnings" value={money(order.sellerNetCents)} muted />
             </dl>
+            <p className="mt-3 text-xs text-muted">
+              Paid by {cashOnDelivery ? "cash on delivery" : "card or wallet through Stripe"}.
+            </p>
             {shippingDiscount > 0 ? (
               <p className="mt-3 text-xs text-muted">
                 Shipping is shown at the rate&apos;s price; the free-shipping discount above takes{" "}
                 {money(shippingDiscount)} off it.
               </p>
             ) : null}
-            {order.status === "PENDING" ? (
+            {order.status === "PENDING" && cashOnDelivery ? (
+              <div className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
+                <p>
+                  Payment on delivery. The order is confirmed and its stock is set aside: ship
+                  it, and the courier collects {money(order.totalCents)} in cash from the buyer.
+                </p>
+                <CodOrderActions
+                  total={money(order.totalCents)}
+                  markPaid={markCodOrderPaidAction.bind(null, store.slug, order.id)}
+                  cancel={cancelCodOrderAction.bind(null, store.slug, order.id)}
+                />
+              </div>
+            ) : order.status === "PENDING" ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
                 Awaiting payment. The buyer reached the payment step but the payment hasn&apos;t
                 gone through yet. Don&apos;t ship it: it turns Paid by itself once Stripe confirms
                 the money.
+              </p>
+            ) : order.status === "CANCELLED" && cashOnDelivery && !order.paidAt ? (
+              <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
+                Cancelled before the cash came in. Its items went back into stock, and any
+                discount uses were given back.
               </p>
             ) : order.status === "CANCELLED" && !order.paidAt && !paidAfterCancel ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">

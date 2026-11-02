@@ -60,6 +60,7 @@ export function toCartDisplay(
         code: entry.code,
         amount: entry.amountCents > 0 ? money(-entry.amountCents) : null,
       })),
+    paymentFee: pricing.paymentFeeCents > 0 ? money(pricing.paymentFeeCents) : null,
     total: money(pricing.totalCents),
     totalCents: pricing.totalCents,
     freeShipping: pricing.freeShipping,

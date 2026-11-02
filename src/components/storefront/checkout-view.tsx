@@ -7,8 +7,11 @@ import { notFound, redirect } from "next/navigation";
 import { CheckoutForm } from "@/components/storefront/checkout-form";
 import { DiscountCodeForm } from "@/components/storefront/discount-code-form";
 import type {
+  CheckoutPaymentDisplay,
   CheckoutShippingDisplay,
+  CodPaymentDisplay,
   CountryOptionDisplay,
+  StripePaymentDisplay,
 } from "@/components/storefront/types";
 import { countryOptions, DELIVERABLE_COUNTRY_CODES } from "@/lib/address/countries";
 import { destinationOf } from "@/lib/address/validate";
@@ -18,13 +21,16 @@ import { getCart } from "@/lib/cart/queries";
 import { placeOrderAction, saveCheckoutAction } from "@/lib/checkout/actions";
 import { preferredCountry } from "@/lib/checkout/country";
 import { billingAddressRules, shippingAddressRules } from "@/lib/checkout/fields";
+import { checkoutPaymentOptions } from "@/lib/checkout/payment";
 import { priceCheckout } from "@/lib/checkout/pricing";
+import { getSavedCheckout } from "@/lib/checkout/saved";
 import type { CheckoutQuote } from "@/lib/checkout/quote";
 import { CartKind } from "@/lib/db/types";
 import { INTL_LOCALES, type Locale } from "@/lib/i18n/locales";
 import { format, plural, type Messages } from "@/lib/i18n/messages";
 import { getStorefrontI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
+import type { CodSettings } from "@/lib/payments/cod";
 import { loadZoneRules } from "@/lib/shipping/queries";
 import { shipsAnywhere, shipsTo, type RateRule } from "@/lib/shipping/rates";
 import { stripeLocale } from "@/lib/payments/rules";
@@ -32,7 +38,7 @@ import { discountCodeErrors, toCartDisplay } from "@/lib/storefront/cart-display
 import { storefrontPaths } from "@/lib/storefront/links";
 import { checkoutBlockedReason, isStorePubliclyVisible, type CheckoutBlock } from "@/lib/stores/policy";
 import { getStoreBySlug } from "@/lib/stores/queries";
-import { isStripeConfigured, stripePublishableKey } from "@/lib/stripe/server";
+import { stripePublishableKey } from "@/lib/stripe/server";
 import { getPublishedTheme } from "@/lib/theme/queries";
 
 /**
@@ -65,20 +71,36 @@ export async function CheckoutView({ storeSlug, kind }: { storeSlug: string; kin
   if (blocked) return <Blocked reason={blocked} t={t} cartHref={paths.cart} />;
 
   // A store can be fully onboarded on a server with no Stripe keys (a fresh
-  // checkout of the repo): nothing could take the payment, so say so.
+  // checkout of the repo). Unless it also takes cash on delivery, nothing could
+  // take the payment, so say so.
+  const options = checkoutPaymentOptions(store);
   const publishableKey = stripePublishableKey();
-  if (!isStripeConfigured() || !publishableKey || !store.stripeAccountId) {
+  const intl = INTL_LOCALES[locale];
+  const stripe: StripePaymentDisplay | null =
+    options.stripe && publishableKey && store.stripeAccountId
+      ? {
+          publishableKey,
+          stripeAccountId: store.stripeAccountId,
+          currency: store.currency.toLowerCase(),
+          locale: stripeLocale(locale),
+          accentColor: theme.settings.accent ?? store.accentColor,
+        }
+      : null;
+  if (!stripe && !options.cod) {
     return <Blocked reason="unavailable" t={t} cartHref={paths.cart} />;
   }
 
-  const intl = INTL_LOCALES[locale];
   const coverage = shipsTo(zones);
   const shippable = coverage.everywhere ? DELIVERABLE_COUNTRY_CODES : coverage.countryCodes;
 
   // Start the country select somewhere sensible, and only ever somewhere the
   // store ships: what the buyer chose before, their browser's region, their
   // language's region, or where the store's first zone is.
-  const draft = cart.checkoutDraft;
+  // A checkout not yet begun on this cart starts from what the buyer saved
+  // last time, if they did; once they have typed anything, that wins. Either
+  // way the page below is priced from it — rates, fees, discounts.
+  const saved = cart.hasCheckoutDraft ? null : await getSavedCheckout(store.id);
+  const draft = saved?.draft ?? cart.checkoutDraft;
   const firstCountry = zones.find((zone) => !zone.restOfWorld)?.countries[0]?.countryCode;
   const country = preferredCountry({
     saved: draft.shipping.countryCode,
@@ -96,8 +118,8 @@ export async function CheckoutView({ storeSlug, kind }: { storeSlug: string; kin
 
   // The drawer prices anonymously to spare every page a round trip to
   // Supabase; checkout asks who is signed in, and prices for them — the email
-  // on the cart first, else the account's.
-  const email = cart.email ?? user?.email.toLowerCase() ?? null;
+  // on the cart first, then the one saved for next time, else the account's.
+  const email = cart.email ?? saved?.email ?? user?.email.toLowerCase() ?? null;
   const shippingRules = shippingAddressRules(store);
   const quote = await priceCheckout(
     store.id,
@@ -106,6 +128,12 @@ export async function CheckoutView({ storeSlug, kind }: { storeSlug: string; kin
     {
       destination: needsShipping ? destinationOf(shipping, shippingRules) : null,
       requestedRateId: cart.shippingRateId,
+    },
+    {
+      stripe: stripe !== null,
+      cod: options.cod,
+      requested: draft.paymentMethod,
+      countryCode: needsShipping && shipping.countryCode ? shipping.countryCode : null,
     },
   );
 
@@ -140,14 +168,7 @@ export async function CheckoutView({ storeSlug, kind }: { storeSlug: string; kin
       orderNote={store.checkoutOrderNote}
       marketingOptIn={store.checkoutMarketingOptIn}
       shipping={shippingDisplay(quote, t, locale, money)}
-      payment={{
-        kind: "stripe",
-        publishableKey,
-        stripeAccountId: store.stripeAccountId,
-        currency: store.currency.toLowerCase(),
-        locale: stripeLocale(locale),
-        accentColor: theme.settings.accent ?? store.accentColor,
-      }}
+      payment={paymentDisplay(quote, stripe, options.cod, t, money)}
       placeOrder={placeOrderAction.bind(null, store.slug, kind)}
       save={saveCheckoutAction.bind(null, store.slug, kind)}
       cartHref={paths.cart}
@@ -197,12 +218,69 @@ function shippingDisplay(
   };
 }
 
+function paymentDisplay(
+  quote: CheckoutQuote,
+  stripe: StripePaymentDisplay | null,
+  settings: CodSettings | null,
+  t: Messages,
+  money: (cents: number) => string,
+): CheckoutPaymentDisplay {
+  return {
+    stripe,
+    cod: settings ? codDisplay(quote, settings, t, money) : null,
+    selected: quote.payment.selected,
+  };
+}
+
+/**
+ * Cash on delivery as an option for this order, worded for the buyer. Left
+ * out where it could never apply — nothing in the cart is delivered — and
+ * shown, but not choosable, where only this order's country or total is the
+ * problem, so the buyer knows what would change it.
+ */
+function codDisplay(
+  quote: CheckoutQuote,
+  settings: CodSettings,
+  t: Messages,
+  money: (cents: number) => string,
+): CodPaymentDisplay | null {
+  const cod = quote.payment.cod;
+  if (!cod || (!cod.available && (cod.reason === "disabled" || cod.reason === "no-shipping"))) {
+    return null;
+  }
+
+  const copy = t.checkout.cod;
+  let unavailable: string | null = null;
+  if (!cod.available) {
+    switch (cod.reason) {
+      case "country":
+        unavailable = copy.unavailable.country;
+        break;
+      case "below-minimum":
+        unavailable = format(copy.unavailable.belowMinimum, { amount: money(settings.minTotalCents ?? 0) });
+        break;
+      case "above-maximum":
+        unavailable = format(copy.unavailable.aboveMaximum, { amount: money(settings.maxTotalCents ?? 0) });
+        break;
+    }
+  }
+
+  return {
+    label: settings.label ?? copy.label,
+    instructions: settings.instructions,
+    feeHint: cod.available && cod.feeCents > 0 ? format(copy.feeHint, { fee: money(cod.feeCents) }) : null,
+    unavailable,
+    requiresPhone: settings.requirePhone,
+  };
+}
+
 const BLOCK_MESSAGES: Record<CheckoutBlock, keyof Messages["checkout"]["blocked"]> = {
   suspended: "suspended",
   "payments-not-set-up": "paymentsNotSetUp",
   "payments-on-hold": "paymentsOnHold",
   unavailable: "unavailable",
   "no-shipping": "noShipping",
+  "cod-needs-shipping": "codNeedsShipping",
 };
 
 function Blocked({ reason, t, cartHref }: { reason: CheckoutBlock; t: Messages; cartHref: string }) {

@@ -42,6 +42,11 @@ export type CartView = {
   email: string | null;
   /** What checkout has been given so far, unvalidated. */
   checkoutDraft: CheckoutDraft;
+  /**
+   * Whether checkout has saved anything on this cart yet. Until it has, a
+   * buyer's saved details may fill the form; after, what they typed wins.
+   */
+  hasCheckoutDraft: boolean;
   /** The rate picked at checkout, if any — a request, re-checked on pricing. */
   shippingRateId: string | null;
 };
@@ -53,6 +58,7 @@ const EMPTY_CART: CartView = {
   discountCodes: [],
   email: null,
   checkoutDraft: readCheckoutDraft(null),
+  hasCheckoutDraft: false,
   shippingRateId: null,
 };
 
@@ -143,6 +149,7 @@ export const getCart = cache(
       discountCodes: cart.discountCodes,
       email: cart.email,
       checkoutDraft: readCheckoutDraft(cart.checkoutDraft),
+      hasCheckoutDraft: cart.checkoutDraft !== null,
       shippingRateId: cart.shippingRateId,
     };
   },

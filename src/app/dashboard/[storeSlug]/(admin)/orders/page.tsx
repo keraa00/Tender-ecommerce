@@ -16,6 +16,7 @@ import { storeAdminPath } from "@/lib/admin/links";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { orderArrivedAt } from "@/lib/orders/live";
 import {
   countStoreOrdersByStatus,
   listStoreOrders,
@@ -46,19 +47,23 @@ export default async function OrdersPage(
   // listed and counted as new once more.
   const renderedAt = new Date();
   // The counts come first: their sum is the total that says which pages exist.
-  const counts = await countStoreOrdersByStatus(store.id);
+  const { byStatus: counts, codDue } = await countStoreOrdersByStatus(store.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const page = pageWindow(total, parsePage(pageParam), ORDERS_PAGE_SIZE);
   const orders = await listStoreOrders(store.id, { skip: page.skip, take: page.take });
+  const showCod = codDue > 0 || store.codEnabled;
   const listPath = storeAdminPath(store.slug, "orders");
   const pageHref = (number: number) => (number === 1 ? listPath : `${listPath}?page=${number}`);
 
-  // Paid since this member last opened the list. The list is newest-placed
-  // first, and an order can be paid a while after it was placed, so this is how
-  // they find what the drawer's count was about.
+  // Arrived since this member last opened the list — paid, or placed for cash
+  // on delivery. The list is newest-placed first, and a card order can be paid
+  // a while after it was placed, so this is how they find what the drawer's
+  // count was about.
   const seenAt = membership.ordersSeenAt;
-  const isNew = (order: (typeof orders)[number]) =>
-    order.paidAt !== null && order.paidAt > seenAt;
+  const isNew = (order: (typeof orders)[number]) => {
+    const arrivedAt = orderArrivedAt(order);
+    return arrivedAt !== null && arrivedAt > seenAt;
+  };
 
   return (
     <AdminPage
@@ -71,8 +76,9 @@ export default async function OrdersPage(
     >
       <NewOrdersNotice renderedAt={renderedAt.toISOString()} />
 
-      <StatGrid>
-        <Stat label="Awaiting payment" value={String(counts.PENDING)} />
+      <StatGrid columns={showCod ? 5 : 4}>
+        <Stat label="Awaiting payment" value={String(counts.PENDING - codDue)} />
+        {showCod ? <Stat label="Payment on delivery" value={String(codDue)} /> : null}
         <Stat label="Paid" value={String(counts.PAID)} />
         <Stat label="Fulfilled" value={String(counts.FULFILLED)} />
         <Stat label="Cancelled" value={String(counts.CANCELLED)} />
@@ -99,8 +105,8 @@ export default async function OrdersPage(
             }
           >
             {canAcceptOrders(store)
-              ? "Your store can take payments. Orders will show up here the moment a buyer checks out."
-              : "Your store cannot take payments until Stripe onboarding is finished, so no order can be placed yet."}
+              ? "Your store can take orders. They will show up here the moment a buyer checks out."
+              : "Your store cannot take orders until you finish Stripe onboarding or turn on cash on delivery, so no order can be placed yet."}
           </EmptyState>
         ) : (
           <Rows>
@@ -141,7 +147,7 @@ export default async function OrdersPage(
                     {order.issues.length > 0 ? (
                       <Badge tone="warning">Needs attention</Badge>
                     ) : null}
-                    <OrderStatusBadge status={order.status} />
+                    <OrderStatusBadge status={order.status} paymentMethod={order.paymentMethod} />
                   </div>
                 </Link>
               </li>

@@ -9,6 +9,7 @@ import {
   canPublishTheme,
   checkoutBlockedReason,
   isStorePubliclyVisible,
+  stripeReady,
 } from "@/lib/stores/policy";
 
 const tradeable = {
@@ -16,6 +17,7 @@ const tradeable = {
   stripeAccountId: "acct_123",
   stripeOnboardingComplete: true,
   stripeChargesEnabled: true,
+  codEnabled: false,
 };
 
 describe("canAcceptOrders", () => {
@@ -47,6 +49,43 @@ describe("canAcceptOrders", () => {
     expect(
       canAcceptOrders({ ...tradeable, status: StoreStatus.SUSPENDED }),
     ).toBe(false);
+  });
+});
+
+describe("cash on delivery", () => {
+  const cashOnly = {
+    ...tradeable,
+    stripeAccountId: null,
+    stripeOnboardingComplete: false,
+    stripeChargesEnabled: false,
+    codEnabled: true,
+  };
+
+  it("lets a store take orders without Stripe", () => {
+    expect(stripeReady(cashOnly)).toBe(false);
+    expect(canAcceptOrders(cashOnly)).toBe(true);
+    expect(canAcceptOrders({ ...tradeable, stripeChargesEnabled: false, codEnabled: true })).toBe(true);
+  });
+
+  it("still needs the store to be active", () => {
+    expect(canAcceptOrders({ ...cashOnly, status: StoreStatus.PENDING })).toBe(false);
+    expect(checkoutBlockedReason({ ...cashOnly, status: StoreStatus.SUSPENDED })).toBe("suspended");
+  });
+
+  it("sells what is delivered, and nothing that is not", () => {
+    expect(checkoutBlockedReason(cashOnly, { requiresShipping: true, shipsAnywhere: true })).toBeNull();
+    expect(checkoutBlockedReason(cashOnly, { requiresShipping: false, shipsAnywhere: true })).toBe(
+      "cod-needs-shipping",
+    );
+    expect(checkoutBlockedReason(cashOnly, { requiresShipping: true, shipsAnywhere: false })).toBe(
+      "no-shipping",
+    );
+  });
+
+  it("leaves digital products to the card when the store has both", () => {
+    expect(
+      checkoutBlockedReason({ ...tradeable, codEnabled: true }, { requiresShipping: false, shipsAnywhere: true }),
+    ).toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@ import {
 } from "@/lib/discounts/format";
 // Types only: the values re-export the Prisma client, and this module is also
 // rendered inside Client Components (the discount form's status preview).
-import type { OrderStatus, ProductStatus, StoreStatus } from "@/lib/db/types";
+import type { OrderStatus, PaymentMethod, ProductStatus, StoreStatus } from "@/lib/db/types";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -85,7 +85,20 @@ const orderStatusLabel: Record<OrderStatus, string> = {
   CANCELLED: "Cancelled",
 };
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+/**
+ * An unpaid cash-on-delivery order is not waiting on a payment that may never
+ * come: it is placed, and to be sent. It says so.
+ */
+export function OrderStatusBadge({
+  status,
+  paymentMethod,
+}: {
+  status: OrderStatus;
+  paymentMethod?: PaymentMethod;
+}) {
+  if (status === "PENDING" && paymentMethod === "CASH_ON_DELIVERY") {
+    return <Badge tone="warning">Payment on delivery</Badge>;
+  }
   return <Badge tone={orderStatusTone[status]}>{orderStatusLabel[status]}</Badge>;
 }
 

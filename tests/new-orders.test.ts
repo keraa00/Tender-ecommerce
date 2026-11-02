@@ -4,6 +4,7 @@ import {
   describeNewOrders,
   formatNewOrderCount,
   newOrdersReducer,
+  orderArrivedAt,
   readOrderPaidPayload,
   storeOrdersTopic,
   toNewOrdersState,
@@ -112,5 +113,22 @@ describe("storeOrdersTopic", () => {
     expect(topic).toMatch(
       /^store:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:orders$/,
     );
+  });
+});
+
+describe("orderArrivedAt", () => {
+  const placed = new Date(SEEN - 60_000);
+  const paidAt = new Date(SEEN + 60_000);
+
+  it("is when a card order was paid", () => {
+    expect(orderArrivedAt({ paymentMethod: "STRIPE", status: "PAID", createdAt: placed, paidAt })).toEqual(paidAt);
+    expect(orderArrivedAt({ paymentMethod: "STRIPE", status: "PENDING", createdAt: placed, paidAt: null })).toBeNull();
+  });
+
+  it("is when a cash-on-delivery order was placed, paid or not, unless it was cancelled", () => {
+    const cod = { paymentMethod: "CASH_ON_DELIVERY" as const, createdAt: placed };
+    expect(orderArrivedAt({ ...cod, status: "PENDING", paidAt: null })).toEqual(placed);
+    expect(orderArrivedAt({ ...cod, status: "PAID", paidAt })).toEqual(placed);
+    expect(orderArrivedAt({ ...cod, status: "CANCELLED", paidAt: null })).toBeNull();
   });
 });

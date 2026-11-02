@@ -7,7 +7,7 @@ import * as z from "zod";
 import { storeAdminUrl } from "@/lib/admin/links";
 import { requireUser } from "@/lib/auth/session";
 import { rootDb } from "@/lib/db/root";
-import { Prisma, StoreMemberRole } from "@/lib/db/types";
+import { Prisma, StoreMemberRole, StoreStatus } from "@/lib/db/types";
 import { deleteProductImageObjects, uploadStoreLogo } from "@/lib/products/images";
 import { slugify, storeSlugSchema } from "@/lib/slug";
 import { requireSupabaseConfig } from "@/lib/supabase/config";
@@ -17,8 +17,10 @@ import { canChangeCurrency } from "./policy";
 import { isStoreSlugTaken } from "./queries";
 import {
   parseCheckoutSettingsForm,
+  parseCodSettingsForm,
   parseGeneralSettingsForm,
   type CheckoutSettingsErrors,
+  type CodSettingsErrors,
   type GeneralSettingsErrors,
 } from "./settings-form";
 
@@ -240,6 +242,52 @@ export async function updateCheckoutSettingsAction(
   }
 
   revalidatePath(`/dashboard/${storeSlug}/settings/checkout`);
+  return { notice: "Saved." };
+}
+
+export type CodSettingsState = {
+  fieldErrors?: CodSettingsErrors;
+  formError?: string;
+  notice?: string;
+};
+
+/**
+ * Saves Settings → Payments → Cash on delivery.
+ *
+ * Switching it on is a way of being paid, so — like finishing Stripe
+ * onboarding — it opens a store that was still waiting to (PENDING → ACTIVE).
+ * Never the other way, and never a SUSPENDED store: that is the platform's
+ * decision. The status move is conditional on the row, not on what was read a
+ * moment ago.
+ */
+export async function updateCodSettingsAction(
+  storeSlug: string,
+  _prev: CodSettingsState,
+  formData: FormData,
+): Promise<CodSettingsState> {
+  const { store } = await getStoreContext(storeSlug);
+
+  const parsed = parseCodSettingsForm(formData);
+  if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+
+  try {
+    await rootDb.$transaction(async (tx) => {
+      await tx.store.update({ where: { id: store.id }, data: parsed.settings });
+      if (parsed.settings.codEnabled) {
+        await tx.store.updateMany({
+          where: { id: store.id, status: StoreStatus.PENDING },
+          data: { status: StoreStatus.ACTIVE },
+        });
+      }
+    });
+  } catch (error) {
+    console.error("updateCodSettingsAction failed", error);
+    return { formError: "Could not save cash on delivery. Please try again." };
+  }
+
+  // Whether the store can take orders shows across the admin — the overview's
+  // checklist, the orders page — so the whole store layout is refreshed.
+  revalidatePath(`/dashboard/${storeSlug}`, "layout");
   return { notice: "Saved." };
 }
 

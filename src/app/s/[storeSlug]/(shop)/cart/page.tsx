@@ -91,7 +91,13 @@ export default async function CartPage(props: PageProps<"/s/[storeSlug]/cart">) 
             <CheckoutButton
               t={t.cart}
               href={blocked ? null : paths.checkout}
-              reason={blocked === "no-shipping" ? t.cart.noShipping : null}
+              reason={
+                blocked === "no-shipping"
+                  ? t.cart.noShipping
+                  : blocked === "cod-needs-shipping"
+                    ? t.checkout.blocked.codNeedsShipping
+                    : null
+              }
             />
             <Link
               href={paths.catalog}

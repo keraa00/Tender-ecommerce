@@ -9,7 +9,7 @@ import { formatAddressLines, readAddress } from "@/lib/address/validate";
 import type { PostalAddress } from "@/lib/address/types";
 import { getPlacedOrder } from "@/lib/checkout/orders";
 import { findOrderByPaymentReturn, syncPlacedOrderPayment } from "@/lib/checkout/payment";
-import { CartKind } from "@/lib/db/types";
+import { CartKind, PaymentMethod } from "@/lib/db/types";
 import { INTL_LOCALES } from "@/lib/i18n/locales";
 import { format, plural, type Messages } from "@/lib/i18n/messages";
 import type { PaymentOutcome } from "@/lib/payments/rules";
@@ -55,7 +55,7 @@ function snapshotEntries(value: unknown): Snapshot[] {
 /**
  * The order just placed, and where its payment stands. Stripe sends the buyer
  * here once the Payment Element has confirmed — or failed to, after a bank's
- * own page.
+ * own page — and checkout itself does once a cash-on-delivery order is placed.
  *
  * The order is found through a short-lived cookie set by the checkout action,
  * not a URL, so there is nothing here to share or guess. The payment is read
@@ -110,6 +110,7 @@ export default async function CheckoutCompletePage(
   const intl = INTL_LOCALES[locale];
   const money = (cents: number) => formatMoney(cents, order.currency, intl);
   const discounts = snapshotEntries(order.appliedDiscounts);
+  const cashOnDelivery = order.paymentMethod === PaymentMethod.CASH_ON_DELIVERY;
   const shippingAddress = readAddress(order.shippingAddress);
   const billingAddress = readAddress(order.billingAddress);
 
@@ -143,7 +144,11 @@ export default async function CheckoutCompletePage(
         {t.orderComplete.title}
       </h1>
       <p className="mt-3 text-muted">
-        {outcome === "paid" ? t.orderComplete.paid : t.orderComplete.processing}{" "}
+        {outcome === "paid"
+          ? t.orderComplete.paid
+          : outcome === "pay-on-delivery"
+            ? format(t.orderComplete.payOnDelivery, { total: money(order.totalCents) })
+            : t.orderComplete.processing}{" "}
         {format(t.orderComplete.savedFor, { email: order.email })}
       </p>
 
@@ -194,6 +199,11 @@ export default async function CheckoutCompletePage(
           className="mt-4"
           t={t.cart}
           shipping={shippingLine}
+          fee={
+            order.paymentFeeCents > 0
+              ? { label: t.checkout.cod.fee, value: money(order.paymentFeeCents) }
+              : null
+          }
           cart={{
             subtotal: money(order.subtotalCents),
             total: money(order.totalCents),
@@ -217,6 +227,14 @@ export default async function CheckoutCompletePage(
           <Detail label={t.orderComplete.shippingMethod}>
             <p>{order.shippingRateName}</p>
             {estimate ? <p className="text-muted">{estimate}</p> : null}
+          </Detail>
+        ) : null}
+        {cashOnDelivery ? (
+          <Detail label={t.orderComplete.payment}>
+            <p>{store.codLabel ?? t.checkout.cod.label}</p>
+            {store.codInstructions ? (
+              <p className="whitespace-pre-line break-words text-muted">{store.codInstructions}</p>
+            ) : null}
           </Detail>
         ) : null}
         {billingAddress ? (

@@ -8,18 +8,21 @@ import {
   type AddressRules,
 } from "@/lib/address/validate";
 import { isUuid } from "@/lib/ids";
+import { readPaymentChoice, type PaymentChoice } from "@/lib/payments/cod";
 import { MAX_NOTE_LENGTH } from "./draft";
-import { CHECKOUT_MAX_LENGTH, type AddressPrefix } from "./fields";
+import { CHECKOUT_MAX_LENGTH, codShippingAddressRules, type AddressPrefix } from "./fields";
 
 /**
- * The checkout form: who is buying, where it goes, how it ships, and who pays.
+ * The checkout form: who is buying, where it goes, how it ships, who pays and
+ * how.
  * Pure, like the other form parsers. Errors are codes rather than sentences so
  * the storefront can word them in the buyer's language.
  *
  * What it does not decide is anything that needs the store's data — whether
  * the store ships to the address, whether the rate is one of its own and
- * still applies. Placing the order decides those, with the cart in hand; a
- * rate id from here is only ever a request.
+ * still applies, whether cash on delivery is offered for this order. Placing
+ * the order decides those, with the cart in hand; a rate id or a payment
+ * method from here is only ever a request.
  */
 
 export type CheckoutDetails = {
@@ -32,6 +35,8 @@ export type CheckoutDetails = {
   billingAddress: PostalAddress;
   /** The rate the buyer picked; checked against the store's on placing. */
   shippingRateId: string | null;
+  /** How the buyer chose to pay; checked against what the order allows on placing. */
+  paymentMethod: PaymentChoice;
   /** The total the buyer was shown, in cents; an order at any other is refused. */
   expectedTotalCents: number;
 };
@@ -70,9 +75,19 @@ export function parseCheckoutForm(
     /** The store's settings: a field it does not offer is ignored, not trusted. */
     orderNote: boolean;
     marketingOptIn: boolean;
+    /** Whether a cash-on-delivery order must give a phone with its shipping address. */
+    codRequiresPhone: boolean;
   },
 ): ParsedCheckoutForm {
   const fieldErrors: CheckoutFieldErrors = {};
+
+  // A form from before there was a choice paid by card; the quote decides
+  // whether the choice can stand.
+  const paymentMethod = readPaymentChoice(field(formData, "paymentMethod")) ?? "stripe";
+  const shippingRules =
+    paymentMethod === "cod"
+      ? codShippingAddressRules(options.shippingRules, options.codRequiresPhone)
+      : options.shippingRules;
 
   const email = normalizeEmail(field(formData, "email"));
   if (email === null) fieldErrors.email = field(formData, "email") === "" ? "required" : "email";
@@ -84,7 +99,7 @@ export function parseCheckoutForm(
     return null;
   };
 
-  const shippingAddress = options.needsShipping ? address("shipping", options.shippingRules) : null;
+  const shippingAddress = options.needsShipping ? address("shipping", shippingRules) : null;
 
   // Billing is the shipping address unless the buyer said otherwise — and,
   // with nothing to ship, the only address there is.
@@ -123,6 +138,7 @@ export function parseCheckoutForm(
       shippingAddress,
       billingAddress,
       shippingRateId,
+      paymentMethod,
       expectedTotalCents,
     },
   };

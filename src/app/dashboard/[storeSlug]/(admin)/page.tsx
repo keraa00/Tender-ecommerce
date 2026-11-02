@@ -15,7 +15,7 @@ import { formatMoney } from "@/lib/money";
 import { loadZoneRules } from "@/lib/shipping/queries";
 import { shipsAnywhere, shipsTo } from "@/lib/shipping/rates";
 import { getStoreContext } from "@/lib/stores/context";
-import { canAcceptOrders } from "@/lib/stores/policy";
+import { canAcceptOrders, stripeReady } from "@/lib/stores/policy";
 
 export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]">,
@@ -74,10 +74,14 @@ export default async function StoreOverviewPage(
       ),
     },
     {
-      title: "Connect Stripe",
+      title: "Set up payments",
       body: paymentsLive
-        ? "Payments are live. Buyers can check out."
-        : "Buyers can browse your store, but the buy button stays disabled until Stripe onboarding is finished.",
+        ? stripeReady(store) && store.codEnabled
+          ? "Payments are live. Buyers can pay online or in cash on delivery."
+          : stripeReady(store)
+            ? "Payments are live. Buyers can check out."
+            : "Cash on delivery is on, so buyers can check out. Connect Stripe to take card payments too."
+        : "Buyers can browse your store, but the buy button stays disabled until you finish Stripe onboarding or turn on cash on delivery.",
       done: paymentsLive,
       shipped: true,
       action: (

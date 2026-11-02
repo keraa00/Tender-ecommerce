@@ -6,7 +6,7 @@ import type { ShippingDestination } from "@/lib/address/types";
 import { getCart, type CartView } from "@/lib/cart/queries";
 import { loadCustomerProfile, loadDiscountRules } from "@/lib/discounts/queries";
 import { loadZoneRules } from "@/lib/shipping/queries";
-import { quoteCheckout, type CheckoutQuote } from "./quote";
+import { quoteCheckout, type CheckoutQuote, type PaymentOptions } from "./quote";
 import { emptyPricing, toPricedLines, type CartPricing } from "./totals";
 
 /**
@@ -20,15 +20,17 @@ import { emptyPricing, toPricedLines, type CartPricing } from "./totals";
 type Buyer = { email: string | null; userId: string | null };
 
 /**
- * A checkout's price, shipping included: what the address and the picked rate
- * come to, with every discount applied. `destination` is null until the
- * address is complete enough to say where the order is going.
+ * A checkout's price, shipping and payment included: what the address, the
+ * picked rate and the way of paying come to, with every discount applied.
+ * `destination` is null until the address is complete enough to say where the
+ * order is going.
  */
 export async function priceCheckout(
   storeId: string,
   cart: Pick<CartView, "lines" | "discountCodes">,
   buyer: Buyer,
   shipping: { destination: ShippingDestination | null; requestedRateId: string | null },
+  payment: PaymentOptions,
   now: Date = new Date(),
 ): Promise<CheckoutQuote> {
   const [rules, customer, zones] = await Promise.all([
@@ -47,6 +49,7 @@ export async function priceCheckout(
     zones,
     destination: shipping.destination,
     requestedRateId: shipping.requestedRateId,
+    payment,
   });
 }
 

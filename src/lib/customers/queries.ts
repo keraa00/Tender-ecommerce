@@ -3,7 +3,7 @@ import "server-only";
 import type { PostalAddress } from "@/lib/address/types";
 import { readAddress } from "@/lib/address/validate";
 import { rootDb } from "@/lib/db/root";
-import { Prisma, type OrderStatus } from "@/lib/db/types";
+import { Prisma, type OrderStatus, type PaymentMethod } from "@/lib/db/types";
 import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
 
 /**
@@ -119,6 +119,7 @@ export type CustomerOrder = {
   id: string;
   orderNumber: number;
   status: OrderStatus;
+  paymentMethod: PaymentMethod;
   totalCents: number;
   currency: string;
   createdAt: Date;
@@ -213,6 +214,7 @@ async function listCustomerOrders(storeId: string, email: string) {
       id: true,
       orderNumber: true,
       status: true,
+      paymentMethod: true,
       totalCents: true,
       currency: true,
       createdAt: true,

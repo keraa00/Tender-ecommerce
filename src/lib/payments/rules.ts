@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 
 import type { PostalAddress } from "@/lib/address/types";
-import { OrderStatus, StoreStatus, type CartKind, type Order } from "@/lib/db/types";
+import { OrderStatus, PaymentMethod, StoreStatus, type CartKind, type Order } from "@/lib/db/types";
 import type { Locale } from "@/lib/i18n/locales";
 
 /**
@@ -282,21 +282,30 @@ export function paymentMismatch(
   return null;
 }
 
-export type PaymentOutcome = "paid" | "processing" | "failed" | "cancelled";
+export type PaymentOutcome =
+  | "paid"
+  | "processing"
+  | "failed"
+  | "cancelled"
+  /** A cash-on-delivery order, placed: the buyer pays the courier. */
+  | "pay-on-delivery";
 
 /**
  * What the buyer is told on the confirmation page. The order's own status
  * wins once it has one; while it is still PENDING, the PaymentIntent says
  * whether the money is in, on its way (bank debits clear over days), or not
  * coming — a declined card, or a 3-D Secure challenge the buyer walked away
- * from.
+ * from. A pending cash-on-delivery order has no PaymentIntent and nothing that
+ * can fail: it is placed, to be paid at the door.
  */
 export function paymentOutcome(
   orderStatus: OrderStatus,
   intentStatus: Stripe.PaymentIntent.Status | null,
+  paymentMethod: PaymentMethod = PaymentMethod.STRIPE,
 ): PaymentOutcome {
   if (orderStatus === OrderStatus.PAID || orderStatus === OrderStatus.FULFILLED) return "paid";
   if (orderStatus === OrderStatus.CANCELLED) return "cancelled";
+  if (paymentMethod === PaymentMethod.CASH_ON_DELIVERY) return "pay-on-delivery";
   if (intentStatus === "succeeded") return "paid";
   if (intentStatus === "processing" || intentStatus === "requires_capture") return "processing";
   return "failed";

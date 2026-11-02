@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PostalAddress } from "@/lib/address/types";
-import { CartKind, OrderStatus, StoreStatus } from "@/lib/db/types";
+import { CartKind, OrderStatus, PaymentMethod, StoreStatus } from "@/lib/db/types";
 import {
   ORDER_METADATA_KEY,
   STRIPE_MERCHANT_COUNTRIES,
@@ -250,6 +250,13 @@ describe("paymentOutcome", () => {
     expect(paymentOutcome(OrderStatus.PENDING, "requires_action")).toBe("failed");
     expect(paymentOutcome(OrderStatus.PENDING, "canceled")).toBe("failed");
     expect(paymentOutcome(OrderStatus.PENDING, null)).toBe("failed");
+  });
+
+  it("calls a pending cash-on-delivery order placed, not failed", () => {
+    const cod = PaymentMethod.CASH_ON_DELIVERY;
+    expect(paymentOutcome(OrderStatus.PENDING, null, cod)).toBe("pay-on-delivery");
+    expect(paymentOutcome(OrderStatus.PAID, null, cod)).toBe("paid");
+    expect(paymentOutcome(OrderStatus.CANCELLED, null, cod)).toBe("cancelled");
   });
 });
 

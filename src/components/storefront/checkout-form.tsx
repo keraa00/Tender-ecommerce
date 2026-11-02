@@ -4,6 +4,7 @@ import { Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import type { Appearance, StripeElementLocale } from "@stripe/stripe-js";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   startTransition,
   useEffect,
@@ -17,21 +18,23 @@ import {
 import type { AddressErrorCode, AddressRules, RawAddress } from "@/lib/address/validate";
 import type { CheckoutState, PlaceOrderResponse } from "@/lib/checkout/actions";
 import type { CheckoutDraft } from "@/lib/checkout/draft";
-import { CHECKOUT_MAX_LENGTH, type AddressPrefix } from "@/lib/checkout/fields";
+import { CHECKOUT_MAX_LENGTH, codShippingAddressRules, type AddressPrefix } from "@/lib/checkout/fields";
 import { cn } from "@/lib/cn";
+import type { PaymentChoice } from "@/lib/payments/cod";
 import type { StripeBillingDetails } from "@/lib/payments/rules";
 import { stripeForAccount } from "@/lib/stripe/client";
 import { AddressFields } from "./address-fields";
 import { CartSummary } from "./cart-summary";
+import { CheckoutProgress } from "./checkout-progress";
 import { ChevronDownIcon } from "./icons";
 import { PaymentSection } from "./payment-section";
 import type {
   CartDisplay,
   CartMessages,
   CheckoutMessages,
+  CheckoutPaymentDisplay,
   CheckoutShippingDisplay,
   CountryOptionDisplay,
-  PaymentProviderDisplay,
 } from "./types";
 
 /**
@@ -49,14 +52,28 @@ import type {
  * one on a phone and the one beside the form. It is a set of forms of its
  * own, so it lives in the summary, outside this form.
  *
- * Paying is two steps behind one button: the server places the order and
- * creates its PaymentIntent, then the Payment Element confirms it. Stripe.js
- * loads as the store's connected account, since that is where the charge is.
+ * Paying online is two steps behind one button: the server places the order
+ * and creates its PaymentIntent, then the Payment Element confirms it.
+ * Stripe.js loads as the store's connected account, since that is where the
+ * charge is. Paying in cash on delivery is one: the server places the order
+ * and sends the buyer to the confirmation. A store that takes cash only loads
+ * no Stripe.js at all.
  */
 export function CheckoutForm(props: CheckoutFormProps) {
   const { payment, cart } = props;
-  const accent = payment.accentColor && /^#[0-9a-f]{3,8}$/i.test(payment.accentColor)
-    ? payment.accentColor
+  const stripe = payment.stripe;
+
+  // Hooks below ask for Stripe either way; without it they answer null.
+  if (!stripe) {
+    return (
+      <Elements stripe={null}>
+        <CheckoutFormBody {...props} />
+      </Elements>
+    );
+  }
+
+  const accent = stripe.accentColor && /^#[0-9a-f]{3,8}$/i.test(stripe.accentColor)
+    ? stripe.accentColor
     : undefined;
 
   // The storefront is always light. The Payment Element is an iframe and
@@ -68,15 +85,15 @@ export function CheckoutForm(props: CheckoutFormProps) {
 
   return (
     <Elements
-      stripe={stripeForAccount(payment.publishableKey, payment.stripeAccountId)}
+      stripe={stripeForAccount(stripe.publishableKey, stripe.stripeAccountId)}
       options={{
         mode: "payment",
         // Shown by wallets and pay-later methods, and kept current as the
         // order re-prices. A free order mounts no Element, but Elements still
         // wants a positive amount to start from.
         amount: cart.totalCents > 0 ? cart.totalCents : 100,
-        currency: payment.currency,
-        locale: payment.locale as StripeElementLocale,
+        currency: stripe.currency,
+        locale: stripe.locale as StripeElementLocale,
         appearance,
       }}
     >
@@ -103,15 +120,18 @@ type CheckoutFormProps = {
   orderNote: boolean;
   marketingOptIn: boolean;
   shipping: CheckoutShippingDisplay;
-  payment: PaymentProviderDisplay;
+  payment: CheckoutPaymentDisplay;
   placeOrder: (formData: FormData) => Promise<PlaceOrderResponse>;
   save: (formData: FormData) => Promise<void>;
   /** One element per place it is drawn: an element is rendered once. */
   codeForms: { folded: ReactNode; aside: ReactNode };
   cartHref: string;
-  /** Where Stripe sends the buyer once the payment is confirmed. */
+  /** The thank-you page: where checkout goes once the order is in. */
   completeHref: string;
 };
+
+/** Long enough to see the tick drawn before the thank-you page takes over. */
+const CONFIRMED_PAUSE_MS = 1100;
 
 /** What the form shows after a submit: the server's answer, or Stripe's. */
 type FormState = Omit<CheckoutState, "error"> & {
@@ -141,6 +161,7 @@ function CheckoutFormBody({
   orderNote,
   marketingOptIn,
   shipping,
+  payment,
   placeOrder,
   save,
   codeForms,
@@ -156,6 +177,8 @@ function CheckoutFormBody({
   const [paymentLoadFailed, setPaymentLoadFailed] = useState(false);
   const placed = useRef<PlacedIntent | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  const [confirmed, setConfirmed] = useState(false);
   const free = cart.totalCents === 0;
 
   const [email, setEmail] = useState(initialEmail);
@@ -164,13 +187,28 @@ function CheckoutFormBody({
   const [billingMode, setBillingMode] = useState(draft.billingSameAsShipping ? "same" : "different");
   const [billTo, setBillTo] = useState<RawAddress>(draft.billing);
   const [note, setNote] = useState(draft.note);
+  const [saveInfo, setSaveInfo] = useState(draft.saveInfo);
   const [rateId, setRateId] = useState(shipping.selectedId);
+  const [methodChoice, setMethodChoice] = useState<PaymentChoice | null>(payment.selected);
 
   // A pick the server no longer offers (the address moved, the cart grew)
   // gives way to the server's choice, which is the cheapest.
   const selectedRate = shipping.rates.some((rate) => rate.id === rateId)
     ? rateId
     : shipping.selectedId;
+
+  // The same for the way of paying: cash on delivery can stop applying when
+  // the country or the total changes, and the server then prices for the card.
+  const usable = (choice: PaymentChoice | null) =>
+    choice === "stripe" ? payment.stripe !== null : choice === "cod" ? payment.cod?.unavailable === null : false;
+  const method = usable(methodChoice) ? methodChoice : payment.selected;
+  const cashOnDelivery = !free && method === "cod";
+
+  // A courier rings before handing over a parcel that has to be paid for.
+  const deliveryRules =
+    cashOnDelivery && payment.cod
+      ? codShippingAddressRules(shippingRules, payment.cod.requiresPhone)
+      : shippingRules;
 
   // --- Saving, so the server can re-price ------------------------------------
 
@@ -249,6 +287,8 @@ function CheckoutFormBody({
         return t.errors.shippingUnavailable;
       case "shipping-changed":
         return t.errors.shippingChanged;
+      case "payment-method-changed":
+        return t.errors.paymentMethodChanged;
       case "unavailable":
         return t.unavailable;
       case "payment":
@@ -266,12 +306,22 @@ function CheckoutFormBody({
 
   // --- Paying ------------------------------------------------------------------
 
+  /** The order is in: show it confirmed, then put the thank-you page in checkout's place. */
+  function confirm() {
+    setConfirmed(true);
+    setTimeout(() => router.replace(completeHref), CONFIRMED_PAUSE_MS);
+  }
+
   /**
    * Places the order, then confirms its payment. A declined card leaves the
    * order and its PaymentIntent in place, so trying another card — with the
    * form unchanged — confirms the same PaymentIntent again rather than placing
    * a second order. Change anything and the next attempt places a fresh order;
    * the server cancels the old one first.
+   *
+   * Cards, wallets and 3-D Secure finish here, in Stripe's own window over the
+   * page, and the order is shown confirmed before moving on. Only a payment
+   * method that has to visit the bank's site leaves through `return_url`.
    */
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -283,10 +333,11 @@ function CheckoutFormBody({
     const show = (next: FormState) => startTransition(() => setState(next));
 
     startPlacing(async () => {
-      if (free) {
-        // Nothing to pay: the server places the order and redirects.
+      if (free || cashOnDelivery) {
+        // Nothing to pay now: placing the order is the whole of it.
         const result = await placeOrder(data);
-        if (result && !result.ok) show(result);
+        if (result.ok) confirm();
+        else show(result);
         return;
       }
 
@@ -302,9 +353,13 @@ function CheckoutFormBody({
       let intent = placed.current?.key === key ? placed.current : null;
       if (!intent) {
         const result = await placeOrder(data);
-        if (!result) return; // Redirected: an earlier attempt was paid after all.
         if (!result.ok) {
           show(result);
+          return;
+        }
+        // An earlier attempt turned out to be paid after all.
+        if (result.kind === "done") {
+          confirm();
           return;
         }
         intent = { key, clientSecret: result.clientSecret, billingDetails: result.billingDetails };
@@ -318,9 +373,16 @@ function CheckoutFormBody({
           return_url: new URL(completeHref, window.location.href).toString(),
           payment_method_data: { billing_details: intent.billingDetails },
         },
+        redirect: "if_required",
       });
 
-      // Only reached when confirming failed; success leaves for `return_url`.
+      // Succeeded, or on its way (a bank debit): the thank-you page reads
+      // which from Stripe, and settles the order if it is paid.
+      if (!error) {
+        confirm();
+        return;
+      }
+
       const cardProblem = error.type === "card_error" || error.type === "validation_error";
       // Anything else (the PaymentIntent was cancelled from another tab, say)
       // means this one cannot be retried; the next attempt starts afresh.
@@ -330,7 +392,30 @@ function CheckoutFormBody({
   }
 
   const cannotShip = needsShipping && shipping.state !== "ready";
-  const cannotPay = !free && (!paymentReady || !stripe || !elements);
+  const cannotPay =
+    !free && (method === null || (method === "stripe" && (!paymentReady || !stripe || !elements)));
+
+  // "Save my information for next time": with the delivery address, or with
+  // the billing address when nothing ships. Unticking saves at once, which is
+  // what forgets the saved details.
+  const saveInfoBox = (
+    <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+      <input
+        type="checkbox"
+        name="saveInfo"
+        checked={saveInfo}
+        onChange={(event) => {
+          setSaveInfo(event.target.checked);
+          commit();
+        }}
+        className="mt-0.5"
+      />
+      <span className="min-w-0">
+        <span className="block">{t.saveInfo}</span>
+        <span className="block text-xs text-muted">{t.saveInfoHint}</span>
+      </span>
+    </label>
+  );
 
   const summary = (codeForm: ReactNode) => (
     <OrderSummary cart={cart} cartT={cartT} t={t} shipping={shipping} repricing={repricing}>
@@ -340,6 +425,13 @@ function CheckoutFormBody({
 
   return (
     <>
+      {placing || confirmed ? (
+        <CheckoutProgress
+          state={confirmed ? "confirmed" : "working"}
+          label={confirmed ? t.confirmed : free || cashOnDelivery ? t.placing : t.paying}
+        />
+      ) : null}
+
       {/* On a phone the order folds into a bar above the form — the total is
           what a buyer checks most — and opens in place. Works without JS. */}
       <details className="group border-b border-border bg-surface-subtle lg:hidden">
@@ -419,10 +511,11 @@ function CheckoutFormBody({
                 onChange={setShippingField}
                 onCommit={() => commit()}
                 countries={shippingCountries}
-                rules={shippingRules}
+                rules={deliveryRules}
                 errors={addressErrors("shipping")}
                 t={t}
               />
+              {saveInfoBox}
             </Section>
           ) : null}
 
@@ -506,6 +599,12 @@ function CheckoutFormBody({
 
           <PaymentSection
             free={free}
+            payment={payment}
+            method={method}
+            onMethodChange={(choice) => {
+              setMethodChoice(choice);
+              commit();
+            }}
             t={t}
             onReady={() => setPaymentReady(true)}
             onLoadError={() => setPaymentLoadFailed(true)}
@@ -527,7 +626,13 @@ function CheckoutFormBody({
                   disabled={placing || repricing || cannotShip || cannotPay}
                   className="flex h-13 w-full cursor-pointer items-center justify-center rounded-lg text-base font-semibold text-white bg-store-accent transition-colors hover:bg-store-accent-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-store-accent"
                 >
-                  {free ? (placing ? t.placing : t.placeOrder) : placing ? t.paying : t.payNow}
+                  {free || cashOnDelivery
+                    ? placing
+                      ? t.placing
+                      : t.placeOrder
+                    : placing
+                      ? t.paying
+                      : t.payNow}
                 </button>
                 <Link
                   href={cartHref}
@@ -576,6 +681,7 @@ function CheckoutFormBody({
                   />
                 </div>
               ) : null}
+              {needsShipping ? null : saveInfoBox}
             </div>
           </PaymentSection>
         </form>
@@ -659,6 +765,7 @@ function OrderSummary({
         <CartSummary
           cart={cart}
           t={cartT}
+          fee={cart.paymentFee ? { label: t.cod.fee, value: cart.paymentFee } : null}
           shipping={
             shipping.summary
               ? shipping.summary

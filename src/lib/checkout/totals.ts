@@ -49,6 +49,8 @@ export type CartPricing = {
   itemsDiscountCents: number;
   shippingCents: number;
   shippingDiscountCents: number;
+  /** What the payment method adds — the cash-on-delivery fee — included in the total. */
+  paymentFeeCents: number;
   totalCents: number;
   applied: AppliedDiscount[];
   /** Each priced line's share of the item discounts, by cart line id. */
@@ -59,9 +61,11 @@ export type CartPricing = {
 
 /**
  * The one place a total is added up: lines, less item discounts, plus the
- * chosen shipping rate, less what a free-shipping discount took off it. Tax,
- * when it comes (Stripe Tax, computed on this post-discount amount plus
- * shipping), is one more term here and one more column on the order.
+ * chosen shipping rate, less what a free-shipping discount took off it. The
+ * payment method's fee goes on last, in `addPaymentFee`, because it is worked
+ * out from this total. Tax, when it comes (Stripe Tax, computed on this
+ * post-discount amount plus shipping), is one more term here and one more
+ * column on the order.
  */
 export function summarisePricing(
   lines: readonly PricedLine[],
@@ -100,6 +104,7 @@ export function summarisePricing(
     itemsDiscountCents: selection.itemsDiscountCents,
     shippingCents,
     shippingDiscountCents: selection.shippingDiscountCents,
+    paymentFeeCents: 0,
     totalCents:
       subtotalCents -
       selection.itemsDiscountCents +
@@ -112,6 +117,16 @@ export function summarisePricing(
   };
 }
 
+/** The total with the payment method's fee on top. */
+export function addPaymentFee(pricing: CartPricing, feeCents: number): CartPricing {
+  if (feeCents === 0) return pricing;
+  return {
+    ...pricing,
+    paymentFeeCents: pricing.paymentFeeCents + feeCents,
+    totalCents: pricing.totalCents + feeCents,
+  };
+}
+
 /** A cart with nothing to price, without asking the database anything. */
 export function emptyPricing(enteredCodes: readonly string[]): CartPricing {
   return {
@@ -119,6 +134,7 @@ export function emptyPricing(enteredCodes: readonly string[]): CartPricing {
     itemsDiscountCents: 0,
     shippingCents: 0,
     shippingDiscountCents: 0,
+    paymentFeeCents: 0,
     totalCents: 0,
     applied: [],
     lineDiscounts: {},
@@ -136,9 +152,11 @@ export function emptyPricing(enteredCodes: readonly string[]): CartPricing {
  *
  * `discountCents` is everything taken off, shipping included, and
  * `shippingCents` is the rate before any free-shipping discount — so
- * `total = subtotal − discount + shipping` holds for every order. Commission is
- * on that post-discount total: the platform takes a cut of what the buyer paid,
- * not of the promotion the seller gave away.
+ * `total = subtotal − discount + shipping + paymentFee` holds for every order.
+ * Commission is on that post-discount total: the platform takes a cut of what
+ * the buyer paid, not of the promotion the seller gave away. On a
+ * cash-on-delivery order it is recorded the same way and owed by the seller,
+ * since no part of the cash passes through Stripe.
  */
 export function orderAmounts(pricing: CartPricing, commissionBps: number) {
   const totalCents = pricing.totalCents;
@@ -148,6 +166,7 @@ export function orderAmounts(pricing: CartPricing, commissionBps: number) {
     subtotalCents: pricing.subtotalCents,
     discountCents: pricing.itemsDiscountCents + pricing.shippingDiscountCents,
     shippingCents: pricing.shippingCents,
+    paymentFeeCents: pricing.paymentFeeCents,
     totalCents,
     platformFeeCents,
     sellerNetCents: totalCents - platformFeeCents,

@@ -1,5 +1,6 @@
 import type { CartLineView } from "@/lib/cart/queries";
 import type { Messages } from "@/lib/i18n/messages";
+import type { PaymentChoice } from "@/lib/payments/cod";
 
 /**
  * Shapes handed from the storefront's Server Components to its Client
@@ -40,6 +41,8 @@ export type CartDisplay = {
   itemCountLabel: string;
   subtotal: string;
   discounts: CartDiscountDisplay[];
+  /** What the payment method adds — the cash-on-delivery fee — or null. */
+  paymentFee: string | null;
   total: string;
   /** The same total in cents, which checkout echoes back to catch a change. */
   totalCents: number;
@@ -71,15 +74,14 @@ export type CheckoutShippingDisplay = {
 };
 
 /**
- * How the buyer pays: Stripe's Payment Element, acting as the store's own
+ * Paying online: Stripe's Payment Element, acting as the store's own
  * connected account — charges are direct, so Stripe.js has to load as the
  * seller to confirm a PaymentIntent that lives on their account. No client
  * secret here: the PaymentIntent is created when the order is placed, and the
  * amount the Element shows wallets is the cart's total, which re-pricing keeps
  * current.
  */
-export type PaymentProviderDisplay = {
-  kind: "stripe";
+export type StripePaymentDisplay = {
   publishableKey: string;
   stripeAccountId: string;
   /** Lower-case ISO 4217, as Stripe.js wants it. */
@@ -88,6 +90,33 @@ export type PaymentProviderDisplay = {
   locale: string;
   /** The store's accent, for the Payment Element's primary colour. */
   accentColor: string | null;
+};
+
+/** Paying the courier, as this order sees it. */
+export type CodPaymentDisplay = {
+  /** The seller's name for it, or the buyer's language's. */
+  label: string;
+  /** The seller's own words, untranslated, or null. */
+  instructions: string | null;
+  /** "+2,00 KM fee", or null when it adds nothing. */
+  feeHint: string | null;
+  /** Why this order cannot be paid this way, or null when it can. */
+  unavailable: string | null;
+  /** Choosing it makes the phone required, for the courier. */
+  requiresPhone: boolean;
+};
+
+/**
+ * The ways this order can be paid, and the one it is priced for. Either may
+ * be missing — a store can take cards only, cash only, or both — but checkout
+ * is never shown with neither.
+ */
+export type CheckoutPaymentDisplay = {
+  stripe: StripePaymentDisplay | null;
+  /** Null when the store does not offer it, or nothing in the cart is delivered. */
+  cod: CodPaymentDisplay | null;
+  /** Null when the order comes to nothing, or nothing can take it. */
+  selected: PaymentChoice | null;
 };
 
 export type CartMessages = Messages["cart"];

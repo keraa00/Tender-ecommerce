@@ -2,13 +2,20 @@ import type { ShippingDestination } from "@/lib/address/types";
 import { applyDiscounts, type DiscountRule } from "@/lib/discounts/engine";
 import type { CustomerProfile } from "@/lib/discounts/segments";
 import {
+  choosePaymentMethod,
+  codAvailability,
+  type CodAvailability,
+  type CodSettings,
+  type PaymentChoice,
+} from "@/lib/payments/cod";
+import {
   chooseRate,
   eligibleRates,
   zoneFor,
   type RateRule,
   type ZoneRule,
 } from "@/lib/shipping/rates";
-import { summarisePricing, toPricedLines, type CartPricing } from "./totals";
+import { addPaymentFee, summarisePricing, toPricedLines, type CartPricing } from "./totals";
 
 /**
  * Prices a checkout: its discounts, its shipping, and how the two meet. Pure —
@@ -25,6 +32,9 @@ import { summarisePricing, toPricedLines, type CartPricing } from "./totals";
  *      it still qualifies, else the cheapest.
  *   3. Discounts again, now with that rate's price, so a free-shipping
  *      discount takes exactly the chosen rate off.
+ *   4. How it is paid. Cash on delivery's limits and its fee are judged on the
+ *      total so far — goods and shipping, after discounts — and the fee goes
+ *      on top when the order will be paid that way.
  *
  * One edge is accepted: when a non-combinable free-shipping discount only wins
  * once shipping has a price, pass 3 can drop an item discount pass 1 kept. The
@@ -60,11 +70,33 @@ export type ShippingQuote =
       selected: RateRule;
     };
 
+export type PaymentQuote = {
+  /** Whether a card payment through Stripe can be taken. */
+  stripe: boolean;
+  /** Cash on delivery for this order; null when the store does not offer it. */
+  cod: CodAvailability | null;
+  /** How the order will be paid; null when it comes to nothing, or nothing can take it. */
+  selected: PaymentChoice | null;
+};
+
+/** What the store can take payment with, and what the buyer picked. */
+export type PaymentOptions = {
+  stripe: boolean;
+  /** Null when the store does not offer cash on delivery. */
+  cod: CodSettings | null;
+  requested: PaymentChoice | null;
+  /** Where the order ships, for COD's country limit — known before the rest of the address. */
+  countryCode: string | null;
+};
+
+const NO_PAYMENT: PaymentOptions = { stripe: false, cod: null, requested: null, countryCode: null };
+
 export type CheckoutQuote = {
   pricing: CartPricing;
   shipping: ShippingQuote;
   /** Of the lines that ship. */
   weightGrams: number;
+  payment: PaymentQuote;
 };
 
 export function quoteCheckout(input: {
@@ -78,6 +110,8 @@ export function quoteCheckout(input: {
   /** Null until the address is complete enough to price. */
   destination: ShippingDestination | null;
   requestedRateId: string | null;
+  /** Left out where nothing is being paid for yet: the drawer and the cart page. */
+  payment?: PaymentOptions;
 }): CheckoutQuote {
   const lines = toPricedLines(input.lines);
   const shipping = input.lines.filter(
@@ -100,12 +134,33 @@ export function quoteCheckout(input: {
       shippingCents,
     );
 
+  const payment = input.payment ?? NO_PAYMENT;
   const unshipped = price(0);
-  const done = (quote: ShippingQuote, pricing = unshipped): CheckoutQuote => ({
-    pricing,
-    shipping: quote,
-    weightGrams,
-  });
+  const done = (quote: ShippingQuote, pricing = unshipped): CheckoutQuote => {
+    const cod = payment.cod
+      ? codAvailability(payment.cod, {
+          baseCents: pricing.totalCents,
+          needsShipping: shipping.length > 0,
+          countryCode: input.destination?.countryCode ?? payment.countryCode,
+        })
+      : null;
+    // An order that comes to nothing has nothing to pay, and so no fee.
+    const selected =
+      pricing.totalCents === 0
+        ? null
+        : choosePaymentMethod({
+            stripe: payment.stripe,
+            cod: cod?.available ?? false,
+            requested: payment.requested,
+          });
+    const fee = selected === "cod" && cod?.available ? cod.feeCents : 0;
+    return {
+      pricing: addPaymentFee(pricing, fee),
+      shipping: quote,
+      weightGrams,
+      payment: { stripe: payment.stripe, cod, selected },
+    };
+  };
 
   if (shipping.length === 0) return done({ state: "not-required" });
   if (!input.destination) return done({ state: "address-needed" });

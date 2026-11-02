@@ -127,7 +127,7 @@ export default async function CustomerPage(
                 </div>
 
                 <div className="shrink-0">
-                  <OrderStatusBadge status={order.status} />
+                  <OrderStatusBadge status={order.status} paymentMethod={order.paymentMethod} />
                 </div>
               </Row>
             ))}

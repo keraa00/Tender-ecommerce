@@ -3,10 +3,13 @@ import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import { AdminPage } from "@/components/admin/page-shell";
+import { CodSettingsForm } from "@/components/settings/cod-settings-form";
 import { ConnectStripeButton } from "@/components/settings/connect-stripe-button";
 import { Badge } from "@/components/ui/badge";
+import { countryOptions, DELIVERABLE_COUNTRY_CODES } from "@/lib/address/countries";
 import { StoreStatus } from "@/lib/db/types";
 import { acceptLanguageRegions } from "@/lib/checkout/country";
+import { currencySymbol } from "@/lib/money";
 import {
   retrieveAccount,
   syncStoreFromAccount,
@@ -18,8 +21,12 @@ import {
   STRIPE_MERCHANT_COUNTRIES,
   type StoreStripeFields,
 } from "@/lib/payments/rules";
+import { loadZoneRules } from "@/lib/shipping/queries";
+import { shipsTo } from "@/lib/shipping/rates";
+import { updateCodSettingsAction } from "@/lib/stores/actions";
 import { getStoreContext } from "@/lib/stores/context";
-import { canManagePayments } from "@/lib/stores/policy";
+import { canManagePayments, stripeReady } from "@/lib/stores/policy";
+import { codSettingsFormValues } from "@/lib/stores/settings-form";
 import { isStripeConfigured, isStripeTestMode } from "@/lib/stripe/server";
 
 export async function generateMetadata(
@@ -53,9 +60,13 @@ function countryChoices(acceptLanguage: string | null): { options: CountryOption
 }
 
 /**
- * Settings → Payments. Reads the connected account from Stripe on every view
- * and writes what it finds back onto the store, so returning from onboarding
- * shows the real state even before `account.updated` arrives.
+ * Settings → Payments: Stripe, and cash on delivery. Reads the connected
+ * account from Stripe on every view and writes what it finds back onto the
+ * store, so returning from onboarding shows the real state even before
+ * `account.updated` arrives.
+ *
+ * Connecting Stripe is the owner's alone; cash on delivery is checkout
+ * configuration like shipping, open to every member.
  */
 export default async function PaymentsSettingsPage(
   props: PageProps<"/dashboard/[storeSlug]/settings/payments">,
@@ -64,7 +75,17 @@ export default async function PaymentsSettingsPage(
   const { store, membership } = await getStoreContext(storeSlug);
   const canManage = canManagePayments(membership);
   const action = startStripeOnboardingAction.bind(null, storeSlug);
-  const countries = countryChoices((await headers()).get("accept-language"));
+  const [requestHeaders, zones] = await Promise.all([headers(), loadZoneRules(store.id)]);
+  const countries = countryChoices(requestHeaders.get("accept-language"));
+
+  // Cash on delivery is offered where the store ships. Countries chosen before
+  // a zone was removed stay listed, so saving does not quietly drop them.
+  const coverage = shipsTo(zones);
+  const shippable = coverage.everywhere ? DELIVERABLE_COUNTRY_CODES : coverage.countryCodes;
+  const codCountries = countryOptions(
+    [...new Set([...shippable, ...store.codCountryCodes])],
+    "en",
+  );
 
   const cached: StoreStripeFields = {
     stripeOnboardingComplete: store.stripeOnboardingComplete,
@@ -93,10 +114,24 @@ export default async function PaymentsSettingsPage(
   return (
     <AdminPage
       title="Payments"
-      description="Buyers pay by card and wallet through Stripe, straight into your own Stripe account."
+      description="Buyers pay by card and wallet through Stripe, straight into your own Stripe account, or in cash to the courier on delivery."
     >
       <div className="space-y-6">
         <Panel snapshot={snapshot} canManage={canManage} action={action} countries={countries} />
+
+        <section className="rounded-xl border border-border bg-surface p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-medium">Cash on delivery</h2>
+            {store.codEnabled ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>}
+          </div>
+          <CodSettingsForm
+            action={updateCodSettingsAction.bind(null, storeSlug)}
+            values={codSettingsFormValues(store)}
+            currencySymbol={currencySymbol(store.currency)}
+            countries={codCountries}
+            stripeLive={stripeReady(store)}
+          />
+        </section>
 
         {snapshot.kind === "connected" || snapshot.kind === "unreachable" ? (
           snapshot.fields.status === StoreStatus.SUSPENDED ? (
@@ -120,6 +155,11 @@ export default async function PaymentsSettingsPage(
             is taken as an application fee, Stripe deducts its processing fee, and Stripe
             pays out the rest on your account&apos;s payout schedule. Refunds and disputes
             are handled in your Stripe Dashboard.
+          </p>
+          <p className="mt-2 text-sm text-muted text-pretty">
+            Cash-on-delivery orders are paid to you directly, by the courier. The same
+            commission applies to them and is billed to you separately; each order shows
+            what it owes.
           </p>
         </div>
       </div>
@@ -158,10 +198,10 @@ function Panel({
       return (
         <Card title="Connect Stripe" badge={<Badge tone="warning">Not connected</Badge>}>
           <p>
-            Buyers can browse your store, but checkout stays closed until you connect a
-            Stripe account. Choose where your business is based — it can&apos;t be changed
-            later — and Stripe will ask for your business details and a bank account for
-            payouts. It takes a few minutes.
+            Buyers can pay by card once you connect a Stripe account — until then, checkout
+            is open only if you offer cash on delivery below. Choose where your business is
+            based — it can&apos;t be changed later — and Stripe will ask for your business
+            details and a bank account for payouts. It takes a few minutes.
           </p>
           <div className="mt-4">
             {canManage ? (

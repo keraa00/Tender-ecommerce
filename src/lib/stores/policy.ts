@@ -6,30 +6,36 @@ import { StoreMemberRole, StoreStatus, type Store, type StoreMember } from "@/li
  * unit-tested and reused on the client.
  */
 
-type TradingFields = Pick<
+type StripeFields = Pick<
   Store,
-  | "status"
-  | "stripeAccountId"
-  | "stripeOnboardingComplete"
-  | "stripeChargesEnabled"
+  "stripeAccountId" | "stripeOnboardingComplete" | "stripeChargesEnabled"
 >;
 
+type TradingFields = StripeFields & Pick<Store, "status" | "codEnabled">;
+
 /**
- * A store may take money only when all four hold. Storefront browsing is
- * allowed earlier — a seller mid-onboarding should be able to see their own
- * shop and share it — but the buy button stays disabled with an explanation.
+ * The store's Stripe account can be charged: connected, onboarded, and with
+ * charges enabled.
  *
  * `stripeAccountId` is checked explicitly rather than inferred from the flags:
- * checkout needs an account to charge against, and a bad fixture or a partial
- * webhook must fail here rather than at the Stripe API boundary.
+ * a card payment needs an account to charge against, and a bad fixture or a
+ * partial webhook must fail here rather than at the Stripe API boundary.
+ */
+export function stripeReady(store: StripeFields): boolean {
+  return (
+    store.stripeAccountId !== null && store.stripeOnboardingComplete && store.stripeChargesEnabled
+  );
+}
+
+/**
+ * A store may take orders once it is active and has a way to be paid: Stripe,
+ * cash on delivery, or both. COD alone is enough — it is how a seller where
+ * Stripe takes no merchants trades at all. Storefront browsing is allowed
+ * earlier — a seller mid-setup should be able to see their own shop and share
+ * it — but the buy button stays disabled with an explanation.
  */
 export function canAcceptOrders(store: TradingFields): boolean {
-  return (
-    store.status === StoreStatus.ACTIVE &&
-    store.stripeAccountId !== null &&
-    store.stripeOnboardingComplete &&
-    store.stripeChargesEnabled
-  );
+  return store.status === StoreStatus.ACTIVE && (stripeReady(store) || store.codEnabled);
 }
 
 /** Why checkout is unavailable. A code, so the storefront can say it in the buyer's language. */
@@ -38,13 +44,16 @@ export type CheckoutBlock =
   | "payments-not-set-up"
   | "payments-on-hold"
   | "unavailable"
-  | "no-shipping";
+  | "no-shipping"
+  /** The store takes cash on delivery only, and nothing in the cart is delivered. */
+  | "cod-needs-shipping";
 
 /**
  * Why this cart cannot be checked out, or null when it can. Payments come
  * first — no order can be taken without them — then shipping: a store that
  * delivers nowhere cannot sell anything that has to be delivered, but its
- * digital products and services still sell.
+ * digital products and services still sell. Unless cash is the only way it is
+ * paid: cash goes to a courier, and with nothing to deliver there is none.
  */
 export function checkoutBlockedReason(
   store: TradingFields,
@@ -63,6 +72,7 @@ export function checkoutBlockedReason(
   }
 
   if (cart.requiresShipping && !cart.shipsAnywhere) return "no-shipping";
+  if (!cart.requiresShipping && !stripeReady(store)) return "cod-needs-shipping";
   return null;
 }
 

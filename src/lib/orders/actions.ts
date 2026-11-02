@@ -1,8 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
 import { rootDb } from "@/lib/db/root";
+import { isUuid } from "@/lib/ids";
+import { cancelCodOrder, markCodOrderPaid } from "@/lib/payments/settle";
 import { getStoreContext } from "@/lib/stores/context";
 import type { UnseenOrders } from "./live";
 import { listUnseenOrderIds } from "./queries";
@@ -49,4 +52,54 @@ export async function getUnseenOrdersAction(storeSlug: string): Promise<UnseenOr
     ids: await listUnseenOrderIds(store.id, membership.ordersSeenAt),
     seenThroughMs: membership.ordersSeenAt.getTime(),
   };
+}
+
+export type CodOrderActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Moves a cash-on-delivery order on from "payment on delivery": paid, once the
+ * courier has handed over the cash, or cancelled — refused at the door, never
+ * sent — with its stock put back and its discount uses released.
+ *
+ * The order id comes from the browser, so it only narrows a lookup scoped to
+ * the member's store; another store's order moves nothing. Both moves are
+ * conditional on the order still being an unpaid COD order, so a double click
+ * or a second tab does nothing the second time.
+ */
+async function moveCodOrder(
+  storeSlug: string,
+  orderId: string,
+  move: typeof markCodOrderPaid,
+): Promise<CodOrderActionResult> {
+  const { store } = await getStoreContext(storeSlug);
+  if (!isUuid(orderId)) return { ok: false, error: "That order doesn't exist." };
+
+  let moved: boolean;
+  try {
+    moved = await rootDb.$transaction((tx) => move(tx, { id: orderId, storeId: store.id }));
+  } catch (error) {
+    console.error("moveCodOrder failed", error);
+    return { ok: false, error: "Could not update the order. Please try again." };
+  }
+
+  // The order, the list, the overview's totals and the customer pages all
+  // read it.
+  revalidatePath(`/dashboard/${storeSlug}`, "layout");
+  return moved
+    ? { ok: true }
+    : { ok: false, error: "This order isn't awaiting cash on delivery any more. Reload to see where it stands." };
+}
+
+export async function markCodOrderPaidAction(
+  storeSlug: string,
+  orderId: string,
+): Promise<CodOrderActionResult> {
+  return moveCodOrder(storeSlug, orderId, markCodOrderPaid);
+}
+
+export async function cancelCodOrderAction(
+  storeSlug: string,
+  orderId: string,
+): Promise<CodOrderActionResult> {
+  return moveCodOrder(storeSlug, orderId, cancelCodOrder);
 }

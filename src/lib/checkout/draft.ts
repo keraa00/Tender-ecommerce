@@ -1,4 +1,5 @@
 import { BLANK_ADDRESS, readAddressFields, type RawAddress } from "@/lib/address/validate";
+import { readPaymentChoice, type PaymentChoice } from "@/lib/payments/cod";
 
 /**
  * The checkout in progress, as kept on the cart so a refresh loses nothing:
@@ -17,6 +18,10 @@ export type CheckoutDraft = {
   billing: RawAddress;
   note: string;
   marketingOptIn: boolean;
+  /** How the buyer chose to pay. A request, like the rate: pricing decides. */
+  paymentMethod: PaymentChoice | null;
+  /** "Save my information for next time" — see `src/lib/checkout/saved.ts`. */
+  saveInfo: boolean;
 };
 
 export const BLANK_DRAFT: CheckoutDraft = {
@@ -25,6 +30,8 @@ export const BLANK_DRAFT: CheckoutDraft = {
   billing: BLANK_ADDRESS,
   note: "",
   marketingOptIn: false,
+  paymentMethod: null,
+  saveInfo: false,
 };
 
 /** Longer than the form allows, so a draft is never cut short — only a forged one. */
@@ -50,6 +57,8 @@ export function readCheckoutDraft(value: unknown): CheckoutDraft {
     billing: readRaw(entry.billing),
     note: typeof entry.note === "string" ? entry.note.slice(0, MAX_DRAFT_FIELD) : "",
     marketingOptIn: entry.marketingOptIn === true,
+    paymentMethod: readPaymentChoice(entry.paymentMethod),
+    saveInfo: entry.saveInfo === true,
   };
 }
 
@@ -63,5 +72,17 @@ export function draftFromForm(formData: FormData): CheckoutDraft {
     billing: readAddressFields(formData, "billing"),
     note: typeof note === "string" ? note.trim().slice(0, MAX_NOTE_LENGTH) : "",
     marketingOptIn: formData.get("marketingOptIn") !== null,
+    paymentMethod: readPaymentChoice(formData.get("paymentMethod")),
+    saveInfo: formData.get("saveInfo") !== null,
   };
+}
+
+/**
+ * What "Save my information for next time" keeps of a checkout: who it is
+ * for, where it goes, how it is billed and paid. Not the note, which belongs
+ * to one order, and not the marketing opt-in — a box ticked for the buyer is
+ * not their consent.
+ */
+export function savedDraft(draft: CheckoutDraft): CheckoutDraft {
+  return { ...draft, note: "", marketingOptIn: false, saveInfo: true };
 }

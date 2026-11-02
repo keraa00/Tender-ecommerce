@@ -12,6 +12,7 @@ export function CartSummary({
   cart,
   t,
   shipping,
+  fee,
   className,
 }: {
   /** A cart, or a placed order shaped like one for its confirmation. */
@@ -24,6 +25,8 @@ export function CartSummary({
    * no line at all.
    */
   shipping?: { value: string; struck?: string | null } | null;
+  /** What the way of paying adds — the cash-on-delivery fee — when it adds anything. */
+  fee?: { label: string; value: string } | null;
   className?: string;
 }) {
   return (
@@ -63,6 +66,8 @@ export function CartSummary({
           }
         />
       ) : null}
+
+      {fee ? <Row label={fee.label} value={fee.value} /> : null}
 
       <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3">
         <dt className="font-medium">{t.total}</dt>

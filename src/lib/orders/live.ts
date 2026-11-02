@@ -12,6 +12,24 @@
  * Shared by the browser and the tests, so nothing here may import Prisma.
  */
 
+/**
+ * When an order became news to the seller, or null if it never did: a
+ * cash-on-delivery order when it was placed — there is a parcel to send — and
+ * any other when it was paid. The trigger announces on the same rule, and
+ * `listUnseenOrderIds` counts on it.
+ */
+export function orderArrivedAt(order: {
+  paymentMethod: "STRIPE" | "CASH_ON_DELIVERY";
+  status: "PENDING" | "PAID" | "FULFILLED" | "CANCELLED";
+  createdAt: Date;
+  paidAt: Date | null;
+}): Date | null {
+  if (order.paymentMethod === "CASH_ON_DELIVERY") {
+    return order.status === "CANCELLED" ? null : order.createdAt;
+  }
+  return order.paidAt;
+}
+
 /** Must match the event the `private.broadcast_order_paid()` trigger sends. */
 export const ORDER_PAID_EVENT = "order_paid";
 
@@ -23,7 +41,11 @@ export function storeOrdersTopic(storeId: string): string {
 export type OrderPaidPayload = {
   id: string;
   orderNumber: number;
-  /** Epoch milliseconds. Null only if the row was marked paid without a time. */
+  /**
+   * Epoch milliseconds: when the order arrived — paid, or placed for cash on
+   * delivery (see `orderArrivedAt`). Null only if the row was marked paid
+   * without a time.
+   */
   paidAtMs: number | null;
 };
 

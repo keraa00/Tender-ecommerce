@@ -70,9 +70,17 @@ export function EmptyState({
   );
 }
 
-export function StatGrid({ children }: { children: ReactNode }) {
+export function StatGrid({ children, columns = 4 }: { children: ReactNode; columns?: 4 | 5 }) {
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">{children}</dl>
+    <dl
+      className={
+        columns === 5
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+          : "grid grid-cols-2 gap-3 sm:grid-cols-4"
+      }
+    >
+      {children}
+    </dl>
   );
 }
 

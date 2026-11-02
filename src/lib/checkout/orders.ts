@@ -7,10 +7,17 @@ import { rootDb } from "@/lib/db/root";
 import { OrderStatus, Prisma, ProductStatus, type CartKind } from "@/lib/db/types";
 import { DiscountRedemptionError, redeemDiscounts } from "@/lib/discounts/redemption";
 import { isUuid } from "@/lib/ids";
+import { paymentMethodOf } from "@/lib/payments/cod";
 import { createOrderPaymentIntent } from "@/lib/payments/intents";
-import { cancelUnpaidOrder, settleOrder } from "@/lib/payments/settle";
+import {
+  cancelUnpaidOrder,
+  CodStockShort,
+  confirmCodOrder,
+  settleOrder,
+} from "@/lib/payments/settle";
 import type { CheckoutDetails } from "./form";
 import { priceCheckout } from "./pricing";
+import type { PaymentOptions } from "./quote";
 import {
   appliedDiscountsSnapshot,
   orderAmounts,
@@ -30,6 +37,10 @@ import {
  *
  * An order that comes to nothing (a 100% discount with free delivery) has no
  * payment to take and settles in the transaction that creates it.
+ *
+ * A cash-on-delivery order has no payment to wait for either: it takes its
+ * stock and empties its cart in the transaction that creates it, and stays
+ * PENDING until the seller marks the cash received.
  */
 
 export type PlaceOrderError =
@@ -41,6 +52,8 @@ export type PlaceOrderError =
   | "shipping-unavailable"
   /** The rate the buyer picked no longer applies, or its price moved. */
   | "shipping-changed"
+  /** The way the buyer chose to pay is not open to this order any more. */
+  | "payment-method-changed"
   /** Stripe could not create the payment. The order was cancelled. */
   | "payment-unavailable"
   /** The total is under Stripe's minimum charge for the currency. */
@@ -68,6 +81,8 @@ export async function placeOrder(input: {
     stripeAccountId: string | null;
     currency: string;
   };
+  /** What the store can take payment with; the buyer's pick is in `details`. */
+  payment: Pick<PaymentOptions, "stripe" | "cod">;
   sessionId: string;
   /** Which of this browser's carts is being checked out. */
   kind: CartKind;
@@ -107,17 +122,28 @@ export async function placeOrder(input: {
   // only, and the transaction below holds the store's order counter and each
   // discount's row lock, which should be held for as short a time as possible.
   // The rate id is the buyer's request; the quote decides whether this store
-  // offers it, to this address, for this order — and at what price.
-  const quote = await priceCheckout(store.id, cart, buyer, {
-    destination: details.shippingAddress
-      ? {
-          countryCode: details.shippingAddress.countryCode,
-          regionCode: details.shippingAddress.regionCode,
-        }
-      : null,
-    requestedRateId: details.shippingRateId,
-  });
-  const { pricing, shipping } = quote;
+  // offers it, to this address, for this order — and at what price. The same
+  // goes for the way of paying, and its fee.
+  const quote = await priceCheckout(
+    store.id,
+    cart,
+    buyer,
+    {
+      destination: details.shippingAddress
+        ? {
+            countryCode: details.shippingAddress.countryCode,
+            regionCode: details.shippingAddress.regionCode,
+          }
+        : null,
+      requestedRateId: details.shippingRateId,
+    },
+    {
+      ...input.payment,
+      requested: details.paymentMethod,
+      countryCode: details.shippingAddress?.countryCode ?? null,
+    },
+  );
+  const { pricing, shipping, payment } = quote;
 
   if (needsShipping) {
     if (shipping.state !== "ready") return { ok: false, error: "shipping-unavailable" };
@@ -128,10 +154,21 @@ export async function placeOrder(input: {
     }
   }
 
+  // Like the rate, the quote falls back to another way of paying when the
+  // buyer's no longer applies. Someone who chose to pay the courier must not
+  // find themselves at a card form, nor the other way round.
+  if (pricing.totalCents > 0) {
+    if (payment.selected === null) return { ok: false, error: "payment-unavailable" };
+    if (payment.selected !== details.paymentMethod) {
+      return { ok: false, error: "payment-method-changed", totalCents: pricing.totalCents };
+    }
+  }
+
   if (pricing.totalCents !== details.expectedTotalCents) {
     return { ok: false, error: "total-changed", totalCents: pricing.totalCents };
   }
 
+  const cashOnDelivery = payment.selected === "cod";
   const rate = shipping.state === "ready" ? shipping.selected : null;
   const zone = shipping.state === "ready" ? shipping.zone : null;
   const amounts = orderAmounts(pricing, store.commissionBps);
@@ -217,7 +254,8 @@ export async function placeOrder(input: {
           ...amounts,
           discountId: primaryDiscountId(pricing.applied),
           appliedDiscounts: appliedDiscountsSnapshot(pricing.applied),
-          stripeAccountId: store.stripeAccountId,
+          paymentMethod: paymentMethodOf(payment.selected ?? "stripe"),
+          stripeAccountId: cashOnDelivery ? null : store.stripeAccountId,
           // Snapshots, like the lines: editing the zone or the rate later
           // must not change what this order says.
           shippingAddress: details.shippingAddress ?? Prisma.DbNull,
@@ -259,15 +297,18 @@ export async function placeOrder(input: {
       });
 
       // The cart stays until the payment succeeds: a declined card sends the
-      // buyer back to a checkout that still has everything in it.
-      if (created.totalCents === 0) {
+      // buyer back to a checkout that still has everything in it. Cash on
+      // delivery has nothing to wait for, so the order is confirmed now.
+      if (cashOnDelivery) {
+        await confirmCodOrder(tx, created, cartRow.id);
+      } else if (created.totalCents === 0) {
         await settleOrder(tx, created, { cartId: cartRow.id, paidAt: new Date() });
       }
 
       return created;
     });
 
-    if (order.totalCents === 0) {
+    if (order.totalCents === 0 || cashOnDelivery) {
       return { ok: true, orderId: order.id, orderNumber: order.orderNumber, clientSecret: null };
     }
 
@@ -299,7 +340,9 @@ export async function placeOrder(input: {
       clientSecret: intent.clientSecret,
     };
   } catch (error) {
-    if (error instanceof StockChanged) return { ok: false, error: "stock-changed" };
+    if (error instanceof StockChanged || error instanceof CodStockShort) {
+      return { ok: false, error: "stock-changed" };
+    }
     if (error instanceof ShippingChanged) return { ok: false, error: "shipping-changed" };
     if (error instanceof DiscountRedemptionError) {
       return { ok: false, error: "discount-unavailable" };
@@ -347,6 +390,7 @@ export async function getPlacedOrder(storeId: string) {
       id: true,
       storeId: true,
       status: true,
+      paymentMethod: true,
       stripePaymentIntentId: true,
       stripeAccountId: true,
       orderNumber: true,
@@ -361,6 +405,7 @@ export async function getPlacedOrder(storeId: string) {
       subtotalCents: true,
       discountCents: true,
       shippingCents: true,
+      paymentFeeCents: true,
       totalCents: true,
       appliedDiscounts: true,
       lines: {

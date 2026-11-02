@@ -74,6 +74,29 @@ enum OrderIssue {
   @@map("order_issue")
 }
 
+/// How an order is paid for.
+enum PaymentMethod {
+  /// Online, through the Payment Element, on the seller's Stripe account. Also
+  /// what an order that came to nothing records: it needed no payment at all.
+  STRIPE
+  /// In cash, to the courier, when the parcel arrives. The order is real from
+  /// the moment it is placed — stock taken, cart emptied — and stays PENDING
+  /// until the seller marks the cash received. See `src/lib/payments/cod.ts`.
+  CASH_ON_DELIVERY
+
+  @@map("payment_method")
+}
+
+/// How a store's cash-on-delivery fee is worked out.
+enum CodFeeType {
+  /// `codFeeValue` is cents.
+  FIXED_AMOUNT
+  /// `codFeeValue` is basis points of the order total (1000 = 10.00%).
+  PERCENTAGE
+
+  @@map("cod_fee_type")
+}
+
 enum DiscountType {
   PERCENTAGE
   FIXED_AMOUNT
@@ -213,6 +236,30 @@ model Store {
   checkoutMarketingOptIn Boolean           @default(false) @map("checkout_marketing_opt_in")
   checkoutOrderNote      Boolean           @default(false) @map("checkout_order_note")
 
+  // Cash on delivery, offered beside Stripe — or instead of it, which is how a
+  // seller where Stripe takes no merchants still trades. The shape rules are
+  // CHECKs in `20261029130000_cash_on_delivery`; `parseCodSettingsForm()`
+  // says the same in words, and `src/lib/payments/cod.ts` applies them.
+  codEnabled       Boolean    @default(false) @map("cod_enabled")
+  /// What buyers see the option called. Null: "Cash on delivery" in the
+  /// buyer's language.
+  codLabel         String?    @map("cod_label")
+  /// Shown under the option and on the confirmation page.
+  codInstructions  String?    @map("cod_instructions")
+  codFeeType       CodFeeType @default(FIXED_AMOUNT) @map("cod_fee_type")
+  /// Cents or basis points, by `codFeeType`. 0 means no fee. A percentage is
+  /// of the order total after discounts, shipping included.
+  codFeeValue      Int        @default(0) @map("cod_fee_value")
+  /// Inclusive bounds on that same total, before the fee. Null: no bound.
+  codMinTotalCents Int?       @map("cod_min_total_cents")
+  codMaxTotalCents Int?       @map("cod_max_total_cents")
+  /// Shipping countries COD is offered for, ISO 3166-1 alpha-2. Empty means
+  /// everywhere the store ships.
+  codCountryCodes  String[]   @default([]) @map("cod_country_codes")
+  /// Couriers ring before handing over a parcel that has to be paid for, so
+  /// a COD order asks for the phone whatever Settings → Checkout says.
+  codRequirePhone  Boolean    @default(true) @map("cod_require_phone")
+
   /// Platform commission in basis points. 500 = 5.00%.
   commissionBps Int         @default(500) @map("commission_bps")
   status        StoreStatus @default(PENDING)
@@ -224,19 +271,20 @@ model Store {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  owner         User                  @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  members       StoreMember[]
-  products      Product[]
-  variants      Variant[]
-  collections   Collection[]
-  carts         Cart[]
-  orders        Order[]
-  discounts     Discount[]
-  theme         StoreTheme?
-  themePreviews ThemePreview[]
-  shippingZones ShippingZone[]
-  zoneCountries ShippingZoneCountry[]
-  shippingRates ShippingRate[]
+  owner          User                  @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members        StoreMember[]
+  products       Product[]
+  variants       Variant[]
+  collections    Collection[]
+  carts          Cart[]
+  orders         Order[]
+  discounts      Discount[]
+  theme          StoreTheme?
+  themePreviews  ThemePreview[]
+  shippingZones  ShippingZone[]
+  zoneCountries  ShippingZoneCountry[]
+  shippingRates  ShippingRate[]
+  savedCheckouts SavedCheckout[]
 
   @@index([ownerId])
   @@index([status])
@@ -471,6 +519,29 @@ model Cart {
   @@map("carts")
 }
 
+/// A buyer's checkout details, kept at their request — "Save my information for
+/// next time" — so their next checkout in this store, in this browser, starts
+/// filled in. Keyed by a random token in an httpOnly cookie rather than by
+/// account, so guests have it too; see `src/lib/checkout/saved.ts`.
+///
+/// `draft` is a `CheckoutDraft` without the note or the marketing opt-in, read
+/// leniently like the cart's: it is the buyer's own typing, never trusted.
+/// Unticking the box deletes the row at once.
+model SavedCheckout {
+  storeId   String   @map("store_id") @db.Uuid
+  token     String   @db.Uuid
+  /// Lower-cased, like every email checkout keeps.
+  email     String
+  draft     Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([storeId, token])
+  @@map("saved_checkouts")
+}
+
 model CartLine {
   id        String @id @default(uuid(7)) @db.Uuid
   cartId    String @map("cart_id") @db.Uuid
@@ -596,12 +667,20 @@ model Order {
   subtotalCents    Int @map("subtotal_cents")
   discountCents    Int @default(0) @map("discount_cents")
   shippingCents    Int @default(0) @map("shipping_cents")
+  /// What the payment method added: the cash-on-delivery fee. Always 0 for
+  /// Stripe. `total = subtotal − discount + shipping + paymentFee`.
+  paymentFeeCents  Int @default(0) @map("payment_fee_cents")
   totalCents       Int @map("total_cents")
+  /// On a COD order this is not taken through Stripe: it is owed by the
+  /// seller, who collected the whole total in cash.
   platformFeeCents Int @map("platform_fee_cents")
   sellerNetCents   Int @map("seller_net_cents")
 
   discountId String? @map("discount_id") @db.Uuid
 
+  paymentMethod PaymentMethod @default(STRIPE) @map("payment_method")
+
+  /// Both null on a COD order.
   stripePaymentIntentId String? @unique @map("stripe_payment_intent_id")
   stripeAccountId       String? @map("stripe_account_id")
 

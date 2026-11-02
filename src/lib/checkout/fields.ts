@@ -44,3 +44,12 @@ export function billingAddressRules(store: CheckoutSettings, needsShipping: bool
   const rules = shippingAddressRules(store);
   return needsShipping ? { ...rules, phone: "HIDDEN" } : rules;
 }
+
+/**
+ * The shipping address rules for an order paid in cash on delivery, when the
+ * store asks for a phone with those: couriers ring before handing over a
+ * parcel that has to be paid for.
+ */
+export function codShippingAddressRules(rules: AddressRules, requirePhone: boolean): AddressRules {
+  return requirePhone ? { ...rules, phone: "REQUIRED" } : rules;
+}

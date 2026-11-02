@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseCheckoutForm } from "@/lib/checkout/form";
 import { quoteCheckout, type QuoteLine } from "@/lib/checkout/quote";
 import {
+  addPaymentFee,
   appliedDiscountsSnapshot,
   emptyPricing,
   orderAmounts,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/checkout/totals";
 import type { AppliedDiscount, DiscountRule, DiscountSelection } from "@/lib/discounts/engine";
 import { ANONYMOUS_CUSTOMER } from "@/lib/discounts/segments";
+import type { CodSettings } from "@/lib/payments/cod";
 import { MESSAGES } from "@/lib/i18n/messages";
 import type { RateRule, ZoneRule } from "@/lib/shipping/rates";
 import { codeStatusMessage } from "@/lib/storefront/discount-messages";
@@ -139,10 +141,30 @@ describe("orderAmounts", () => {
       subtotalCents: 10_000,
       discountCents: 2000,
       shippingCents: 0,
+      paymentFeeCents: 0,
       totalCents: 8000,
       platformFeeCents: 400,
       sellerNetCents: 7600,
     });
+  });
+
+  it("adds a cash-on-delivery fee to the total, and takes commission on all of it", () => {
+    const pricing = addPaymentFee(
+      summarisePricing(toPricedLines([line("a", 4000)]), [], [], {
+        applied: [],
+        itemsDiscountCents: 0,
+        shippingDiscountCents: 0,
+        rejected: new Map(),
+      }, 500),
+      200,
+    );
+    const amounts = orderAmounts(pricing, 500);
+    expect(amounts).toMatchObject({ shippingCents: 500, paymentFeeCents: 200, totalCents: 4700 });
+    expect(
+      amounts.subtotalCents - amounts.discountCents + amounts.shippingCents + amounts.paymentFeeCents,
+    ).toBe(amounts.totalCents);
+    expect(amounts.platformFeeCents).toBe(235);
+    expect(amounts.sellerNetCents).toBe(4465);
   });
 
   it("keeps total = subtotal − discount + shipping when shipping is discounted", () => {
@@ -189,6 +211,7 @@ describe("parseCheckoutForm", () => {
     billingRules: { ...rules, phone: "HIDDEN" as const },
     orderNote: true,
     marketingOptIn: true,
+    codRequiresPhone: true,
   };
   const RATE = "01a11058-561a-73eb-81b0-a02d09e8ccce";
   const valid: Record<string, string> = {
@@ -233,6 +256,27 @@ describe("parseCheckoutForm", () => {
     });
     // Same as shipping, by default.
     expect(result.details.billingAddress).toEqual(result.details.shippingAddress);
+  });
+
+  it("reads how the buyer chose to pay, and pays by card when nothing was chosen", () => {
+    const card = parseCheckoutForm(form(valid), options);
+    const cash = parseCheckoutForm(form({ ...valid, paymentMethod: "cod" }), options);
+    const forged = parseCheckoutForm(form({ ...valid, paymentMethod: "bitcoin" }), options);
+    expect(card.ok && card.details.paymentMethod).toBe("stripe");
+    expect(cash.ok && cash.details.paymentMethod).toBe("cod");
+    expect(forged.ok && forged.details.paymentMethod).toBe("stripe");
+  });
+
+  it("requires a phone for cash on delivery when the store asks for one", () => {
+    const { "shipping.phone": _phone, ...noPhone } = valid;
+    const cash = { ...noPhone, paymentMethod: "cod" };
+
+    const required = parseCheckoutForm(form(cash), options);
+    expect(required).toEqual({ ok: false, fieldErrors: { "shipping.phone": "required" } });
+
+    // Not when the store does not ask, nor for a card payment.
+    expect(parseCheckoutForm(form(cash), { ...options, codRequiresPhone: false }).ok).toBe(true);
+    expect(parseCheckoutForm(form(noPhone), options).ok).toBe(true);
   });
 
   it("reads a separate billing address, which never asks for the phone", () => {
@@ -434,6 +478,89 @@ describe("quoteCheckout", () => {
     const minimum: ZoneRule = { ...domestic, rates: [shippingRate("over-150", 3500, { minSubtotalCents: 15_000 })] };
     expect(quote({ zones: [minimum] }).shipping).toEqual({ state: "no-rates", zone: { id: "z-pt", name: "Portugal" } });
     expect(quote({ zones: [minimum] }).pricing.totalCents).toBe(3000);
+  });
+
+  describe("payment", () => {
+    const cod = (overrides: Partial<CodSettings> = {}): CodSettings => ({
+      enabled: true,
+      label: null,
+      instructions: null,
+      feeType: "FIXED_AMOUNT",
+      feeValue: 200,
+      minTotalCents: null,
+      maxTotalCents: null,
+      countryCodes: [],
+      requirePhone: true,
+      ...overrides,
+    });
+    const payment = (overrides: Partial<NonNullable<Parameters<typeof quoteCheckout>[0]["payment"]>> = {}) => ({
+      stripe: true,
+      cod: cod(),
+      requested: null,
+      countryCode: "PT",
+      ...overrides,
+    });
+
+    it("pays by card unless the buyer picks cash, and adds the fee only then", () => {
+      const card = quote({ payment: payment() });
+      expect(card.payment).toMatchObject({ selected: "stripe", cod: { available: true, feeCents: 200 } });
+      expect(card.pricing).toMatchObject({ paymentFeeCents: 0, totalCents: 3490 });
+
+      const cash = quote({ payment: payment({ requested: "cod" }) });
+      expect(cash.payment.selected).toBe("cod");
+      expect(cash.pricing).toMatchObject({ paymentFeeCents: 200, totalCents: 3690 });
+    });
+
+    it("takes a percentage of goods and shipping, after discounts", () => {
+      const tenOff = discountRule({ id: "ten", type: "FIXED_AMOUNT", value: 1000 });
+      // €30 − €10 + €4.90 shipping = €24.90; 2.5% of that is 62.25 cents, so 62.
+      const result = quote({
+        rules: [tenOff],
+        payment: payment({ requested: "cod", cod: cod({ feeType: "PERCENTAGE", feeValue: 250 }) }),
+      });
+      expect(result.pricing).toMatchObject({ paymentFeeCents: 62, totalCents: 2552 });
+    });
+
+    it("judges the limits and the country on the order, and falls back to the card", () => {
+      const over = quote({ payment: payment({ requested: "cod", cod: cod({ maxTotalCents: 3000 }) }) });
+      expect(over.payment).toMatchObject({ selected: "stripe", cod: { available: false, reason: "above-maximum" } });
+      expect(over.pricing.paymentFeeCents).toBe(0);
+
+      const under = quote({ payment: payment({ requested: "cod", cod: cod({ minTotalCents: 5000 }) }) });
+      expect(under.payment.cod).toEqual({ available: false, reason: "below-minimum" });
+
+      const abroad = quote({ payment: payment({ requested: "cod", cod: cod({ countryCodes: ["BA"] }) }) });
+      expect(abroad.payment.cod).toEqual({ available: false, reason: "country" });
+      expect(quote({ payment: payment({ requested: "cod", cod: cod({ countryCodes: ["PT"] }) }) }).payment.selected).toBe("cod");
+    });
+
+    it("judges the country before the rest of the address is in", () => {
+      const result = quote({ destination: null, payment: payment({ requested: "cod", cod: cod({ countryCodes: ["PT"] }) }) });
+      expect(result.payment.selected).toBe("cod");
+    });
+
+    it("offers no cash on delivery when nothing is delivered", () => {
+      const result = quote({
+        lines: [quoteLine("class", 6500, { requiresShipping: false })],
+        destination: null,
+        payment: payment({ requested: "cod" }),
+      });
+      expect(result.payment).toMatchObject({ selected: "stripe", cod: { available: false, reason: "no-shipping" } });
+    });
+
+    it("pays in cash when that is all the store takes, and with nothing when it cannot", () => {
+      expect(quote({ payment: payment({ stripe: false }) }).payment.selected).toBe("cod");
+      const capped = quote({ payment: payment({ stripe: false, cod: cod({ maxTotalCents: 1000 }) }) });
+      expect(capped.payment.selected).toBeNull();
+    });
+
+    it("charges nothing, and asks for no way to pay, when the order comes to nothing", () => {
+      const everything = discountRule({ id: "all", type: "PERCENTAGE", value: 10_000 });
+      const freeShipping = discountRule({ id: "ship", type: "FREE_SHIPPING", value: 0 });
+      const result = quote({ rules: [everything, freeShipping], payment: payment({ requested: "cod" }) });
+      expect(result.pricing).toMatchObject({ paymentFeeCents: 0, totalCents: 0 });
+      expect(result.payment.selected).toBeNull();
+    });
   });
 });
 

@@ -83,7 +83,13 @@ export async function StorefrontFrame({
           cartHref={paths.cart}
           catalogHref={paths.catalog}
           checkoutHref={blocked ? null : paths.checkout}
-          checkoutBlockedNote={blocked === "no-shipping" ? t.cart.noShipping : null}
+          checkoutBlockedNote={
+            blocked === "no-shipping"
+              ? t.cart.noShipping
+              : blocked === "cod-needs-shipping"
+                ? t.checkout.blocked.codNeedsShipping
+                : null
+          }
         />
 
         <SheetLayer />

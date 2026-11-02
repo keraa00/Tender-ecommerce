@@ -21,7 +21,7 @@ export type StoreTotals = {
   grossCents: number;
   /** Platform commission taken out of that. */
   feeCents: number;
-  /** What settles to the seller's own Stripe account. */
+  /** What the seller keeps: settled to their Stripe account, or collected in cash on delivery. */
   netCents: number;
   /** Average order value, or null when there are no orders to average. */
   averageOrderCents: number | null;

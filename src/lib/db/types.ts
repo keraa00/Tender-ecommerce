@@ -31,6 +31,7 @@ export type {
 export {
   CartKind,
   CheckoutFieldMode,
+  CodFeeType,
   CustomerSegment,
   DiscountAppliesTo,
   DiscountEligibility,
@@ -38,6 +39,7 @@ export {
   DiscountType,
   OrderIssue,
   OrderStatus,
+  PaymentMethod,
   PlatformRole,
   ProductStatus,
   StoreMemberRole,

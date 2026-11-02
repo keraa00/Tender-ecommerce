@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { refresh } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth/session";
@@ -12,16 +11,15 @@ import { INTL_LOCALES } from "@/lib/i18n/locales";
 import { getStorefrontI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
 import { formatMoney } from "@/lib/money";
-import { storefrontPaths } from "@/lib/storefront/links";
 import { canAcceptOrders, isStorePubliclyVisible } from "@/lib/stores/policy";
 import { getStoreBySlug } from "@/lib/stores/queries";
-import { draftFromForm } from "./draft";
+import { draftFromForm, savedDraft } from "./draft";
 import { billingAddressRules, shippingAddressRules } from "./fields";
 import { stripeBillingDetails, type StripeBillingDetails } from "@/lib/payments/rules";
-import { isStripeConfigured } from "@/lib/stripe/server";
 import { normalizeEmail, parseCheckoutForm, type CheckoutFieldErrors } from "./form";
 import { placeOrder, rememberPlacedOrder, type PlaceOrderError } from "./orders";
-import { supersedePlacedOrder, type SupersedeResult } from "./payment";
+import { checkoutPaymentOptions, supersedePlacedOrder, type SupersedeResult } from "./payment";
+import { forgetCheckout, rememberCheckout } from "./saved";
 
 export type CheckoutState = {
   error?:
@@ -37,10 +35,13 @@ export type CheckoutState = {
 /**
  * What placing an order hands the checkout form: the PaymentIntent to confirm
  * with the Payment Element, and the billing details the form collected, which
- * the Payment Element is told not to ask for again.
+ * the Payment Element is told not to ask for again — or word that there is
+ * nothing to pay online, so the form can show the order confirmed and move on
+ * to the thank-you page itself.
  */
 export type PlaceOrderResponse =
-  | { ok: true; clientSecret: string; billingDetails: StripeBillingDetails }
+  | { ok: true; kind: "pay"; clientSecret: string; billingDetails: StripeBillingDetails }
+  | { ok: true; kind: "done" }
   | ({ ok: false } & CheckoutState);
 
 /**
@@ -87,14 +88,20 @@ export async function saveCheckoutAction(
 
     // updateMany, scoped by (store, session, kind): only this browser's cart
     // in this store, and nothing at all when there is no cart.
+    const draft = draftFromForm(formData);
     await rootDb.cart.updateMany({
       where: { storeId: store.id, sessionId, kind: cartKind(kind) },
       data: {
         ...(email ? { email } : {}),
-        checkoutDraft: draftFromForm(formData),
+        checkoutDraft: draft,
         shippingRateId: rate?.id ?? null,
       },
     });
+
+    // Unticking "Save my information" forgets it now, not at the next order:
+    // what someone on a shared computer expects. Ticking it saves nothing
+    // until an order is placed.
+    if (!draft.saveInfo) await forgetCheckout(store.id);
   } catch (error) {
     console.error("saveCheckoutAction failed", error);
     return;
@@ -109,9 +116,10 @@ export async function saveCheckoutAction(
  * buyer typed, before it confirms the payment — rather than as a form action,
  * because the form needs the client secret back, not a navigation.
  *
- * Redirects to the confirmation page itself when there is nothing left to
- * pay: an order that comes to nothing, or an earlier attempt that turns out
- * to have been paid already.
+ * Answers "done" when there is nothing to pay online — an order that comes to
+ * nothing, one paid in cash on delivery, or an earlier attempt that turns out
+ * to have been paid already — and the form takes the buyer to the
+ * confirmation page itself, once it has shown the order confirmed.
  */
 export async function placeOrderAction(
   storeSlug: string,
@@ -119,12 +127,9 @@ export async function placeOrderAction(
   formData: FormData,
 ): Promise<PlaceOrderResponse> {
   const store = await getStoreBySlug(storeSlug);
-  if (
-    !store ||
-    !isStorePubliclyVisible(store) ||
-    !canAcceptOrders(store) ||
-    !isStripeConfigured()
-  ) {
+  // Whether the chosen way of paying works — Stripe keys on this server, cash
+  // on delivery for this order — is the quote's call, in `placeOrder`.
+  if (!store || !isStorePubliclyVisible(store) || !canAcceptOrders(store)) {
     return { ok: false, error: "unavailable" };
   }
 
@@ -140,10 +145,9 @@ export async function placeOrderAction(
     billingRules: billingAddressRules(store, needsShipping),
     orderNote: store.checkoutOrderNote,
     marketingOptIn: store.checkoutMarketingOptIn,
+    codRequiresPhone: store.codRequirePhone,
   });
   if (!parsed.ok) return { ok: false, fieldErrors: parsed.fieldErrors };
-
-  const complete = storefrontPaths(store.slug).checkoutComplete;
 
   // Before pricing: cancelling an abandoned attempt gives its discount uses
   // back, and the new order is priced and redeemed against what is left.
@@ -154,8 +158,7 @@ export async function placeOrderAction(
     console.error("placeOrderAction: could not settle the previous attempt", error);
     return { ok: false, error: "payment-unavailable" };
   }
-  // Outside any try block: redirect() signals by throwing.
-  if (superseded === "paid") redirect(complete);
+  if (superseded === "paid") return { ok: true, kind: "done" };
   if (superseded === "processing") return { ok: false, error: "payment-processing" };
 
   // A signed-in buyer's orders are linked to their account, which also counts
@@ -164,6 +167,7 @@ export async function placeOrderAction(
 
   const result = await placeOrder({
     store,
+    payment: checkoutPaymentOptions(store),
     sessionId,
     kind: cartKind(kind),
     buyer: { email: parsed.details.email, userId: user?.id ?? null },
@@ -185,11 +189,29 @@ export async function placeOrderAction(
   }
 
   await rememberPlacedOrder(store.slug, result.orderId);
-  if (!result.clientSecret) redirect(complete);
+  await keepCheckoutDetails(store.id, parsed.details.email, formData);
+  if (!result.clientSecret) return { ok: true, kind: "done" };
 
   return {
     ok: true,
+    kind: "pay",
     clientSecret: result.clientSecret,
     billingDetails: stripeBillingDetails(parsed.details.email, parsed.details.billingAddress),
   };
+}
+
+/**
+ * "Save my information for next time", as the placed order left it: kept when
+ * the box was ticked, forgotten when it was not. Only after the order is in,
+ * so details that never made an order are never kept — and never at the cost
+ * of the order, which has already been placed.
+ */
+async function keepCheckoutDetails(storeId: string, email: string, formData: FormData) {
+  try {
+    const draft = draftFromForm(formData);
+    if (draft.saveInfo) await rememberCheckout(storeId, email, savedDraft(draft));
+    else await forgetCheckout(storeId);
+  } catch (error) {
+    console.error("keepCheckoutDetails failed", error);
+  }
 }

@@ -4,24 +4,42 @@ import { timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 
 import { rootDb } from "@/lib/db/root";
-import { CartKind, OrderStatus, type Order } from "@/lib/db/types";
+import { CartKind, OrderStatus, PaymentMethod, type Order, type Store } from "@/lib/db/types";
+import { codSettingsOf } from "@/lib/payments/cod";
 import { cancelPaymentIntent, retrievePaymentIntent } from "@/lib/payments/intents";
 import { paymentOutcome, supersedeAction, type PaymentOutcome } from "@/lib/payments/rules";
 import { cancelUnpaidOrder, markOrderPaid } from "@/lib/payments/settle";
+import { stripeReady } from "@/lib/stores/policy";
+import { isStripeConfigured } from "@/lib/stripe/server";
 import { placedOrderId } from "./orders";
+import type { PaymentOptions } from "./quote";
 
 /**
- * Checkout's side of a payment in flight: an earlier attempt still open when
- * the buyer places the order again, and what to tell them on the confirmation
- * page.
+ * Checkout's side of a payment: the ways this store can be paid, an earlier
+ * attempt still open when the buyer places the order again, and what to tell
+ * them on the confirmation page.
  */
+
+/**
+ * The ways a store can take payment right now. A card needs an account that
+ * can be charged and a server with Stripe keys; cash on delivery only needs
+ * switching on. Whether either fits a particular order is the quote's call.
+ */
+export function checkoutPaymentOptions(store: Store): Pick<PaymentOptions, "stripe" | "cod"> {
+  return {
+    stripe: stripeReady(store) && isStripeConfigured(),
+    cod: store.codEnabled ? codSettingsOf(store) : null,
+  };
+}
 
 export type SupersedeResult = "none" | "cancelled" | "paid" | "processing";
 
 /**
  * Deals with this browser's previous, still-unpaid order in the store before
  * a new one is placed — the buyer reloaded checkout, or changed their address
- * after a declined card.
+ * after a declined card. Card orders only: a cash-on-delivery order is a
+ * placed order, not an attempt, and a buyer starting another checkout must not
+ * cancel it.
  *
  * Its money may already be in, in which case the buyer is done and must not
  * pay twice; or on its way (a bank debit), in which case it is left to finish.
@@ -35,7 +53,7 @@ export async function supersedePlacedOrder(storeId: string): Promise<SupersedeRe
   if (!orderId) return "none";
 
   const order = await rootDb.order.findFirst({
-    where: { id: orderId, storeId, status: OrderStatus.PENDING },
+    where: { id: orderId, storeId, status: OrderStatus.PENDING, paymentMethod: PaymentMethod.STRIPE },
     select: { id: true, storeId: true, stripePaymentIntentId: true, stripeAccountId: true },
   });
   if (!order) return "none";
@@ -66,7 +84,7 @@ export async function supersedePlacedOrder(storeId: string): Promise<SupersedeRe
 
 type PlacedOrderPayment = Pick<
   Order,
-  "id" | "storeId" | "status" | "stripePaymentIntentId" | "stripeAccountId"
+  "id" | "storeId" | "status" | "paymentMethod" | "stripePaymentIntentId" | "stripeAccountId"
 >;
 
 /**
@@ -92,6 +110,7 @@ export async function findOrderByPaymentReturn(
       id: true,
       storeId: true,
       status: true,
+      paymentMethod: true,
       stripePaymentIntentId: true,
       stripeAccountId: true,
       orderNumber: true,
@@ -115,7 +134,8 @@ export async function findOrderByPaymentReturn(
 /**
  * Where the remembered order's payment stands, settling it on the spot if
  * Stripe says it succeeded — so the confirmation page is right even when the
- * webhook is late, or not configured at all in development.
+ * webhook is late, or not configured at all in development. A cash-on-delivery
+ * order has nothing to ask Stripe: it is to be paid at the door.
  *
  * When Stripe cannot be reached, or the PaymentIntent does not match the
  * order, the answer is "processing": the money may well be in, and telling
@@ -126,7 +146,7 @@ export async function syncPlacedOrderPayment(
 ): Promise<{ outcome: PaymentOutcome; cartKind: CartKind }> {
   if (order.status !== OrderStatus.PENDING || !order.stripePaymentIntentId || !order.stripeAccountId) {
     return {
-      outcome: paymentOutcome(order.status, null),
+      outcome: paymentOutcome(order.status, null, order.paymentMethod),
       // A cancelled order offers "Try again", which has to go back to the
       // checkout it came from — and only the PaymentIntent remembers which.
       cartKind:
