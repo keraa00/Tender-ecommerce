@@ -34,8 +34,8 @@ describe("defaultTheme", () => {
     });
   });
 
-  it("keeps the header's accent square and the footer's credit", () => {
-    expect(theme.layout.header.settings).toEqual({ showLogo: false });
+  it("shows the store's logo in the header and keeps the footer's credit", () => {
+    expect(theme.layout.header.settings).toEqual({ showLogo: true });
     expect(theme.layout.footer.settings).toEqual({ showPoweredBy: true });
   });
 

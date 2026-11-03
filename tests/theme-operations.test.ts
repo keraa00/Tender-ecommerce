@@ -178,8 +178,8 @@ describe("updateSetting", () => {
     expect(grid.pages.home.sections[2].settings.limit).toBe(12);
     expect(grid.layout).toBe(document.layout);
 
-    const header = updateSetting(document, { kind: "section", id: "header" }, "showLogo", true);
-    expect(header.layout.header.settings.showLogo).toBe(true);
+    const header = updateSetting(document, { kind: "section", id: "header" }, "showLogo", false);
+    expect(header.layout.header.settings.showLogo).toBe(false);
     expect(header.layout.footer).toEqual(before.layout.footer);
     expect(header.pages).toBe(document.pages);
 

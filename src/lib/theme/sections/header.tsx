@@ -20,8 +20,8 @@ export default defineSection({
   settings: {
     showLogo: field.checkbox({
       label: "Show logo",
-      help: "Uses the logo from Settings. Off, the header shows a square in your accent colour.",
-      default: false,
+      help: "Uses the logo from Settings. Off, or with no logo uploaded, the header shows a square in your accent colour.",
+      default: true,
     }),
   },
   async Component({ section, ctx }) {
@@ -43,8 +43,8 @@ export default defineSection({
             href={paths.home}
             className="flex min-w-0 items-center gap-2.5 pe-2"
           >
-            {/* The logo is the seller's mark for their admin; buyers see the
-                accent unless the theme opts in. */}
+            {/* The store's uploaded logo, or a square in its accent colour when
+                it has none or the theme turns the logo off. */}
             {logoUrl ? (
               <Image
                 src={logoUrl}
