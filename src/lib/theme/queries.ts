@@ -18,5 +18,10 @@ export const getPublishedTheme = cache(async (storeId: string): Promise<ThemeDoc
     select: { published: true },
   });
 
-  return row?.published ? resolveTheme(row.published) : defaultTheme();
+  return readPublishedTheme(row?.published);
 });
+
+/** A `store_themes.published` value as buyers see it, missing row included. */
+export function readPublishedTheme(published: unknown): ThemeDocument {
+  return published ? resolveTheme(published) : defaultTheme();
+}

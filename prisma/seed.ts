@@ -1,6 +1,6 @@
 /**
- * Seeds two demo stores with real catalogues, and a year of orders from the
- * customers in `seed-orders.ts`.
+ * Seeds the demo stores in `seed-catalog.ts` with real catalogues, and a year
+ * of orders from the customers in `seed-orders.ts`.
  *
  * Idempotent: every write is an upsert keyed on a natural composite key, so
  * running it repeatedly converges rather than duplicating. It never drops
@@ -8,16 +8,21 @@
  *
  *   npm run db:seed
  *
- * If SUPABASE_SERVICE_ROLE_KEY is set, the two seller accounts and the platform
+ * If SUPABASE_SERVICE_ROLE_KEY is set, the seller accounts and the platform
  * admin are created in Supabase Auth as well, so you can actually log in as
  * them. Without it the rows still exist in `public.users` (so the storefronts
  * work), they just have no credentials behind them.
+ *
+ * With the key, photos from Wikimedia are also copied into each store's
+ * storage prefix on first seed (a few minutes: Wikimedia paces downloads) and
+ * served from there — see `mirrorStoreImages`.
  */
 
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "@supabase/supabase-js";
@@ -26,16 +31,19 @@ import { PrismaClient, type Prisma } from "../src/generated/prisma/client";
 import { regionName } from "../src/lib/address/regions";
 import type { PostalAddress } from "../src/lib/address/types";
 import { calculatePlatformFee } from "../src/lib/money";
+import { codAvailability, codSettingsOf } from "../src/lib/payments/cod";
+import { PRODUCT_IMAGE_BUCKET } from "../src/lib/products/constants";
 import { chooseRate, eligibleRates, zoneFor, type ZoneRule } from "../src/lib/shipping/rates";
 import {
   PLATFORM_ADMIN,
   SEED_PASSWORD,
   SEED_STORES,
+  type SeedCod,
   type SeedDiscount,
   type SeedStore,
   type SeedZone,
 } from "./seed-catalog";
-import { SEED_ORDERS, type SeedOrder } from "./seed-orders";
+import { SEED_ORDERS, defaultOrderStatus, type SeedOrder } from "./seed-orders";
 
 type SeedImage = {
   url: string;
@@ -53,6 +61,11 @@ const FALLBACK_USER_IDS: Record<string, string> = {
   "admin@example.com": "00000000-0000-4000-8000-000000000001",
   "nordhavn@example.com": "00000000-0000-4000-8000-000000000002",
   "rosewater@example.com": "00000000-0000-4000-8000-000000000003",
+  "wildmoor@example.com": "00000000-0000-4000-8000-000000000004",
+  "halden@example.com": "00000000-0000-4000-8000-000000000005",
+  "marlowe@example.com": "00000000-0000-4000-8000-000000000006",
+  "bakar@example.com": "00000000-0000-4000-8000-000000000007",
+  "kehre@example.com": "00000000-0000-4000-8000-000000000008",
 };
 
 const connectionString = process.env.DATABASE_URL;
@@ -80,6 +93,146 @@ async function loadImages(): Promise<Record<string, SeedImage[]>> {
     );
     return {};
   }
+}
+
+/**
+ * Hosts whose pictures are copied into the store's own storage rather than
+ * linked. Wikimedia throttles scripted fetches — next/image's among them — and
+ * a throttled fetch is a broken picture on the storefront. Copied, they are
+ * served from the bucket sellers upload to, under the store's own prefix.
+ */
+const MIRRORED_HOSTS = new Set(["upload.wikimedia.org"]);
+/** Seller uploads are named by UUID, so this prefix marks the seed's copies. */
+const MIRROR_PREFIX = "seed-";
+const MIRROR_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/avif": "avif",
+};
+const DOWNLOAD_SPACING_MS = 1_500;
+const DOWNLOAD_ATTEMPTS = 5;
+/** The bucket's own limit (scripts/setup-storage.ts). */
+const MAX_COPY_BYTES = 5 * 1024 * 1024;
+/**
+ * Wikimedia's robot policy asks scripted clients for a name and a way to reach
+ * whoever runs them, and throttles the ones that give neither.
+ */
+const USER_AGENT = "TenderSeed/1.0 (https://github.com/keraa00/Tender-ecommerce; demo seed data)";
+
+let lastDownloadAt = 0;
+
+/** One file from a throttled host, paced and retried as it asks. */
+async function download(url: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    await sleep(Math.max(0, lastDownloadAt + DOWNLOAD_SPACING_MS - Date.now()));
+    lastDownloadAt = Date.now();
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(30_000),
+    }).catch(() => null);
+
+    if (response?.ok) {
+      const type = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+      return { body: await response.arrayBuffer(), type };
+    }
+    if (response && response.status !== 429 && response.status < 500) return null;
+
+    const retryAfter = Number(response?.headers.get("retry-after")) || 15 * attempt;
+    await sleep(Math.min(retryAfter, 120) * 1000);
+  }
+  return null;
+}
+
+/**
+ * Some manifest entries are a Commons original, which can run to 20MB. Its
+ * 1280px rendition — a size Wikimedia keeps cached — is tried first; an
+ * original narrower than that has none, and is fetched as it is.
+ */
+async function downloadForCopy(url: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+  const original = /^(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons)\/([0-9a-f]\/[0-9a-f]{2})\/([^/]+)$/.exec(url);
+  const file =
+    (original && (await download(`${original[1]}/thumb/${original[2]}/${original[3]}/1280px-${original[3]}`))) ||
+    (await download(url));
+  return file && file.body.byteLength <= MAX_COPY_BYTES ? file : null;
+}
+
+/**
+ * Copies a store's pictures from `MIRRORED_HOSTS` into its storage prefix and
+ * returns where each is served from: its copy, or null for one that could not
+ * be copied — linked, it would be a broken picture, so it is left off until a
+ * later seed copies it. A copy is named after its source, so a reseed finds it
+ * and downloads nothing; copies the catalogue no longer uses are removed.
+ * Without a service-role key nothing can be copied, and pictures stay linked.
+ */
+async function mirrorStoreImages(
+  storeId: string,
+  urls: string[],
+): Promise<(url: string) => string | null> {
+  const mirrored = new Map<string, string>();
+  const admin = supabaseAdmin();
+  const wanted = [...new Set(urls)].filter((url) => MIRRORED_HOSTS.has(new URL(url).hostname));
+  const served = (url: string) =>
+    mirrored.get(url) ?? (admin && MIRRORED_HOSTS.has(new URL(url).hostname) ? null : url);
+  if (!admin) return served;
+
+  const bucket = admin.storage.from(PRODUCT_IMAGE_BUCKET);
+  const { data: listed, error } = await bucket.list(storeId, { limit: 1000, search: MIRROR_PREFIX });
+  if (error) {
+    console.warn(`! could not list ${storeId}/ in storage: ${error.message} — leaving those photos off`);
+    return served;
+  }
+  // By name without its extension, which only the download reveals.
+  const existing = new Map(
+    (listed ?? [])
+      .filter((file) => file.name.startsWith(MIRROR_PREFIX))
+      .map((file) => [file.name.replace(/\.[a-z0-9]+$/, ""), file.name]),
+  );
+
+  const kept = new Set<string>();
+  let copied = 0;
+  for (const url of wanted) {
+    const base = `${MIRROR_PREFIX}${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
+    let name = existing.get(base);
+
+    if (!name) {
+      const file = await downloadForCopy(url);
+      const extension = file ? MIRROR_TYPES[file.type] : undefined;
+      if (!file || !extension) {
+        console.warn(`! could not copy ${url} — left off for now; reseed to retry`);
+        continue;
+      }
+      name = `${base}.${extension}`;
+      const { error: uploadError } = await bucket.upload(`${storeId}/${name}`, file.body, {
+        contentType: file.type,
+        // Named after its source, so it never changes under that name.
+        cacheControl: "31536000",
+        upsert: true,
+      });
+      if (uploadError) {
+        console.warn(`! could not upload ${url}: ${uploadError.message} — left off for now`);
+        continue;
+      }
+      copied += 1;
+    }
+
+    kept.add(name);
+    mirrored.set(url, bucket.getPublicUrl(`${storeId}/${name}`).data.publicUrl);
+  }
+
+  const stale = [...existing.values()].filter((name) => !kept.has(name));
+  if (stale.length > 0) {
+    await bucket.remove(stale.map((name) => `${storeId}/${name}`));
+  }
+  const missing = wanted.length - mirrored.size;
+  if (copied > 0 || stale.length > 0 || missing > 0) {
+    console.log(
+      `    photos: ${copied} copied into storage, ${stale.length} removed` +
+        (missing > 0 ? `, ${missing} left off (reseed to retry)` : ""),
+    );
+  }
+  return served;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +296,21 @@ async function upsertUser(
 // Stores
 // ---------------------------------------------------------------------------
 
+/** A catalogue's cash-on-delivery settings, as the store's columns. */
+function codColumns(cod: SeedCod) {
+  return {
+    codEnabled: true,
+    codLabel: cod.label ?? null,
+    codInstructions: cod.instructions ?? null,
+    codFeeType: cod.fee.type,
+    codFeeValue: cod.fee.value,
+    codMinTotalCents: cod.minTotalCents ?? null,
+    codMaxTotalCents: cod.maxTotalCents ?? null,
+    codCountryCodes: cod.countries ?? [],
+    codRequirePhone: cod.requirePhone ?? true,
+  };
+}
+
 async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) {
   const owner = await upsertUser(store.owner.email, store.owner.name);
 
@@ -158,6 +326,9 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
     checkoutAddress2: store.checkout.address2,
     checkoutMarketingOptIn: store.checkout.marketingOptIn,
     checkoutOrderNote: store.checkout.orderNote,
+    // Only where the catalogue says: a seller who set up cash on delivery
+    // by hand keeps it.
+    ...(store.cod ? codColumns(store.cod) : {}),
   } satisfies Prisma.StoreUncheckedUpdateInput;
 
   const record = await db.store.upsert({
@@ -208,6 +379,21 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
     update: { role: "OWNER" },
   });
 
+  // Copied under the store's id, which only exists once the row does.
+  const imagesOf = (product: SeedStore["products"][number]) =>
+    images[product.imageFrom ?? `product:${store.slug}:${product.slug}`] ?? [];
+  const served = await mirrorStoreImages(record.id, [
+    ...[banner, logo].flatMap((image) => (image ? [image.url] : [])),
+    ...store.products.flatMap((product) => imagesOf(product).map((image) => image.url)),
+  ]);
+  await db.store.update({
+    where: { id: record.id },
+    data: {
+      bannerUrl: banner ? served(banner.url) : null,
+      logoUrl: logo ? served(logo.url) : null,
+    },
+  });
+
   const collectionIds = new Map<string, string>();
   for (const collection of store.collections) {
     const saved = await db.collection.upsert({
@@ -244,8 +430,10 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
 
     // Images are positional and small in number; replacing them wholesale is
     // simpler and cheaper than diffing.
-    const productImages =
-      images[product.imageFrom ?? `product:${store.slug}:${product.slug}`] ?? [];
+    const productImages = imagesOf(product).flatMap((image) => {
+      const url = served(image.url);
+      return url ? [{ ...image, url }] : [];
+    });
     await db.productImage.deleteMany({ where: { productId: saved.id } });
     if (productImages.length > 0) {
       await db.productImage.createMany({
@@ -518,6 +706,10 @@ function splitAcrossLines(discountCents: number, lineTotals: number[]): number[]
  *
  * Prices come from the variants as seeded, and inventory is left alone: these
  * are history, not sales happening now.
+ *
+ * Cash on delivery is judged against the catalogue's settings, not the
+ * store's columns, so a seller who switched it on by hand does not find their
+ * card history rewritten as cash.
  */
 async function seedOrders(store: SeedStore) {
   const orders = SEED_ORDERS[store.slug] ?? [];
@@ -527,6 +719,9 @@ async function seedOrders(store: SeedStore) {
     where: { slug: store.slug },
     select: { id: true, commissionBps: true, stripeAccountId: true, currency: true },
   });
+  const codSettings = store.cod ? codSettingsOf(codColumns(store.cod)) : null;
+  const customers = new Set<string>();
+  let cashOrders = 0;
 
   const zones: ZoneRule[] = (
     await db.shippingZone.findMany({
@@ -610,7 +805,28 @@ async function seedOrders(store: SeedStore) {
       throw new Error(`Seed order "${order.key}" ships to ${address.countryCode}, where no rate applies.`);
     }
 
-    const totalCents = subtotalCents - discountCents + rate.priceCents;
+    // Cash where checkout would have offered it, unless the order says card;
+    // an order that says cash where it was not on offer is a seed mistake.
+    const baseCents = subtotalCents - discountCents + rate.priceCents;
+    const cod =
+      codSettings && order.payment !== "card"
+        ? codAvailability(codSettings, {
+            baseCents,
+            needsShipping: lines.some(({ variant }) => variant.product.requiresShipping),
+            countryCode: address.countryCode,
+          })
+        : null;
+    if (order.payment === "cod" && !cod?.available) {
+      throw new Error(
+        `Seed order "${order.key}" is cash on delivery, which ${store.name} does not offer for it` +
+          (cod && !cod.available ? ` (${cod.reason}).` : "."),
+      );
+    }
+    const cashOnDelivery = cod?.available === true;
+    const paymentFeeCents = cod?.available ? cod.feeCents : 0;
+    if (cashOnDelivery) cashOrders += 1;
+
+    const totalCents = baseCents + paymentFeeCents;
     const platformFeeCents = calculatePlatformFee(totalCents, record.commissionBps);
 
     const email = order.email.toLowerCase();
@@ -621,21 +837,33 @@ async function seedOrders(store: SeedStore) {
       throw new Error(`Seed order "${order.key}" is signed in as ${email}, which is not a seeded account.`);
     }
 
+    const status = order.status ?? defaultOrderStatus(order.daysAgo, cashOnDelivery);
     const placedAt = new Date(now - order.daysAgo * DAY_MS);
     const later = (ms: number) => new Date(Math.min(placedAt.getTime() + ms, now));
-    const settled = order.status === "PAID" || order.status === "FULFILLED";
+    const settled = status === "PAID" || status === "FULFILLED";
+    if (settled) customers.add(email);
+
+    // A card is charged at checkout and the parcel goes two days later. Cash
+    // is the other way round: the parcel goes the next day, and the money
+    // comes in with the courier at the far end of the delivery estimate.
+    const shippedAfter = cashOnDelivery ? DAY_MS : 2 * DAY_MS;
+    const paidAfter = cashOnDelivery
+      ? shippedAfter + (rate.maxDeliveryDays ?? 3) * DAY_MS
+      : 2 * 60 * 1000;
 
     const data = {
       userId: account?.id ?? null,
       email: order.email,
-      status: order.status,
+      status,
       currency: record.currency,
       subtotalCents,
       discountCents,
       shippingCents: rate.priceCents,
+      paymentFeeCents,
       totalCents,
       platformFeeCents,
       sellerNetCents: totalCents - platformFeeCents,
+      paymentMethod: cashOnDelivery ? "CASH_ON_DELIVERY" : "STRIPE",
       discountId: discount?.id ?? null,
       appliedDiscounts: discount
         ? [
@@ -649,7 +877,8 @@ async function seedOrders(store: SeedStore) {
             },
           ]
         : [],
-      stripeAccountId: record.stripeAccountId,
+      // No Stripe account behind cash, which a CHECK holds it to.
+      stripeAccountId: cashOnDelivery ? null : record.stripeAccountId,
       shippingAddress: address,
       billingAddress: address,
       shippingRateId: rate.id,
@@ -657,9 +886,9 @@ async function seedOrders(store: SeedStore) {
       shippingZoneName: zone.name,
       shippingMinDays: rate.minDeliveryDays,
       shippingMaxDays: rate.maxDeliveryDays,
-      paidAt: settled ? later(2 * 60 * 1000) : null,
-      fulfilledAt: order.status === "FULFILLED" ? later(2 * DAY_MS) : null,
-      cancelledAt: order.status === "CANCELLED" ? later(60 * 60 * 1000) : null,
+      paidAt: settled ? later(paidAfter) : null,
+      fulfilledAt: status === "FULFILLED" ? later(shippedAfter) : null,
+      cancelledAt: status === "CANCELLED" ? later(60 * 60 * 1000) : null,
       createdAt: placedAt,
     } satisfies Prisma.OrderUncheckedUpdateInput;
 
@@ -701,7 +930,7 @@ async function seedOrders(store: SeedStore) {
 
     await db.discountRedemption.deleteMany({ where: { orderId: id } });
     // A cancelled checkout gives its use back, so it keeps no redemption.
-    if (discount && order.status !== "CANCELLED") {
+    if (discount && status !== "CANCELLED") {
       await db.discountRedemption.create({
         data: { discountId: discount.id, orderId: id, userId: account?.id ?? null, email, createdAt: placedAt },
       });
@@ -723,12 +952,10 @@ async function seedOrders(store: SeedStore) {
     await db.discount.update({ where: { id: discount.id }, data: { usageCount } });
   }
 
-  const customers = new Set(
-    orders
-      .filter((order) => order.status === "PAID" || order.status === "FULFILLED")
-      .map((order) => order.email.toLowerCase()),
+  console.log(
+    `  ${store.name.padEnd(22)} ${orders.length} orders, ${customers.size} customers` +
+      (cashOrders > 0 ? `, ${cashOrders} cash on delivery` : ""),
   );
-  console.log(`  ${store.name.padEnd(22)} ${orders.length} orders, ${customers.size} customers`);
 }
 
 /** A seed buyer's address in the shape checkout stores. */

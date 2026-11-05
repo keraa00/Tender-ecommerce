@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { signOutAction } from "@/lib/auth/actions";
 import { getCurrentUser } from "@/lib/auth/session";
+import { TenderMark } from "@/components/tender-mark";
 import { ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
@@ -48,12 +49,7 @@ export async function SiteHeader({
           href="/"
           className="flex items-center gap-2 font-semibold tracking-tight"
         >
-          <span
-            aria-hidden
-            className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground"
-          >
-            T
-          </span>
+          <TenderMark />
           Tender
         </Link>
 

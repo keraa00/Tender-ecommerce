@@ -2,12 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
+import { StoreMark } from "@/components/store-mark";
 import type { Store } from "@/lib/db/types";
 
 type StoreCardStore = Pick<
   Store,
-  "slug" | "name" | "description" | "logoUrl" | "bannerUrl" | "accentColor"
->;
+  "slug" | "name" | "description" | "logoUrl" | "accentColor"
+> & {
+  /** The picture from the top of the store's home page — see `storeCoverImage`. */
+  coverUrl: string | null;
+};
 
 export function StoreCard({
   store,
@@ -25,9 +29,9 @@ export function StoreCard({
       className="group flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-colors hover:border-[var(--store-accent)]"
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-surface-subtle">
-        {store.bannerUrl ? (
+        {store.coverUrl ? (
           <Image
-            src={store.bannerUrl}
+            src={store.coverUrl}
             alt=""
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
@@ -36,12 +40,22 @@ export function StoreCard({
         ) : (
           <div
             aria-hidden
-            className="h-full w-full"
+            className="grid h-full w-full place-items-center"
             style={{
               background:
                 "linear-gradient(135deg, var(--store-accent) 0%, transparent 140%)",
             }}
-          />
+          >
+            {store.logoUrl ? (
+              <StoreMark
+                name={store.name}
+                logoUrl={store.logoUrl}
+                accentColor={store.accentColor}
+                size="lg"
+                className="shadow-sm ring-1 ring-black/5"
+              />
+            ) : null}
+          </div>
         )}
       </div>
 

@@ -14,9 +14,10 @@ export default defineSection({
   maxPerPage: 10,
   settings: {
     image: field.image({ label: "Image" }),
+    // Stored as `imageAlt` since the first themes; only the wording changed.
     imageAlt: field.text({
-      label: "Image description",
-      help: "Read aloud to buyers who can't see the image.",
+      label: "Alt text",
+      help: "Not shown on the page. Describes the image to buyers using a screen reader, and to search engines. Use Text below for words everyone sees.",
       maxLength: 200,
     }),
     imagePosition: field.select({
@@ -38,6 +39,38 @@ export default defineSection({
     const { settings } = section;
     const button = section.blocks.find((block) => block.settings.label.trim() !== "");
     const buttonHref = button ? await resolveLinkHref(button.settings.link, ctx) : null;
+    const hasHeading = settings.heading.trim() !== "";
+    const hasText = settings.text.trim() !== "";
+
+    const copy =
+      hasHeading || hasText || buttonHref ? (
+        <div>
+          {hasHeading ? (
+            <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+              {settings.heading}
+            </h2>
+          ) : null}
+          {hasText ? (
+            <p className={cn("whitespace-pre-line text-muted text-pretty", hasHeading && "mt-3")}>
+              {settings.text}
+            </p>
+          ) : null}
+          {button && buttonHref ? (
+            <ThemeButton
+              href={buttonHref}
+              label={button.settings.label}
+              style={button.settings.style}
+              className={hasHeading || hasText ? "mt-6" : undefined}
+            />
+          ) : null}
+        </div>
+      ) : null;
+
+    // Without an image there is no frame to hold one: buyers would see an
+    // empty grey box. The words stand alone, and with none there's no section.
+    if (!settings.image) {
+      return copy ? <section className="max-w-2xl">{copy}</section> : null;
+    }
 
     return (
       <section className="grid items-center gap-8 sm:grid-cols-2 sm:gap-12">
@@ -47,37 +80,15 @@ export default defineSection({
             settings.imagePosition === "end" && "sm:order-last",
           )}
         >
-          {settings.image ? (
-            <Image
-              src={settings.image}
-              alt={settings.imageAlt}
-              fill
-              sizes="(max-width: 640px) 100vw, 50vw"
-              className="object-cover"
-            />
-          ) : null}
+          <Image
+            src={settings.image}
+            alt={settings.imageAlt}
+            fill
+            sizes="(max-width: 640px) 100vw, 50vw"
+            className="object-cover"
+          />
         </div>
-
-        <div>
-          {settings.heading.trim() !== "" ? (
-            <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-              {settings.heading}
-            </h2>
-          ) : null}
-          {settings.text.trim() !== "" ? (
-            <p className="mt-3 whitespace-pre-line text-muted text-pretty">
-              {settings.text}
-            </p>
-          ) : null}
-          {button && buttonHref ? (
-            <ThemeButton
-              href={buttonHref}
-              label={button.settings.label}
-              style={button.settings.style}
-              className="mt-6"
-            />
-          ) : null}
-        </div>
+        {copy}
       </section>
     );
   },

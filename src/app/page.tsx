@@ -29,7 +29,9 @@ export default async function HomePage() {
   return (
     // `theme-home` re-points the colour tokens at the blue palette for this
     // page only — see globals.css. The dashboard keeps the neutral chrome.
-    <div className="theme-home relative isolate flex flex-1 flex-col bg-background">
+    // `overflow-x-clip` trims the glows that hang past the edges without a
+    // sideways scroll; unlike `overflow-hidden` it keeps the header sticky.
+    <div className="theme-home relative isolate flex flex-1 flex-col overflow-x-clip bg-background">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[42rem] bg-linear-to-b from-home-sky via-home-mist to-background"

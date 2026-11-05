@@ -15,7 +15,7 @@ import { useSortable } from "./use-sortable";
 
 /**
  * The page's sections in order, between the header and footer that every page
- * shares, each with its blocks a click away.
+ * shares, each with its blocks listed under it.
  *
  * Sections and blocks reorder by dragging their handle, or with the move
  * up/down buttons beside them — which are the keyboard's way, and announced.
@@ -45,16 +45,18 @@ export function SectionList({
   actions: SectionListActions;
 }) {
   const [adding, setAdding] = useState(false);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // Block lists start open: a section's headings, text and buttons are blocks,
+  // and a seller who cannot see them has no way to find where to type.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const manifestByType = new Map(manifests.map((manifest) => [manifest.type, manifest]));
   const sections = document.pages.home.sections;
   const sortable = useSortable((from, to) => actions.onMoveSection(sections[from].id, to));
 
   const isSelected = (id: string) => selected.kind === "section" && selected.id === id;
   const isOpen = (id: string) =>
-    expanded.has(id) || (selected.kind === "block" && selected.sectionId === id);
+    !collapsed.has(id) || (selected.kind === "block" && selected.sectionId === id);
   const toggleOpen = (id: string) =>
-    setExpanded((current) => {
+    setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);

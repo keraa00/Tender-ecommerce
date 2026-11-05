@@ -4,11 +4,16 @@
  *
  *   npm run seed:images              fill gaps only (default)
  *   npm run seed:images -- --refresh discard the manifest and refetch everything
+ *   npm run seed:images -- --commons search Wikimedia Commons from the start
  *
  * The resulting JSON is committed, so `npm run db:seed` is deterministic and
  * needs no network access. Openverse rate-limits anonymous callers to 20
  * requests a minute, so a full refresh takes a few minutes; gap-filling is
  * quick, which is why it is the default.
+ *
+ * When Openverse stops answering — rate-limited past its retries, or its
+ * search simply down — the rest of the run searches Wikimedia Commons, which
+ * carries the same licences and serves from a host next.config.ts allows.
  *
  * Every image is CC0, Public Domain Mark, CC-BY or CC-BY-SA. Attribution for
  * the ones that require it is written to CREDITS.md.
@@ -20,11 +25,21 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { SEED_STORES } from "../prisma/seed-catalog";
 
 const API = "https://api.openverse.org/v1/images/";
-const USER_AGENT = "tender-seed-script/1.0 (portfolio project)";
+const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
+const USER_AGENT = "TenderSeed/1.0 (https://github.com/keraa00/Tender-ecommerce; demo seed data)";
 
 const REQUEST_SPACING_MS = 3_400;
+/** Commons sets no hard limit, only that scripts don't hammer it. */
+const COMMONS_SPACING_MS = 1_000;
 const MAX_ATTEMPTS = 3;
 const IMAGES_PER_PRODUCT = 2;
+
+/**
+ * The seed-photography hosts `images.remotePatterns` in next.config.ts lets
+ * next/image load. A picture from anywhere else would break on the page, so
+ * it is skipped here rather than widening that list.
+ */
+const ALLOWED_HOSTS = new Set(["live.staticflickr.com", "upload.wikimedia.org", "pd.w.org"]);
 
 const MANIFEST_URL = new URL("../prisma/seed-images.json", import.meta.url);
 const CREDITS_URL = new URL("../CREDITS.md", import.meta.url);
@@ -56,6 +71,25 @@ type Manifest = {
 
 type Job = { key: string; queries: string[]; count: number };
 
+type CommonsPage = {
+  title: string;
+  /** Search rank: generator results come back in no particular order. */
+  index?: number;
+  imageinfo?: {
+    url: string;
+    thumburl?: string;
+    thumbwidth?: number;
+    thumbheight?: number;
+    width: number;
+    height: number;
+    descriptionurl: string;
+    extmetadata?: Record<string, { value: string } | undefined>;
+  }[];
+};
+
+/** Set once Openverse stops answering, so the rest of the run skips it. */
+let useCommons = process.argv.includes("--commons");
+
 // ---------------------------------------------------------------------------
 
 async function searchOnce(query: string): Promise<OpenverseResult[] | null> {
@@ -83,6 +117,8 @@ async function searchOnce(query: string): Promise<OpenverseResult[] | null> {
 }
 
 async function search(query: string): Promise<OpenverseResult[]> {
+  if (useCommons) return searchCommons(query);
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const results = await searchOnce(query).catch(() => null);
     if (results !== null) return results;
@@ -92,8 +128,102 @@ async function search(query: string): Promise<OpenverseResult[]> {
     await sleep(backoff);
   }
 
-  console.warn(`    giving up on "${query}"`);
-  return [];
+  console.warn(`    Openverse isn't answering — searching Wikimedia Commons for the rest of the run`);
+  useCommons = true;
+  return searchCommons(query);
+}
+
+/**
+ * Commons' file search, in Openverse's shape. Only the licences Openverse is
+ * asked for are kept, spelled the way it spells them.
+ */
+async function searchCommons(query: string): Promise<OpenverseResult[]> {
+  const url = new URL(COMMONS_API);
+  const params = {
+    action: "query",
+    format: "json",
+    formatversion: "2",
+    generator: "search",
+    gsrnamespace: "6",
+    gsrlimit: "20",
+    gsrsearch: `filetype:bitmap ${query}`,
+    prop: "imageinfo",
+    iiprop: "url|size|extmetadata",
+    iiurlwidth: "1280",
+    iiextmetadatafilter: "LicenseShortName|Artist|ObjectName",
+  };
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) {
+      console.warn(`    commons ${response.status} for "${query}"`);
+      return [];
+    }
+
+    const body = (await response.json()) as { query?: { pages?: CommonsPage[] } };
+    return (body.query?.pages ?? [])
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+      .flatMap((page) => {
+        const info = page.imageinfo?.[0];
+        const meta = info?.extmetadata ?? {};
+        const license = commonsLicense(meta.LicenseShortName?.value ?? "");
+        if (!info || !license) return [];
+
+        // A 1280px rendition, not the original, which is often 20MB. Commons
+        // hands these out on thumb.wikimedia.org now; the same path still
+        // answers on upload.wikimedia.org, the host next.config.ts allows.
+        const src = new URL(info.thumburl ?? info.url);
+        if (src.hostname === "thumb.wikimedia.org") src.hostname = "upload.wikimedia.org";
+        // Commons tags its thumbnail links with utm_* parameters; the file
+        // doesn't need them.
+        src.search = "";
+
+        return [
+          {
+            title:
+              plainText(meta.ObjectName?.value) ??
+              page.title.replace(/^File:/, "").replace(/\.[a-z0-9]+$/i, ""),
+            url: src.toString(),
+            creator: plainText(meta.Artist?.value),
+            license: license.name,
+            license_version: license.version,
+            foreign_landing_url: info.descriptionurl,
+            width: info.thumbwidth ?? info.width,
+            height: info.thumbheight ?? info.height,
+          },
+        ];
+      });
+  } catch {
+    console.warn(`    commons unreachable for "${query}"`);
+    return [];
+  }
+}
+
+/** "CC BY-SA 4.0", "CC0", "Public domain" as Openverse's licence and version. */
+function commonsLicense(shortName: string): { name: string; version: string | null } | null {
+  const name = shortName.trim();
+  if (/^cc0( 1\.0)?$/i.test(name)) return { name: "cc0", version: "1.0" };
+  if (/^public domain$/i.test(name)) return { name: "pdm", version: "1.0" };
+  const match = /^cc (by|by-sa) (\d\.\d)\b/i.exec(name);
+  return match ? { name: match[1].toLowerCase(), version: match[2] } : null;
+}
+
+/** Commons metadata is HTML; alt text and credits want the words. */
+function plainText(html: string | undefined): string | null {
+  const text = html
+    ?.replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? text : null;
 }
 
 /** A URL that 404s at seed time is worse than no image at all. */
@@ -112,6 +242,7 @@ async function isReachable(url: string): Promise<boolean> {
 
 function usable(result: OpenverseResult): boolean {
   if (!result.url.startsWith("https://")) return false;
+  if (!ALLOWED_HOSTS.has(new URL(result.url).hostname)) return false;
   if (!result.width || !result.height) return false;
   if (result.width < 500) return false;
 
@@ -154,7 +285,7 @@ async function run(job: Job): Promise<SeedImage[]> {
     if (picked.length >= job.count) break;
 
     const results = (await search(query)).filter(usable);
-    await sleep(REQUEST_SPACING_MS);
+    await sleep(useCommons ? COMMONS_SPACING_MS : REQUEST_SPACING_MS);
 
     for (const result of results) {
       if (picked.length >= job.count) break;
@@ -190,6 +321,8 @@ function buildJobs(): Job[] {
     });
 
     for (const product of store.products) {
+      // Photographed with another key's image; a search would never be used.
+      if (product.imageFrom) continue;
       jobs.push({
         key: `product:${store.slug}:${product.slug}`,
         queries: queryLadder(product.imageQuery, product.title.toLowerCase()),
@@ -230,7 +363,7 @@ async function main() {
   const manifest: Manifest = {
     generatedAt: new Date().toISOString(),
     note:
-      "Generated by scripts/fetch-seed-images.ts from api.openverse.org. " +
+      "Generated by scripts/fetch-seed-images.ts from api.openverse.org and Wikimedia Commons. " +
       "All images are CC0, Public Domain Mark, CC-BY or CC-BY-SA. See CREDITS.md.",
     images,
   };
@@ -258,8 +391,9 @@ async function writeCredits(images: Record<string, SeedImage[]>) {
   const lines = [
     "# Credits",
     "",
-    "Demo product photography is openly licensed and pulled from Openverse by",
-    "`scripts/fetch-seed-images.ts`. Public-domain and CC0 images are not listed.",
+    "Demo product photography is openly licensed and pulled from Openverse and",
+    "Wikimedia Commons by `scripts/fetch-seed-images.ts`. Public-domain and CC0",
+    "images are not listed.",
     "The images below are CC-BY or CC-BY-SA and are reproduced with attribution.",
     "",
   ];

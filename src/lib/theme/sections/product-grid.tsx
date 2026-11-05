@@ -41,21 +41,22 @@ export default defineSection({
     const { settings } = section;
     const { t, paths } = ctx;
 
-    // A chosen collection with nothing on sale has no page to send "View all"
-    // to, and no products to show either way.
+    // A chosen collection with nothing on sale — emptied, or deleted — has no
+    // products to show and no page for "View all". No section at all, rather
+    // than the empty-store notice, which would tell buyers the store has
+    // nothing when it is only this collection.
     const collection = settings.collectionId
       ? (await ctx.data.collections()).find(
           (entry) => entry.id === settings.collectionId,
         )
       : undefined;
-    const products =
-      settings.collectionId && !collection
-        ? []
-        : // One extra tells us whether "View all" leads anywhere new.
-          await ctx.data.products({
-            limit: settings.limit + 1,
-            collectionId: collection?.id,
-          });
+    if (settings.collectionId && !collection) return null;
+
+    // One extra tells us whether "View all" leads anywhere new.
+    const products = await ctx.data.products({
+      limit: settings.limit + 1,
+      collectionId: collection?.id,
+    });
 
     const hasMore = settings.showViewAll && products.length > settings.limit;
     const viewAllHref = collection ? paths.collection(collection.slug) : paths.catalog;

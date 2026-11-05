@@ -65,8 +65,30 @@ describe("addSection", () => {
     if (!result.ok) return;
     expect(ids(result.document)).toEqual(["hero", "collections", "new", "rich-text"]);
     expect(result.id).toBe("rich-text");
-    expect(result.document.pages.home.sections[3]).toEqual(newSection("rich-text", "rich-text"));
+    expect(result.document.pages.home.sections[3]).toEqual(
+      newSection("rich-text", "rich-text", [
+        { id: "rich-text-heading", type: "heading" },
+        { id: "rich-text-text", type: "text" },
+      ]),
+    );
     expect(document).toEqual(before);
+  });
+
+  it("starts a section with its starting blocks, under ids nothing else uses", () => {
+    const { document } = fixture();
+    const first = addSection(document, manifest("rich-text"));
+    if (!first.ok) throw new Error("expected a rich text section");
+    const second = addSection(first.document, manifest("rich-text"));
+    if (!second.ok) throw new Error("expected a second rich text section");
+
+    expect(findSection(second.document, "rich-text-2")!.blocks.map((block) => block.id)).toEqual([
+      "rich-text-2-heading",
+      "rich-text-2-text",
+    ]);
+    expect(parseThemeForWrite(second.document)).toEqual({ ok: true, theme: second.document });
+
+    const grid = addSection(document, manifest("product-grid"));
+    expect(grid.ok && findSection(grid.document, grid.id)!.blocks).toEqual([]);
   });
 
   it("inserts at a position, clamped to the page", () => {
@@ -290,11 +312,10 @@ describe("blocks", () => {
     let document = defaultTheme();
     const story = addSection(document, manifest("rich-text"));
     if (!story.ok) throw new Error("expected a rich text section");
-    document = story.document;
-    for (const type of ["heading", "text", "button"]) {
-      const result = addBlock(document, "rich-text", manifest("rich-text"), type);
-      if (result.ok) document = result.document;
-    }
+    // It starts with a heading and text; a button joins them.
+    const button = addBlock(story.document, "rich-text", manifest("rich-text"), "button");
+    if (!button.ok) throw new Error("expected a button block");
+    document = button.document;
     const blockIds = (doc: ThemeDocument) =>
       findSection(doc, "rich-text")!.blocks.map((block) => block.id);
     expect(blockIds(document)).toEqual(["rich-text-heading", "rich-text-text", "rich-text-button"]);

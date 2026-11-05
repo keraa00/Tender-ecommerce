@@ -28,6 +28,7 @@ export type ManifestLike = {
   pinned?: "header" | "footer";
   settings: Fields;
   blocks: Record<string, { name: string; settings: Fields }>;
+  startingBlocks?: readonly string[];
   maxBlocks: number;
   maxPerPage: number;
 };
@@ -90,8 +91,8 @@ export function addSectionBlockedReason(
 }
 
 /**
- * A new section of this type, every setting at its default, inserted at
- * `index` (the end by default).
+ * A new section of this type, every setting at its default and holding its
+ * starting blocks, inserted at `index` (the end by default).
  */
 export function addSection(
   document: ThemeDocument,
@@ -101,13 +102,25 @@ export function addSection(
   const reason = addSectionBlockedReason(document, manifest);
   if (reason) return { ok: false, reason };
 
-  const id = uniqueId(manifest.type, themeIds(document));
+  const taken = themeIds(document);
+  const id = uniqueId(manifest.type, taken);
+  taken.add(id);
+  const blocks = (manifest.startingBlocks ?? []).map((type): ThemeBlock => {
+    const blockId = uniqueId(`${id}-${type}`, taken);
+    taken.add(blockId);
+    return {
+      id: blockId,
+      type,
+      hidden: false,
+      settings: settingsDefaults(manifest.blocks[type].settings),
+    };
+  });
   const section: ThemeSection = {
     id,
     type: manifest.type,
     hidden: false,
     settings: settingsDefaults(manifest.settings),
-    blocks: [],
+    blocks,
   };
 
   const sections = [...document.pages.home.sections];

@@ -3,6 +3,7 @@ import Image from "next/image";
 import { en } from "@/lib/i18n/messages/en";
 import { buttonFields, ThemeButton } from "../components";
 import { defineSection, type StorefrontContext } from "../define";
+import type { ThemeDocument } from "../document";
 import { field, textOr } from "../fields";
 import { resolveLinkHref } from "../links";
 
@@ -123,6 +124,22 @@ export default defineSection({
     );
   },
 });
+
+/**
+ * The picture at the top of a store's home page, for showing the store
+ * outside it — the card on Tender's landing page. The first visible banner's
+ * image, with the same fallback to the store's banner it renders with.
+ */
+export function storeCoverImage(
+  theme: ThemeDocument,
+  store: Pick<StorefrontContext["store"], "bannerUrl">,
+): string | null {
+  const hero = theme.pages.home.sections.find(
+    (section) => section.type === "hero" && !section.hidden,
+  );
+  const image = hero?.settings.image;
+  return (typeof image === "string" ? image : null) ?? store.bannerUrl;
+}
 
 /** The banner's copy and image, after the store's own fallbacks. */
 export function heroContent(

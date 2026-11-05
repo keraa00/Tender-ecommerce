@@ -2,6 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 import { rootDb } from "@/lib/db/root";
+import { readPublishedTheme } from "@/lib/theme/queries";
+import { storeCoverImage } from "@/lib/theme/sections/hero";
 
 /**
  * Store lookups. Resolving a store is the one query that legitimately has no
@@ -34,16 +36,25 @@ export async function isStoreSlugTaken(slug: string): Promise<boolean> {
   return existing !== null;
 }
 
-/** Storefronts to feature on the platform landing page. */
+/**
+ * Storefronts to feature on the platform landing page, each with the picture
+ * from the top of its home page as `coverUrl`.
+ */
 export async function listPublicStores(limit = 12) {
-  return rootDb.store.findMany({
+  const stores = await rootDb.store.findMany({
     where: { status: { not: "SUSPENDED" } },
     orderBy: { createdAt: "asc" },
     take: limit,
     include: {
       _count: { select: { products: true } },
+      theme: { select: { published: true } },
     },
   });
+
+  return stores.map(({ theme, ...store }) => ({
+    ...store,
+    coverUrl: storeCoverImage(readPublishedTheme(theme?.published), store),
+  }));
 }
 
 /**

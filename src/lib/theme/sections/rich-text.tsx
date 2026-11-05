@@ -35,6 +35,8 @@ export default defineSection({
     },
     button: { name: "Button", settings: buttonFields },
   },
+  // Everything it shows is a block, so it arrives with somewhere to type.
+  startingBlocks: ["heading", "text"],
   maxBlocks: 6,
   async Component({ section, ctx }) {
     const centered = section.settings.alignment === "center";

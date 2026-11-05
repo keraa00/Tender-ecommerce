@@ -282,7 +282,14 @@ export function ThemeEditor({
         return;
       }
       edit(result.document);
-      select({ kind: "section", id: result.id });
+      // A section that starts with blocks opens on the first, so its input is
+      // the first thing in the settings panel.
+      const [first] = findSection(result.document, result.id)?.blocks ?? [];
+      select(
+        first
+          ? { kind: "block", sectionId: result.id, blockId: first.id }
+          : { kind: "section", id: result.id },
+      );
       setAnnouncement(`${manifest.name} added at the end of the page.`);
     },
 

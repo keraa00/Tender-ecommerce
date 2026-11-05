@@ -17,7 +17,7 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | | |
 |---|---|
 | Platform landing | Lists live stores at `/` |
-| Storefronts | `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR) — branded per store, priced in each store's own currency |
+| Storefronts | Seven seeded demo stores — `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR), `/s/wildmoor-apothecary` (GBP), `/s/halden-coffee` (AUD), `/s/marlowe-paper` (CAD), `/s/bakar-atelier` (BAM), `/s/kehre-velo` (CHF) — branded per store, priced in each store's own currency |
 | Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
@@ -423,18 +423,28 @@ in Supabase Auth so you can log in as them:
 
 | Account | Role |
 |---|---|
-| `nordhavn@example.com` | owns `/s/nordhavn-supply` |
-| `rosewater@example.com` | owns `/s/rosewater-ceramics` |
+| `nordhavn@example.com` | owns `/s/nordhavn-supply` (USD) |
+| `rosewater@example.com` | owns `/s/rosewater-ceramics` (EUR) |
+| `wildmoor@example.com` | owns `/s/wildmoor-apothecary` (GBP) |
+| `halden@example.com` | owns `/s/halden-coffee` (AUD) |
+| `marlowe@example.com` | owns `/s/marlowe-paper` (CAD) |
+| `bakar@example.com` | owns `/s/bakar-atelier` (BAM) |
+| `kehre@example.com` | owns `/s/kehre-velo` (CHF) |
 | `admin@example.com` | platform admin |
 
 Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
 
-Both stores also get about a year of orders (`prisma/seed-orders.ts`), so
+Every store also gets about a year of orders (`prisma/seed-orders.ts`), so
 Customers, Orders and Analytics have something to show. Their dates count back
 from when the seed runs, so reseeding keeps recent customers recent.
 
 The demo stores start without a Stripe account, so their storefronts browse but
-checkout says payments aren't set up — step 5 connects one.
+card checkout says payments aren't set up — step 5 connects one. The five newer
+stores also offer cash on delivery in their home countries (Wildmoor in the UK,
+Halden in Australia, Marlowe in Canada, Bakar in Bosnia and Herzegovina, Kehre
+in Switzerland and Liechtenstein), so they take orders there without Stripe,
+and their history mixes cash still due, cash collected and parcels refused at
+the door with card orders from abroad.
 
 **5. Payments (Stripe test mode).**
 

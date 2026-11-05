@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
 import { AdminPage } from "@/components/admin/page-shell";
+import { TenderMark } from "@/components/tender-mark";
 import { PublishThemeButton } from "@/components/theme/publish-theme-button";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
-import { markTextColor } from "@/lib/stores/logo";
 import { canPublishTheme } from "@/lib/stores/policy";
 import { getStoreContext } from "@/lib/stores/context";
 import { publishThemeAction } from "@/lib/theme/actions";
@@ -57,17 +57,7 @@ export default async function OnlineStorePage(
         className="overflow-hidden rounded-xl border border-border bg-surface"
       >
         <div className="flex flex-wrap items-start gap-4 p-5">
-          <span
-            aria-hidden
-            className="grid h-14 w-20 shrink-0 place-items-center rounded-lg border border-border text-lg font-semibold"
-            style={
-              accent
-                ? { backgroundColor: accent, color: markTextColor(accent) }
-                : { backgroundColor: "var(--primary)", color: "var(--primary-foreground)" }
-            }
-          >
-            Aa
-          </span>
+          <TenderMark size="lg" />
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted">Current theme</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-2">

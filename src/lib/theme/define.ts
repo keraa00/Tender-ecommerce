@@ -98,6 +98,12 @@ export type SectionDefinition<F extends Fields, B extends BlockDefinitions> = {
   pinned?: "header" | "footer";
   settings: F;
   blocks?: B;
+  /**
+   * The blocks a newly added section starts with, at their defaults. A section
+   * whose content lives only in blocks needs some, or the seller adds it and
+   * finds nothing to type into.
+   */
+  startingBlocks?: (keyof B & string)[];
   maxBlocks?: number;
   /** How many of this section one page may hold. */
   maxPerPage?: number;
@@ -118,6 +124,7 @@ export type AnySectionDefinition = {
   pinned?: "header" | "footer";
   settings: Fields;
   blocks: BlockDefinitions;
+  startingBlocks: string[];
   maxBlocks: number;
   maxPerPage: number;
   Component: SectionComponent<{ section: ResolvedSection; ctx: StorefrontContext }>;
@@ -135,6 +142,7 @@ export function defineSection<
   return {
     ...definition,
     blocks,
+    startingBlocks: definition.startingBlocks ?? [],
     maxBlocks:
       Object.keys(blocks).length === 0 ? 0 : (definition.maxBlocks ?? MAX_BLOCKS_DEFAULT),
     maxPerPage: definition.pinned ? 1 : (definition.maxPerPage ?? MAX_PER_PAGE_DEFAULT),

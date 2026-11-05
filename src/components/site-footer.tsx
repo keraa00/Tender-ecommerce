@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
+import { TenderMark } from "@/components/tender-mark";
+
 /* Placeholder copy. Nothing here is wired to real routes or real data yet —
    swap the `#` hrefs out as the pages land. */
 
@@ -62,12 +64,7 @@ export function SiteFooter() {
               href="/"
               className="flex items-center gap-2 font-semibold tracking-tight"
             >
-              <span
-                aria-hidden
-                className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground"
-              >
-                T
-              </span>
+              <TenderMark />
               Tender
             </Link>
 

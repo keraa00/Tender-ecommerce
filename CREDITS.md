@@ -1,7 +1,8 @@
 # Credits
 
-Demo product photography is openly licensed and pulled from Openverse by
-`scripts/fetch-seed-images.ts`. Public-domain and CC0 images are not listed.
+Demo product photography is openly licensed and pulled from Openverse and
+Wikimedia Commons by `scripts/fetch-seed-images.ts`. Public-domain and CC0
+images are not listed.
 The images below are CC-BY or CC-BY-SA and are reproduced with attribution.
 
 - "Storm in Norwegian valley" by A.Cahlenstein Photography — BY 2.0 — https://www.flickr.com/photos/65296735@N08/7694452700
@@ -56,3 +57,119 @@ The images below are CC-BY or CC-BY-SA and are reproduced with attribution.
 - "Small ceramic figurine" by GorissM — BY-SA 2.0 — https://www.flickr.com/photos/71963413@N06/25397255800
 - "ceramic baking dish with wooden spoon on kitchen counter" by PersonalCreations.com — BY 2.0 — https://www.flickr.com/photos/127294011@N07/16967294216
 - "Ceramic baking dish with wooden spoon on kitchen counter (16967294216)" by Personal Creations — BY 2.0 — https://commons.wikimedia.org/w/index.php?curid=148028642
+- "Heather moorland in South Yorkshire" by N Chadwick — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Heather_moorland_-_geograph.org.uk_-_4754486.jpg
+- "Lavender flowers" by Humoyun Mehridinov — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Lavender_flowers_(2).jpg
+- "Bars of handmade soap" by Malene Thyssen — BY 2.5 — https://commons.wikimedia.org/wiki/File:Handmade_soap.jpg
+- "Bars of olive oil soap" by Bernard Gagnon — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Aleppo_soap_01.jpg
+- "Natural soap bars" by Tony Webster from Minneapolis, Minnesota, United States — BY 2.0 — https://commons.wikimedia.org/wiki/File:Natural_Soap_Bars_(46363900951).jpg
+- "A natural soap bar" by MarliesVH — BY 4.0 — https://commons.wikimedia.org/wiki/File:Nature_Bar_natural_soap_bar.jpg
+- "A tin of body butter" by Purebodybutters — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Pure_Body_Butters_Cocoa_Butter_Moisturiser.jpg
+- "Body butter in a jar" by Esthee2010 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Cocoa_Body_Butter.jpg
+- "Small bottles of essential oil" by Vanilla and lace — BY 2.0 — https://commons.wikimedia.org/wiki/File:Essential_oil_kit.jpg
+- "Calendula flowers" by Ввласенко — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Calendula_(Calendula_officinalis).jpg
+- "A calendula bud" by Dominicus Johannes Bergsma — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bloemknop_van_een_goudsbloem_(Calendula_officinalis)_03-07-2020_(d.j.b.)_02.jpg
+- "Homemade lip balm" by Francesca Cesa Bianchi, Milano — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Homemade_lip_balm.jpg
+- "Lip balm sticks" by Rawpixel Ltd — BY 2.0 — https://commons.wikimedia.org/wiki/File:Various_colorful_lip_balm_sticks_(40821280864).jpg
+- "Coarse bath salts" by Richard Huber — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:K%C3%B6rniges_Salz.JPG
+- "A bath salt tablet" by Customgiftsbyjchale — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Seashell_Bath_Salt_Tablet.jpg
+- "Candles in glass jars" by Bbeezboutiquecandles — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:3set_jars.jpg
+- "A candle flame" by domdomegg — BY 4.0 — https://commons.wikimedia.org/wiki/File:Candle_flame_closeup.jpg
+- "Candlelight through glass" by W.carter — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Candle_light_projected_through_a_glass_orb.jpg
+- "Dried lavender bunches" by sunny mama — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Lavender_(17147414701).jpg
+- "Bunches of lavender at a market" by jean-louis zimmermann — BY 2.0 — https://commons.wikimedia.org/wiki/File:Sault_bouquets_de_lavande.jpg
+- "An aroma diffuser" by The Mo1111 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Aroma_Diffuser.jpg
+- "A konjac sponge" by Morn — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Konjac_sponge.jpg
+- "A shaving brush and soap" by Lbeaumont — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Shaving_Brush.jpg
+- "Shaving soap and brush" by CoffeeAddict — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Jab%C3%B3n_de_afeitar.JPG
+- "A gift box of soaps" by Natural Beauty Products — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Soap_Gift_Box.jpg
+- "A coffee roaster and sacks of green beans" by Aaron Gustafson from Chattanooga, TN, USA — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Coffee_Roaster_(27317205).jpg
+- "Ethiopian coffee beans" by Yoshi Canopus — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Irgachefe_coffee%E3%80%81Ethiopia.jpg
+- "Coffee beans from Ethiopia" by Maurice Chédel — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Coffee_Beans_(Ethiopia).JPG
+- "Coffee berries in Kenya" by Kihara wa kigo — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Coffee_berries_in_Kisii_Kenya.jpg
+- "Kenyan coffee beans" by Go2africa — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Kenyan_Coffee_at_Bean_There.jpg
+- "Coffee drying in the sun in Guatemala" by Salix Oculus — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Fresh_harvested_coffee_is_being_dried_in_the_sun_in_Lanqu%C3%ADn,_Guatemala.jpg
+- "An espresso shot with crema" by Deerpeter — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Espresso_shot_close-up.jpg
+- "An espresso shot" by massage-techniques — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Espresso_shot.jpg
+- "A cup of coffee from above" by Amy March from Ankara, Turkey — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:ONE_MORE_CUP_OF_COFFEE_(VALLEY_BELOW)_(1264568795).jpg
+- "A small cup of coffee" by Julius Schorzman — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:A_small_cup_of_coffee.JPG
+- "Pour-over coffee with a kettle and scale" by HungryHuy — BY 2.0 — https://commons.wikimedia.org/wiki/File:Brewing_pour_over_coffee_with_kettle_and_scale.jpg
+- "A manual coffee grinder" by Suzette - www.suzette.nu from Arnhem, Netherlands — BY 2.0 — https://commons.wikimedia.org/wiki/File:Manual_coffee_grinder_(4484539525).jpg
+- "A hand coffee mill" by Conde Edmond Dantès — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Manual_coffee_grinder_brazil.jpg
+- "A stainless steel French press" by Shisma — BY 4.0 — https://commons.wikimedia.org/wiki/File:Stainless_steel_french_press.png
+- "Coffee in a French press" by Infrogmation — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:French_Press_coffee_making_03.jpg
+- "A coffee filter" by Elke Wetzig ( Elya ) — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Kaffeefilter.jpg
+- "A pour-over setup on a digital scale" by Cerebral726 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Coffee_Pour_Over_Setup.jpg
+- "A glass pour-over coffeemaker" by Hay Kranen — BY 4.0 — https://commons.wikimedia.org/wiki/File:Chemex_coffeemaker_with_filter.jpg
+- "A glass coffee server" by Coffee Circle from Berlin, Deutschland — BY 2.0 — https://commons.wikimedia.org/wiki/File:Die_Chemex_6_Cup.jpg
+- "An espresso tamper" by Olaf Kosinsky — BY 3.0 — https://commons.wikimedia.org/wiki/File:Espresso-Tamper_02.jpg
+- "A portafilter and tamper" by Czosnek112 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Portafilter_and_tamper.jpg
+- "Blank pages in an open notebook" by Pink Sherbet Photography from USA — BY 2.0 — https://commons.wikimedia.org/wiki/File:Blank_Pages_In_An_Open_Notebook_(4812269151).jpg
+- "A blank notebook" by Sfoerster — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Blank_Notebook.jpg
+- "A ruled pocket notebook" by Mack Male from Edmonton, AB, Canada — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Moleskine_Ruled_Pocket_Notebook_(430658073).jpg
+- "A cloth-bound journal" by Sam Wilson — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:William_Shakespeare_Hall%27s_1861_journal_01.jpg
+- "Pages of a handwritten journal" by Sam Wilson — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:William_Shakespeare_Hall%27s_1861_journal_03.jpg
+- "A weekly planner on the table" by Shixart1985 — BY 2.0 — https://commons.wikimedia.org/wiki/File:Meal_planning_activity_at_home_with_fresh_produce_and_a_weekly_planner_on_the_table.jpg
+- "A fountain pen" by John Morgan from Walnut Creek, CA, USA — BY 2.0 — https://commons.wikimedia.org/wiki/File:Sheaffer_Crest_(5043077855).jpg
+- "A fountain pen and nib" by Francis Flinch — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Jinhao_159_fountain_pen_with_Ambitious_35_mm_nib.jpg
+- "An ink bottle and fountain pen" by Pablo Perez — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Ink_Bottle_and_Pen_by_Pablo_Perez.png
+- "A bottle of green ink" by Poulpy — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Green_Ink_Bottle_-_02.jpg
+- "Fountain pen ink cartridges" by Pavel.satrapa — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Fountain_pen_ink_cartridges.jpg
+- "An ink cartridge" by MichalPL — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ink_cartridge.jpg
+- "Mechanical pencils" by J. C. Barros — BY 2.0 — https://commons.wikimedia.org/wiki/File:Mechanical_Pencils_2019.jpg
+- "A 0.7 mm mechanical pencil" by Alex P. Kok — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Rotring_600_mechanical_pencil_0.7_mm_black.jpg
+- "A letterpress print" by AlanKitching — BY 4.0 — https://commons.wikimedia.org/wiki/File:Braque_Letterpress_Print.jpg
+- "A letterpress print" by AlanKitching — BY 4.0 — https://commons.wikimedia.org/wiki/File:Merry_Go_Round_Letterpress_Print.jpg
+- "A wax seal on a letter" by en:User:Contrafool — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Wax_seal_with_impression_of_uppercase_letter_A.jpg
+- "A wax seal" by Hgallo9 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Lion_club_wax_seal_punch_letter.jpg
+- "Oiled walnut" by Martin Lorenz — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Oberfl%C3%A4che_Wohnzimmertisch.JPG
+- "Leather pen cases" by Albarubescens — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Portapenne_in_pelle.jpg
+- "A keyboard and mouse on a desk" by Shixart1985 — BY 2.0 — https://commons.wikimedia.org/wiki/File:Workspace_setup_with_keyboard_smart_card_reader_and_mouse_on_wooden_desk.jpg
+- "A desk setup" by Vyacheslav Argenberg — BY 4.0 — https://commons.wikimedia.org/wiki/File:Brown_and_beige,_Computer_desk,_Rostov-on-Don,_Russia.jpg
+- "Rolls of decorative paper tape" by Japanwelt — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Masking-tape.png
+- "Washi tape" by Mike Dickison — BY 4.0 — https://commons.wikimedia.org/wiki/File:Washi_tape.jpg
+- "Baščaršija, the old bazaar in Sarajevo" by Yukof — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ba%C5%A1%C4%8Dar%C5%A1ija.jpg
+- "Copperware on Kazandžiluk, Sarajevo" by 11sasapus11 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Kazandziluk_02.jpg
+- "Copper džezvas from Sarajevo" by Ekaterina Kvelidze — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bosnian_cezves.jpg
+- "A copper džezva" by Oksana Makarenko ( UA-Lora ) — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Copper_cezve.jpg
+- "Bosnian coffee served on a tray" by Brenda Annerl — BY 2.0 — https://commons.wikimedia.org/wiki/File:Bosanska_Kahva_(2496827374).jpg
+- "Bosnian coffee on an outdoor table in Blagaj" by Minja Klarić — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bosnian_coffee_serving_on_a_outdoor_table_in_Blagaj-bs.jpg
+- "A cup of Turkish coffee" by Leeturtle — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:A_cup_of_Turkish_coffee.jpg
+- "A coffee cup and saucer" by Navaneeth Krishnan S — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Coffee_cup_and_saucer.jpg
+- "A lidded sugar bowl" by Satirdan kahraman — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:%C5%9Eekerlik_(cropped).jpg
+- "Turkish coffee and pepper grinders" by fmucar — BY 3.0 — https://commons.wikimedia.org/wiki/File:Turkish_Coffee_and_Pepper_Grinders.JPG
+- "Powder-fine ground coffee" by Kulmalukko — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Coffee_powdered.jpg
+- "Finely ground coffee" by Alorin — BY 4.0 — https://commons.wikimedia.org/wiki/File:Finely_grounded_coffee_beans_in_white_bowl.png
+- "A round tray set for a meal" by KayaZaKi — BY 2.5 — https://commons.wikimedia.org/wiki/File:Beypazar%C4%B1_Sofras%C4%B1.jpg
+- "Copper ibriks in a Kazandžiluk workshop" by 11sasapus11 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Kazandziluk_08.jpg
+- "Copperware on Kazandžiluk, Sarajevo" by 11sasapus11 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Kazandziluk_04.jpg
+- "Turkish delight" by Chris Brown — BY 2.0 — https://commons.wikimedia.org/wiki/File:Turkish_Delight_lokum.jpg
+- "Lokum" by ProjectManhattan — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Lokum_(Turkish_Delight).jpg
+- "A pierced copper lantern" by Asturio Cantabrio — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Nishi_Hongan-ji_copper_lantern_A_ac_(1).jpg
+- "A coppersmith's shop in Baščaršija" by Jennifer Boyer from Fredrick, Maryland, USA — BY 2.0 — https://commons.wikimedia.org/wiki/File:Ba%C5%A1%C4%8Dar%C5%A1ija_(6086230081).jpg
+- "A copper lamp" by George E. Koronaios — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Copper_lamp_and_stand_in_the_Byzantine_and_Christian_Museum_of_Athens_on_8_February_2020.jpg
+- "A hammered copper pot" by Rajani Gairshail — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:A_pure_copper_water_storer_pot_2.jpg
+- "A copper pot" by Rajani Gairshail — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:A_pure_copper_water_storer_pot._1.jpg
+- "Hairpin bends on a mountain pass" by Josep M. Gracia — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:SANI_-_Final_hairpin_bends_below_Sani_Pass,_South_Africa,_2017.jpg
+- "Cycling jerseys" by Silar — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:020230923_cycling_jerseys_for_men.jpg
+- "A cycling jersey" by Adenosine Triphosphate — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:WTOS_Delft_cycling_jersey_(cropped).jpg
+- "Road cyclists on a long ride" by Frank Schulenburg — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Chico_Wildflower_Century_(2025)-104A9764.jpg
+- "A mountain pass milestone" by Cyclingralph — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:2014_Mountain_pass_cycling_milestone_-_Col_d%27Izoard_Briancon.jpg
+- "A cyclist in the rain" by Samrat Dutta — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Cyclist_in_rain.JPG
+- "Cycling through the rain" by Arandomphotographer — BY 4.0 — https://commons.wikimedia.org/wiki/File:A_Cyclist_at_Amsterdam_Centraal_Cycling_Through_the_Rain.jpg
+- "Cycling caps, gloves and socks" by chelsom tsai from TAIPEI, Taiwam — BY 2.0 — https://commons.wikimedia.org/wiki/File:DSC_3546_(34384474453).jpg
+- "Cycling gloves" by Swastiverma — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Cycling_Gloves.jpg
+- "A fingerless cycling glove" by Lewis Ronald — BY 1.0 — https://commons.wikimedia.org/wiki/File:White_leather_fingerless_cycling_glove_cropped.jpg
+- "Cycling socks" by chelsom tsai from TAIPEI, Taiwam — BY 2.0 — https://commons.wikimedia.org/wiki/File:POC_cycling_socks_(35153657166).jpg
+- "Cycling socks and jerseys" by chelsom tsai from TAIPEI, Taiwam — BY 2.0 — https://commons.wikimedia.org/wiki/File:DSC_3522_(34807451390).jpg
+- "A bike loaded for bikepacking" by Htcltd — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:A_Bikepacking_Bike.jpg
+- "A mountain bike loaded for bikepacking" by Robert Thomson — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Mountain_bike_loaded_for_bikepacking_with_a_rear_rack_(cropped).jpg
+- "A seat bag under a bicycle saddle" by Glory Cycles — BY 2.0 — https://commons.wikimedia.org/wiki/File:Spare_Seat_Bag_on_Cane_Creek_eeSilk_01.jpg
+- "A seat bag on a bicycle" by Glory Cycles — BY 2.0 — https://commons.wikimedia.org/wiki/File:Spare_Seat_Bag_on_Cane_Creek_eeSilk_02.jpg
+- "A bottle in a bicycle bottle cage" by No machine-readable author provided. Aezram assumed (based on copyright claims). — BY-SA 2.5 — https://commons.wikimedia.org/wiki/File:Bottle_cage.jpg
+- "A water bottle on a bicycle" by cyclonebill — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Flickr_-_cyclonebill_-_Vand_(5).jpg
+- "A bicycle headlight" by Anton Ehrola — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Headlight_(bicycle).jpg
+- "A bicycle headlight" by Anton Ehrola — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Headlight_(bicycle)-4.jpg
+- "A bicycle multi-tool" by Armchair — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Bicycle_multi-tool.JPG
+- "Bicycle tools" by Monoklon — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bicycle_tools.jpg
+- "A bicycle chain" by Tony Webster — BY 3.0 — https://commons.wikimedia.org/wiki/File:Bicycle_Chain_TW_20050802_161550_35095.jpg
+- "A bicycle chain link" by Podknox - https://www.flickr.com/photos/wapster/ — BY 2.5 — https://commons.wikimedia.org/wiki/File:Half-link_chain.jpg
