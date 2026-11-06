@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { signOutAction } from "@/lib/auth/actions";
 import { getCurrentUser } from "@/lib/auth/session";
+import { AppearanceToggle } from "@/components/appearance-toggle";
 import { TenderMark } from "@/components/tender-mark";
 import { ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -32,8 +33,14 @@ export async function SiteHeader({
    * content.
    */
   fullBleed = false,
+  /**
+   * The light/dark switch. Only the landing pages have one: it re-skins
+   * `.theme-home`, which nothing else is wrapped in.
+   */
+  appearanceToggle = false,
 }: {
   fullBleed?: boolean;
+  appearanceToggle?: boolean;
 } = {}) {
   const user = await getCurrentUser();
 
@@ -81,6 +88,11 @@ export async function SiteHeader({
                 Start selling
               </ButtonLink>
             </>
+          )}
+          {appearanceToggle && (
+            <span className="ml-1.5 flex">
+              <AppearanceToggle />
+            </span>
           )}
         </nav>
       </div>

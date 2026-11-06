@@ -24,8 +24,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // `data-scroll-behavior`: the landing pages scroll smoothly (globals.css);
+    // this has Next drop to an instant scroll while it changes routes.
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">{children}</body>

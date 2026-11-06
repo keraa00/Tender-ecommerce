@@ -73,56 +73,100 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Home page skin.
+   Landing page skin.
 
    Every colour utility resolves back to the variables above at the point of
    use (that is what `@theme inline` buys us), so re-declaring them on a
    wrapper re-skins everything inside it — buttons, cards, borders — while the
    dashboard and the storefronts keep the neutral chrome. Same specificity as
    `:root`, so these win purely by coming later in the file.
+
+   Unlike the rest of the chrome, the landing pages let the visitor pick light
+   or dark (the header's toggle, saved as `data-appearance`). So every token
+   they draw with is declared here — the status and gradient ones too, which
+   would otherwise follow the system through `:root` — as a `light-dark()`
+   pair, and the pick only has to set `color-scheme`. No pick: both schemes
+   allowed, and the system chooses.
    --------------------------------------------------------------------------- */
 
 .theme-home {
-  --background: #f6faff;
-  --foreground: #0a1c33;
+  color-scheme: light dark;
 
-  --surface: #ffffff;
-  --surface-subtle: #eaf3ff;
-  --surface-hover: #dceafd;
+  --background: light-dark(#f6faff, #07121f);
+  --foreground: light-dark(#0a1c33, #e7f0fb);
 
-  --border: #cfe2fa;
-  --border-strong: #a8caf2;
+  --surface: light-dark(#ffffff, #0f1f33);
+  --surface-subtle: light-dark(#eaf3ff, #0c1a2b);
+  --surface-hover: light-dark(#dceafd, #16293f);
 
-  --muted: #4e6a8d;
+  --border: light-dark(#cfe2fa, #1e3a5f);
+  --border-strong: light-dark(#a8caf2, #2d5280);
 
-  --primary: #1d4ed8;
-  --primary-foreground: #f8fbff;
+  --muted: light-dark(#4e6a8d, #9db4cf);
 
-  --accent: #0284c7;
+  --primary: light-dark(#1d4ed8, #60a5fa);
+  --primary-foreground: light-dark(#f8fbff, #06101d);
 
-  --ring: #2563eb;
+  --accent: light-dark(#0284c7, #38bdf8);
+
+  --success: light-dark(#15803d, #4ade80);
+  --warning: light-dark(#b45309, #fbbf24);
+  --danger: light-dark(#b91c1c, #f87171);
+
+  --ring: light-dark(#2563eb, #60a5fa);
+
+  --home-sky: light-dark(#d8e9fe, #0e2138);
+  --home-mist: light-dark(#eaf3ff, #0b192b);
+  --home-veil: light-dark(#f7fbff, #091320);
+  --home-glow: light-dark(#93c5fd, #1d4ed8);
+  --home-deep: light-dark(#1e40af, #bfdbfe);
 }
 
-@media (prefers-color-scheme: dark) {
-  .theme-home {
-    --background: #07121f;
-    --foreground: #e7f0fb;
+.theme-home[data-appearance="light"] {
+  color-scheme: light;
+}
 
-    --surface: #0f1f33;
-    --surface-subtle: #0c1a2b;
-    --surface-hover: #16293f;
+.theme-home[data-appearance="dark"] {
+  color-scheme: dark;
+}
 
-    --border: #1e3a5f;
-    --border-strong: #2d5280;
+/*
+ * The canvas behind the wrapper — what shows when the page is pulled past its
+ * ends — and the page's own scrollbar, which `:root` draws.
+ */
+:root:has(.theme-home) {
+  color-scheme: light dark;
+  background-color: light-dark(#f6faff, #07121f);
+}
 
-    --muted: #9db4cf;
+:root:has(.theme-home[data-appearance="light"]) {
+  color-scheme: light;
+}
 
-    --primary: #60a5fa;
-    --primary-foreground: #06101d;
+:root:has(.theme-home[data-appearance="dark"]) {
+  color-scheme: dark;
+}
 
-    --accent: #38bdf8;
+/* `home-dark:` — a landing page showing dark, by the visitor's pick or the system's. */
+@custom-variant home-dark {
+  &:where(.theme-home[data-appearance="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(.theme-home:not([data-appearance]) *) {
+      @slot;
+    }
+  }
+}
 
-    --ring: #60a5fa;
+/*
+ * In-page links ("How it works") glide rather than jump. Page-to-page
+ * navigation stays instant: `data-scroll-behavior` on <html> has Next switch
+ * this off for the length of a route change.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.theme-home) {
+    scroll-behavior: smooth;
   }
 }
 
@@ -237,8 +281,9 @@
    Storefront theme settings.
 
    The storefront is always light. Only the platform's own chrome — the
-   dashboard, sign-in, the marketing page — follows the system's dark mode; a
-   store looks the same to every buyer. The storefront wrapper re-declares the
+   dashboard, sign-in, the landing pages — follows the system's dark mode (the
+   landing pages also take a visitor's pick); a store looks the same to every
+   buyer. The storefront wrapper re-declares the
    core tokens with their light values — the same trick as `.theme-home` — so a
    phone in dark mode cannot reach inside it. Only the tokens the storefront
    draws with; the marketing-page ones stay with the marketing page. Keep this

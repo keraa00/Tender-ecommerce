@@ -1,7 +1,7 @@
+import Link from "next/link";
+
 import { ButtonLink } from "@/components/ui/button";
-import { SiteFooter } from "@/components/site-footer";
-import { SiteHeader } from "@/components/site-header";
-import { StoreCard } from "@/components/store-card";
+import { StoreGrid } from "@/components/store-grid";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listPublicStores } from "@/lib/stores/queries";
 
@@ -27,11 +27,7 @@ export default async function HomePage() {
   ]);
 
   return (
-    // `theme-home` re-points the colour tokens at the blue palette for this
-    // page only — see globals.css. The dashboard keeps the neutral chrome.
-    // `overflow-x-clip` trims the glows that hang past the edges without a
-    // sideways scroll; unlike `overflow-hidden` it keeps the header sticky.
-    <div className="theme-home relative isolate flex flex-1 flex-col overflow-x-clip bg-background">
+    <>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[42rem] bg-linear-to-b from-home-sky via-home-mist to-background"
@@ -44,8 +40,6 @@ export default async function HomePage() {
         aria-hidden
         className="pointer-events-none absolute -top-24 -left-40 -z-10 h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle,var(--home-glow),transparent_70%)] opacity-25 blur-3xl"
       />
-
-      <SiteHeader fullBleed />
 
       <main className="flex-1">
         <section className="mx-auto w-full max-w-6xl px-4 pt-16 pb-14 sm:px-6 sm:pt-24">
@@ -83,7 +77,12 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className="border-y border-border bg-linear-to-br from-home-mist via-home-veil to-home-sky">
+        {/* The footer's "How it works" lands here; `scroll-mt-14` keeps the
+            cards clear of the sticky header. */}
+        <section
+          id="how-it-works"
+          className="scroll-mt-14 border-y border-border bg-linear-to-br from-home-mist via-home-veil to-home-sky"
+        >
           <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-14 sm:grid-cols-3 sm:px-6">
             {STEPS.map((step, index) => (
               <div
@@ -116,34 +115,19 @@ export default async function HomePage() {
                 another&apos;s products, orders or revenue.
               </p>
             </div>
+            {stores.length > 0 && (
+              <Link
+                href="/stores"
+                className="shrink-0 text-sm font-medium text-accent underline-offset-4 hover:underline"
+              >
+                View all stores →
+              </Link>
+            )}
           </div>
 
-          {stores.length === 0 ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-border-strong bg-surface/60 px-6 py-14 text-center backdrop-blur">
-              <p className="font-medium">No stores yet</p>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-muted text-pretty">
-                Run <code className="font-mono text-xs">npm run db:seed</code>{" "}
-                to load the demo stores, or open the first one yourself.
-              </p>
-              <ButtonLink href="/signup" className="mt-5" size="sm">
-                Open a store
-              </ButtonLink>
-            </div>
-          ) : (
-            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {stores.map((store) => (
-                <StoreCard
-                  key={store.id}
-                  store={store}
-                  productCount={store._count.products}
-                />
-              ))}
-            </div>
-          )}
+          <StoreGrid stores={stores} className="mt-6" />
         </section>
       </main>
-
-      <SiteFooter />
-    </div>
+    </>
   );
 }

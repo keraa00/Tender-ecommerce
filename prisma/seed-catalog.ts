@@ -14,6 +14,7 @@
  */
 
 import { US_STATES } from "../src/lib/address/regions";
+import { SHOWCASE_STORES } from "./seed-catalog-showcase";
 
 export type SeedVariant = {
   title: string;
@@ -2283,4 +2284,13 @@ const kehre: SeedStore = {
   ],
 };
 
-export const SEED_STORES: SeedStore[] = [nordhavn, rosewater, wildmoor, halden, marlowe, bakar, kehre];
+export const SEED_STORES: SeedStore[] = [
+  nordhavn,
+  rosewater,
+  wildmoor,
+  halden,
+  marlowe,
+  bakar,
+  kehre,
+  ...SHOWCASE_STORES,
+];

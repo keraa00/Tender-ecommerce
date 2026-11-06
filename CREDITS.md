@@ -173,3 +173,129 @@ The images below are CC-BY or CC-BY-SA and are reproduced with attribution.
 - "Bicycle tools" by Monoklon — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bicycle_tools.jpg
 - "A bicycle chain" by Tony Webster — BY 3.0 — https://commons.wikimedia.org/wiki/File:Bicycle_Chain_TW_20050802_161550_35095.jpg
 - "A bicycle chain link" by Podknox - https://www.flickr.com/photos/wapster/ — BY 2.5 — https://commons.wikimedia.org/wiki/File:Half-link_chain.jpg
+- "Honey frame top bar." by toholio — BY-SA 2.0 — https://www.flickr.com/photos/66182839@N00/409694897
+- "manuka honey for your skin" by thedabblist — BY 2.0 — https://www.flickr.com/photos/64636759@N07/8743653804
+- "Selection of creamed honey jars from Europe" by Hayden Soloviev — BY 4.0 — https://commons.wikimedia.org/w/index.php?curid=168271105
+- "Honeycomb" by wildxplorer — BY 2.0 — https://www.flickr.com/photos/21932201@N04/2268587409
+- "Honeycomb" by prilfish — BY 2.0 — https://www.flickr.com/photos/37707866@N00/13805669085
+- "Beeswax Candles" by veggiefrog — BY 2.0 — https://www.flickr.com/photos/72139255@N00/3048487229
+- "Beeswax candles III" by tillwe — BY-SA 2.0 — https://www.flickr.com/photos/98652633@N00/8314297830
+- "Wooden honey dipper" by Thien Gretchen — BY-SA 2.0 — https://www.flickr.com/photos/83899942@N00/5536641494
+- "Wooden honey dipper (5536641494)" by Thien Gretchen — BY-SA 2.0 — https://commons.wikimedia.org/w/index.php?curid=28225763
+- "Abeego Beeswax Reusable Food Wrap" by Neon Tommy — BY-SA 2.0 — https://www.flickr.com/photos/42757699@N04/16250655032
+- "Swedish house" by LaLina — BY-SA 2.0 — https://www.flickr.com/photos/98328603@N00/201627453
+- "Wool" by mripp — BY 2.0 — https://www.flickr.com/photos/56218409@N03/14052424953
+- "d4f6b" by gytk67 — BY-SA 2.0 — https://www.flickr.com/photos/48559365@N05/4448306205
+- "Cashmere Cable Knit" by stolte-sawa — BY 2.0 — https://www.flickr.com/photos/8420299@N07/4743135028
+- "Nordic Patterns" by SPDP — BY 2.0 — https://www.flickr.com/photos/10068173@N08/4811650769
+- "YNEZ- Women's Cotton Wool Scarf Black Charcoal Gold" by smittenkittenorig — BY 2.0 — https://www.flickr.com/photos/83202873@N00/3979862983
+- "Alpaca wool scarf" by Deryck Chan — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=21550903
+- "259/365 - Mittens" by olfiika — BY-SA 2.0 — https://www.flickr.com/photos/73941240@N04/12404089544
+- "Knitted Beanie" by mikecogh — BY-SA 2.0 — https://www.flickr.com/photos/89165847@N00/28801235363
+- "Sunday Market - Knitted beanies" by Mira Pangkey — BY 2.0 — https://www.flickr.com/photos/14205692@N08/3512452399
+- "40+51 Wool Socks" by bark — BY 2.0 — https://www.flickr.com/photos/49503168860@N01/4202477346
+- "Wool socks and sandals" by dadzite — BY 2.0 — https://www.flickr.com/photos/69914457@N03/9315673018
+- "for a tomboy" by lakbdesign/fergusandme — BY 2.0 — https://www.flickr.com/photos/41670376@N05/4491231834
+- "Cream Linen" by TinaSea — BY 2.0 — https://www.flickr.com/photos/40519602@N02/3833609267
+- "Kalahari Linen Pillow Covers" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/14272501960
+- "Bed Linen" by Filter Forge — BY 2.0 — https://www.flickr.com/photos/93421824@N06/8853440876
+- "The Corner Room" by www.trek.today — BY 2.0 — https://www.flickr.com/photos/34107995@N00/3455670273
+- "The Set Table" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/8262326054
+- "Garnier Thiebaut Tea Towels" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/16627073317
+- "Libeco Linen Tablecloth" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/6378264691
+- "peacock hand-blown glass vase" by greyloch — BY-SA 2.0 — https://www.flickr.com/photos/7168480@N02/11219022195
+- "Pewter and Crystal Wine Glass" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/15156320156
+- "Cut crystal wine glasses in the Fakiris series by German glassworks Knittel 1" by Photo: W.carter Research: Aristeas — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=155310728
+- "eau plat" by jenny downing — BY 2.0 — https://www.flickr.com/photos/7941044@N06/4850731034
+- "Ornela Vase Collection" by PRECIOSA ORNELA — BY 2.0 — https://www.flickr.com/photos/67488680@N04/38311329104
+- "Bedrooms at The Falcondale" by The Falcondale — BY 2.0 — https://www.flickr.com/photos/75649151@N08/6792534946
+- "Black velvet pears and arsinc wine" by necrocake — BY 2.0 — https://www.flickr.com/photos/22574787@N03/3627085934
+- "New soap" by necrocake — BY 2.0 — https://www.flickr.com/photos/22574787@N03/3973398901
+- "Bakır Cezvede Türk Kahvesi" by Enkizu — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=187591738
+- "Takum near river" by 130309p — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=80354879
+- "turkish tea glass on person palm - Credit to https://myfriendscoffee.com/" by John Beans — BY 2.0 — https://www.flickr.com/photos/147592390@N06/46763466925
+- "TURKISH TEA" by BOMBMAN — BY 2.0 — https://www.flickr.com/photos/99622129@N00/9235413327
+- "CMOC Treasures of Ancient China exhibit - black pottery cauldron" by Editor at Large — BY-SA 2.5 — https://commons.wikimedia.org/w/index.php?curid=2975239
+- "Vase2DRSBC" by AlejandroLinaresGarcia — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=9959965
+- "Vase1DRSBC" by AlejandroLinaresGarcia — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=9959784
+- "Pottery Candle Holder in the works, used all my scrap clay." by Tobyotter — BY 2.0 — https://www.flickr.com/photos/78428166@N00/15228671110
+- "File:Codice and Zapotec Diamond tapetes by Isaac Vásquez García, Teotitlan del Valle.jpg" by unknown — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=32955233
+- "Blue Room - Mexican Embroidery" by hottholler — BY 2.0 — https://www.flickr.com/photos/26414533@N00/1314174578
+- "Got Hammock?" by slgckgc — BY 2.0 — https://www.flickr.com/photos/14771153@N04/7433810112
+- "Narrow-strip cotton hammock-Vai people-Sierra Leone (British Museum) (1)" by Ji-Elle — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=127813719
+- "Narrow-strip cotton hammock-Vai people-Sierra Leone (British Museum) (2)" by Ji-Elle — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=127813717
+- "Shades of Grey.jpg" by docoverachiever — BY 2.0 — https://www.flickr.com/photos/90692748@N04/9595924043
+- "knot tying for the hammock" by jessicadally — BY-SA 2.0 — https://www.flickr.com/photos/27972146@N04/5833037630
+- "Beach sarong lady" by whiz-ka — BY 2.0 — https://www.flickr.com/photos/10635830@N00/6110276754
+- "Weave (61/365)" by LifeSupercharger — BY 2.0 — https://www.flickr.com/photos/8047705@N02/5493129277
+- "DSC 8558 Two zebra-print loungers facing a tranquil tropical pond with fountains swans and lush palm-fringed gardens - a serene resort escape" by PattayaPatrol — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:DSC_8558_Two_zebra-print_loungers_facing_a_tranquil_tropical_pond_with_fountains_swans_and_lush_palm-fringed_gardens_-_a_serene_resort_escape.jpg
+- "Darjeeling, India, Tea plantations on hills" by Vyacheslav Argenberg — BY 4.0 — https://commons.wikimedia.org/wiki/File:Darjeeling,_India,_Tea_plantations_on_hills.jpg
+- "DAVIDsTEA Tsawwassen Mills loose leaf tea tins behind counter" by GoToVan from Vancouver, Canada — BY 2.0 — https://commons.wikimedia.org/wiki/File:DAVIDsTEA_Tsawwassen_Mills_loose_leaf_tea_tins_behind_counter.jpg
+- "Jin Fo Oolong tea leaf" by User:Iateasquirrel — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Jin_Fo_Oolong_tea_leaf.jpg
+- "Oolong tea leaves - character for tea in Chinese" by Toby Oxborrow from Kowloon, Hong Kong — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Oolong_tea_leaves_-_character_for_tea_in_Chinese.jpg
+- "Yunnan Sourcing "Golden Pig" Raw Pu-erh Tea Cake - outer packaging - WikiTea" by Ash Crow — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Yunnan_Sourcing_%22Golden_Pig%22_Raw_Pu-erh_Tea_Cake_-_outer_packaging_-_WikiTea.jpg
+- "Yunnan Sourcing "Golden Pig" Raw Pu-erh Tea Cake - opened - WikiTea 01" by Ash Crow — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Yunnan_Sourcing_%22Golden_Pig%22_Raw_Pu-erh_Tea_Cake_-_opened_-_WikiTea_01.jpg
+- "YixingClayTeapotByChenMingyuanOfQingDynasty-TianqingClay" by Gw2100 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:YixingClayTeapotByChenMingyuanOfQingDynasty-TianqingClay.jpg
+- "Yixing clay teapot" by Eugene.shi at English Wikipedia — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Yixing_clay_teapot.jpg
+- "Chinese Tea Ceremony" by Il lupa — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Chinese_Tea_Ceremony.jpg
+- "Karoo Landscape ... (47157721821)" by Bernard DUPONT from FRANCE — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Karoo_Landscape_..._(47157721821).jpg
+- "Last Drip Designs Tote Bag" by Fujisun — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Last_Drip_Designs_Tote_Bag.png
+- "Handbag" by Adele Dejak — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Adele_Dejak_Tote_Bag_h014.jpg
+- "Germany Belt-and-Buckle-01" by CEphoto, Uwe Aranas — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Germany_Belt-and-Buckle-01.jpg
+- "Germany Belt-and-Buckle-02" by CEphoto, Uwe Aranas — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Germany_Belt-and-Buckle-02.jpg
+- "Leather bi-fold wallet by Eugene Pik (2021) 04" by Eugenepik — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Leather_bi-fold_wallet_by_Eugene_Pik_(2021)_04.jpg
+- "Leather bi-fold wallet by Eugene Pik (2021) 06" by Eugenepik — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Leather_bi-fold_wallet_by_Eugene_Pik_(2021)_06.jpg
+- "Red leather credit card holder" by Well-Informed Optimist — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Red_leather_credit_card_holder.jpg
+- "Leather tarot card case by Eugene Pik (2021) 04" by Eugenepik — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Leather_tarot_card_case_by_Eugene_Pik_(2021)_04.jpg
+- "Leather key chain" by TheEgyptian — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Leather_key_chain.JPG
+- "Thai Silk Weaving 1 - Ban Tha Sawang" by JJ Harrison ( https://www.jjharrison.com.au/ ) — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Thai_Silk_Weaving_1_-_Ban_Tha_Sawang.jpg
+- "Silk Thread - Talat Sao - Vientiane - Laos" by Adam Jones Adam63 — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Silk_Thread_-_Talat_Sao_-_Vientiane_-_Laos.JPG
+- "Thai Silk Cloth - Ban Tha Sawang" by JJ Harrison ( https://www.jjharrison.com.au/ ) — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Thai_Silk_Cloth_-_Ban_Tha_Sawang.jpg
+- "Lamba raw silk shawl from Madagascar" by S@veOurSm:)e — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Lamba_raw_silk_shawl_from_Madagascar.jpg
+- "Himroo silk shawl (both sides)" by RubyGoes from Sydney, Australia — BY 2.0 — https://commons.wikimedia.org/wiki/File:Himroo_silk_shawl_(both_sides).jpg
+- "L85HS20 SALMON DOTTED SILK NECKTIE 3" by Bvneckties — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:L85HS20_SALMON_DOTTED_SILK_NECKTIE_3.png
+- "L85HS19 Blake vincent scot stiped silk necktie 2" by Bvneckties — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:L85HS19_Blake_vincent_scot_stiped_silk_necktie_2.jpg
+- "Silk-ikat-cushions-nomad-design" by Georginaolley — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Silk-ikat-cushions-nomad-design.jpg
+- "Table runner" by not researched — BY 4.0 — https://commons.wikimedia.org/wiki/File:Table_runner_(AM_1991.48-3).jpg
+- "Concord Jazz vinyl label" by Samarkandus — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Concord_Jazz_vinyl_label.jpg
+- "Brush, hat" by unknown — BY 4.0 — https://commons.wikimedia.org/wiki/File:Brush,_hat_(AM_1967.184-1).jpg
+- "LP Sleeve" by J.P.Lon — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:LP_Sleeve.jpg
+- "DIY turntable by J.C.Mills. Installed platter 1" by johnclarkemills — BY 2.0 — https://commons.wikimedia.org/wiki/File:DIY_turntable_by_J.C.Mills._Installed_platter_1.jpg
+- "CratesHidalgoExpoMAP" by Thelmadatter — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:CratesHidalgoExpoMAP.jpg
+- "Wooden Crate Drawers (25330121788)" by Hernán Piñera from Marbella — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Wooden_Crate_Drawers_(25330121788).jpg
+- "Perfume bottles displayed at a shop near Charminar in Hyderabad, India" by Dev Jadiya — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Perfume_bottles_displayed_at_a_shop_near_Charminar_in_Hyderabad,_India.jpg
+- "Camel skin Perfume Bottles from Kannauj" by David Prasad — BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Camel_skin_Perfume_Bottles_from_Kannauj.jpg
+- "Rose and water bottle" by Brianmetcalf — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Rose_and_water_bottle.jpg
+- "Rose syrup bottles" by Sgconlaw — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Rose_syrup_bottles.jpg
+- "Bukhoor mstika for sale in Souq Waqif" by Alex Sergeev (www.asergeev.com) — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Bukhoor_mstika_for_sale_in_Souq_Waqif.jpg
+- "Bkhour" by Kalechnizar — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bkhour.JPG
+- "Olibanum resin" by Peter Presslein — BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Olibanum_resin.jpg
+- "Wood carving at a confessional 04" by Kritzolina — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Wood_carving_at_a_confessional_04.jpg
+- "Wooden Spoons carved by Adrianus Koelewjin in WW2" by Gogerr — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Wooden_Spoons_carved_by_Adrianus_Koelewjin_in_WW2.jpg
+- "Chopping Welsh onion (Allium fistulosum) on a wooden cutting board" by Sarah5252 — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Chopping_Welsh_onion_(Allium_fistulosum)_on_a_wooden_cutting_board.jpg
+- "Salad Bowl (2840893064)" by SeRVe Photography — BY 2.0 — https://commons.wikimedia.org/wiki/File:Salad_Bowl_(2840893064).jpg
+- "Brio train tracks • 2" by woodleywonderworks — BY 2.0 — https://commons.wikimedia.org/wiki/File:Brio_train_tracks_%E2%80%A2_2.jpg
+- "Wooden toy trains at Sporvejsmuseet 02" by Leif Jørgensen — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Wooden_toy_trains_at_Sporvejsmuseet_02.jpg
+- "Old wooden spinning top, Italy" by Albarubescens — BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Old_wooden_spinning_top,_Italy.jpg
+- "Read' Spelled out in wooden learning blocks with stacked blocks in the background. - 51070730562" by perpetual.fostering — BY 2.0 — https://commons.wikimedia.org/wiki/File:Read%27_Spelled_out_in_wooden_learning_blocks_with_stacked_blocks_in_the_background._-_51070730562.jpg
+- "Dibbern Glassware" by sridgway — BY 2.0 — https://www.flickr.com/photos/68132273@N00/5619898125
+- "crystal" by jenny downing — BY 2.0 — https://www.flickr.com/photos/7941044@N06/3913376550
+- "Christmas baubles" by Alan Cleaver — BY 2.0 — https://www.flickr.com/photos/11121568@N06/4056718986
+- "Christmas Bauble" by dps — BY 2.0 — https://www.flickr.com/photos/51773858@N00/339918145
+- "Orhan Bey Hamam DSCF1649" by R Prazeres — BY-SA 4.0 — https://commons.wikimedia.org/w/index.php?curid=95100623
+- "My beloved carrier of coffee has a lineage of Ottomans" by sagesolar — BY 2.0 — https://www.flickr.com/photos/62356799@N06/12683758703
+- "File:Hamamdoeken1.jpg" by sander muller — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=15862995
+- "Market" by alexfiles — BY-SA 2.0 — https://www.flickr.com/photos/26583766@N04/8177464983
+- "Mezcal tasting" by Kent Wang — BY-SA 2.0 — https://www.flickr.com/photos/27454212@N00/4530493618
+- "Hammocks brazil" by No machine-readable author provided. Chico75 assumed (based on copyright claims). — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=1717105
+- "Half Sphere Hanging Chair at NYLO" by nan palmero — BY 2.0 — https://www.flickr.com/photos/97402086@N00/14351268796
+- "brown leather messenger bag filled with notebooks on a coffee table with couch and pillows in the background" by PersonalCreations.com — BY 2.0 — https://www.flickr.com/photos/127294011@N07/26212677253
+- "Vinyl Stack webbed" by FourthFloor — BY 2.0 — https://www.flickr.com/photos/39534445@N00/386053702
+- "Record Collection" by jaztuck3000 — BY 2.0 — https://www.flickr.com/photos/61483441@N00/1075601141
+- "Old Bottles" by Glen Bledsoe — BY 2.0 — https://www.flickr.com/photos/22501424@N00/5248100210
+- "A logo done for faithful friend.. Repost from @attarqatar دهن عود كمبودي المعتق طلبية احد الزبائن من مملكة البحرين الشقيقة . ' ' #قطر #البحرين #المنامنة #المحرق" by alazaat — BY 2.0 — https://www.flickr.com/photos/21543443@N00/16355479893
+- "Libeco Home Wyoming pillow cases and Duvet Cover with Santiago sheets in Steel color." by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/14272504488
+- "Libeco Home Nottinghill Duvet Cover and Pillow Shams shown with Dovetail Furniture" by Didriks — BY 2.0 — https://www.flickr.com/photos/49889671@N03/14272505828
+- "Galerie Ikman, Oriental Carpet & Kilim Sumak, Goreme, Capadocia, Turquía" by Edgardo W. Olivera — BY 2.0 — https://www.flickr.com/photos/124137421@N04/28409047744
+- "Vintage Turkish Kilim Geometric Patterned Rug" by Cllane4 — BY-SA 3.0 — https://commons.wikimedia.org/w/index.php?curid=18005645
+- "Transylvania Landscape" by Dave Haas — BY 3.0 — https://commons.wikimedia.org/w/index.php?curid=71316136
