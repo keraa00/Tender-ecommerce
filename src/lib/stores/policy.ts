@@ -126,3 +126,16 @@ export function canPublishTheme(membership: Membership): boolean {
 export function canManagePayments(membership: Membership): boolean {
   return membership.role === StoreMemberRole.OWNER;
 }
+
+// ---------------------------------------------------------------------------
+// Closing
+// ---------------------------------------------------------------------------
+
+/**
+ * Who may delete the store, orders and all. The owner only: it is their
+ * business to close, and their account that cannot be deleted while the store
+ * exists.
+ */
+export function canDeleteStore(membership: Membership): boolean {
+  return membership.role === StoreMemberRole.OWNER;
+}

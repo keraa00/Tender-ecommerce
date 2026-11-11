@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavIcon } from "@/components/admin/nav-icons";
 import { useNewOrders } from "@/components/admin/new-orders";
 import { StoreMark } from "@/components/store-mark";
-import { storeAdminPath } from "@/lib/admin/links";
+import { accountUrl, storeAdminPath } from "@/lib/admin/links";
 import { ADMIN_NAV } from "@/lib/admin/nav";
 import { signOutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/cn";
@@ -305,9 +305,14 @@ function DrawerContents({
         </a>
 
         <div className="mt-1 flex items-center gap-2 px-2.5 pt-2">
-          <p className="min-w-0 flex-1 truncate text-xs text-muted" title={userEmail}>
+          {/* Account settings live on the platform's own host, hence `<a>`. */}
+          <a
+            href={accountUrl()}
+            className="min-w-0 flex-1 truncate text-xs text-muted underline-offset-4 hover:text-foreground hover:underline"
+            title={`${userEmail} · Account settings`}
+          >
             {userEmail}
-          </p>
+          </a>
           <form action={signOutAction}>
             <button
               type="submit"

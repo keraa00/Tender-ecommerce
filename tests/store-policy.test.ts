@@ -4,6 +4,7 @@ import { StoreMemberRole, StoreStatus } from "@/lib/db/types";
 import {
   canAcceptOrders,
   canChangeCurrency,
+  canDeleteStore,
   canEditTheme,
   canManagePayments,
   canPublishTheme,
@@ -172,5 +173,12 @@ describe("canChangeCurrency", () => {
   it("lets a store change currency only before its first order", () => {
     expect(canChangeCurrency({ orderCount: 0 })).toBe(true);
     expect(canChangeCurrency({ orderCount: 1 })).toBe(false);
+  });
+});
+
+describe("canDeleteStore", () => {
+  it("is the owner's call alone", () => {
+    expect(canDeleteStore({ role: StoreMemberRole.OWNER })).toBe(true);
+    expect(canDeleteStore({ role: StoreMemberRole.STAFF })).toBe(false);
   });
 });

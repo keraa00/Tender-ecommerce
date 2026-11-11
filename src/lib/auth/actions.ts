@@ -4,10 +4,21 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
+import { authErrorMessage, isExpectedAuthError } from "@/lib/account/errors";
+import {
+  parseForgotPasswordForm,
+  parsePasswordResetForm,
+  type AccountFormState,
+  type ForgotPasswordField,
+  type NewPasswordField,
+} from "@/lib/account/form";
 import { platformHomeUrl } from "@/lib/admin/links";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "./redirect";
+import { getAuthUser, hasFreshRecoverySession } from "./session";
+import { emailSchema, nameSchema, passwordSchema } from "./schemas";
+import { confirmRedirectUrl } from "./urls";
 
 export type AuthState = {
   formError?: string;
@@ -16,14 +27,8 @@ export type AuthState = {
   values?: { email: string; name?: string };
 };
 
-const emailSchema = z.email("Enter a valid email address.");
-const passwordSchema = z
-  .string()
-  .min(8, "Use at least 8 characters.")
-  .max(72, "Passwords are limited to 72 characters.");
-
 const signUpSchema = z.object({
-  name: z.string().trim().min(1, "Tell us your name.").max(80),
+  name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
 });
@@ -36,15 +41,6 @@ const signInSchema = z.object({
 const NOT_CONFIGURED =
   "Authentication isn't configured yet. Add your Supabase keys to .env — " +
   "see README → Local setup.";
-
-/**
- * Where a confirmation link sends the user: `/auth/confirm`, carrying the path
- * they were headed for so confirming lands them there.
- */
-function confirmRedirectUrl(next: string): string {
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return `${origin}/auth/confirm?next=${encodeURIComponent(next)}`;
-}
 
 export async function signUpAction(
   _prev: AuthState,
@@ -162,6 +158,81 @@ export async function signInAction(
 
   revalidatePath("/", "layout");
   redirect(next);
+}
+
+export type ForgotPasswordState = AccountFormState<ForgotPasswordField> & {
+  values?: { email: string };
+};
+
+/**
+ * Emails a password-reset link. The answer is the same whether or not the
+ * address has an account — anything else would tell a stranger who signs in
+ * here. The link lands on `/auth/confirm`, which signs the user in and sends
+ * them on to `/reset-password`.
+ */
+export async function requestPasswordResetAction(
+  _prev: ForgotPasswordState,
+  formData: FormData,
+): Promise<ForgotPasswordState> {
+  if (!isSupabaseConfigured()) return { formError: NOT_CONFIGURED };
+
+  const values = { email: String(formData.get("email") ?? "") };
+  const parsed = parseForgotPasswordForm(formData);
+  if (!parsed.ok) return { values, fieldErrors: parsed.fieldErrors };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: confirmRedirectUrl("/reset-password"),
+  });
+
+  if (error) {
+    // Running out of emails is not about this address, so it is safe to say.
+    if (error.code === "over_email_send_rate_limit" || error.status === 429) {
+      return { values, formError: authErrorMessage(error) };
+    }
+    console.error("requestPasswordResetAction failed", error);
+  }
+
+  return {
+    notice:
+      `If there's an account for ${parsed.data.email}, we've sent it a link to ` +
+      "choose a new password. Open it on any device — it signs you in for 15 " +
+      "minutes to set one.",
+  };
+}
+
+export type ResetPasswordState = AccountFormState<NewPasswordField>;
+
+/**
+ * Sets a new password from a fresh recovery session, without the old one —
+ * the only place that is allowed (`hasFreshRecoverySession`).
+ */
+export async function resetPasswordAction(
+  _prev: ResetPasswordState,
+  formData: FormData,
+): Promise<ResetPasswordState> {
+  if (!(await getAuthUser()) || !(await hasFreshRecoverySession())) {
+    redirect("/forgot-password?error=reset-link-expired");
+  }
+
+  const parsed = parsePasswordResetForm(formData);
+  if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.newPassword });
+  if (error) {
+    if (!isExpectedAuthError(error)) console.error("resetPasswordAction failed", error);
+    return error.code === "weak_password" || error.code === "same_password"
+      ? { fieldErrors: { newPassword: authErrorMessage(error) } }
+      : { formError: authErrorMessage(error, "Could not set your password. Please try again.") };
+  }
+
+  // Whoever the reset was a reaction to may still be signed in elsewhere.
+  const { error: signOutError } = await supabase.auth.signOut({ scope: "others" });
+  if (signOutError) console.error("resetPasswordAction: signOut others failed", signOutError);
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard/account/security?password=reset");
 }
 
 export async function signOutAction() {

@@ -48,6 +48,14 @@ export function allStoresUrl(): string {
 }
 
 /**
+ * Account settings, from anywhere — the admin drawer links here. `segment` is
+ * one of the account tabs: `security`, `privacy`.
+ */
+export function accountUrl(segment: string | null = null): string {
+  return rootUrl(segment ? `/dashboard/account/${segment}` : "/dashboard/account");
+}
+
+/**
  * The platform's front page. Signing out uses it, and has to: `/` on the admin
  * host is the store list, which needs a session, so a signed-out seller would
  * be handed straight back to the login form they just left.

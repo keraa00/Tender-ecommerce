@@ -7,6 +7,8 @@ import { z } from "zod";
  * platform infrastructure to a buyer.
  */
 export const RESERVED_STORE_SLUGS = new Set([
+  "account",
+  "account-deleted",
   "admin",
   "api",
   "app",
@@ -15,6 +17,7 @@ export const RESERVED_STORE_SLUGS = new Set([
   "cart",
   "checkout",
   "dashboard",
+  "forgot-password",
   "help",
   "internal",
   "login",
@@ -23,6 +26,7 @@ export const RESERVED_STORE_SLUGS = new Set([
   "orders",
   "p",
   "platform",
+  "reset-password",
   "s",
   "settings",
   "signup",

@@ -4,17 +4,28 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
-import { storeAdminUrl } from "@/lib/admin/links";
+import { allStoresUrl, storeAdminUrl } from "@/lib/admin/links";
 import { requireUser } from "@/lib/auth/session";
 import { rootDb } from "@/lib/db/root";
 import { Prisma, StoreMemberRole, StoreStatus } from "@/lib/db/types";
-import { deleteProductImageObjects, uploadStoreLogo } from "@/lib/products/images";
+import { cancelPaymentIntent } from "@/lib/payments/intents";
+import {
+  deleteProductImageObjects,
+  deleteStoreObjects,
+  uploadStoreLogo,
+} from "@/lib/products/images";
 import { slugify, storeSlugSchema } from "@/lib/slug";
 import { requireSupabaseConfig } from "@/lib/supabase/config";
 import { logoRejectionReason } from "./logo";
 import { getStoreContext } from "./context";
-import { canChangeCurrency } from "./policy";
-import { isStoreSlugTaken } from "./queries";
+import {
+  describeStoreDeletionBlocker,
+  parseDeleteStoreForm,
+  storeDeletionBlockers,
+  type DeleteStoreField,
+} from "./deletion";
+import { canChangeCurrency, canDeleteStore } from "./policy";
+import { getStoreDeletionReview, isStoreSlugTaken } from "./queries";
 import {
   parseCheckoutSettingsForm,
   parseCodSettingsForm,
@@ -326,4 +337,103 @@ export async function checkStoreSlugAction(
   return (await isStoreSlugTaken(parsed.data))
     ? { status: "taken" }
     : { status: "available" };
+}
+
+export type DeleteStoreState = {
+  fieldErrors?: Partial<Record<DeleteStoreField, string>>;
+  formError?: string;
+};
+
+/**
+ * Deletes the store and everything in it, orders included, for good.
+ *
+ * In order:
+ * 1. Refuse while a buyer is owed something (`storeDeletionBlockers`).
+ * 2. Suspend the store, so no new checkout can start — `checkoutBlockedReason`
+ *    turns buyers away from a suspended store — while the next step runs.
+ * 3. Cancel the PaymentIntent of every unpaid Stripe checkout. One that has
+ *    meanwhile succeeded or is processing cannot be cancelled, and deleting its
+ *    order would leave a charge with no order behind it, so that stops the
+ *    deletion (and lifts the suspension) until it settles.
+ * 4. Delete the orders and then the store in one transaction; every other row
+ *    cascades from the store.
+ * 5. Best effort: remove the store's files from storage.
+ *
+ * The seller's Stripe account is theirs and is left alone. Its later webhooks
+ * find no store and no order, and are ignored.
+ */
+export async function deleteStoreAction(
+  storeSlug: string,
+  _prev: DeleteStoreState,
+  formData: FormData,
+): Promise<DeleteStoreState> {
+  const { store, membership } = await getStoreContext(storeSlug);
+
+  if (!canDeleteStore(membership)) {
+    return { formError: "Only the store's owner can delete it." };
+  }
+
+  const parsed = parseDeleteStoreForm(formData, store.slug);
+  if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+
+  const review = await getStoreDeletionReview(store.id);
+  const blockers = storeDeletionBlockers({ ...review, paymentsInFlight: 0 });
+  if (blockers.length > 0) {
+    return { formError: describeStoreDeletionBlocker(blockers[0]) };
+  }
+
+  const restoreStatus = () =>
+    rootDb.store
+      .update({ where: { id: store.id }, data: { status: store.status } })
+      .catch((error) => console.error("deleteStoreAction: restoring status failed", error));
+
+  await rootDb.store.update({
+    where: { id: store.id },
+    data: { status: StoreStatus.SUSPENDED },
+  });
+
+  // Read again now that checkout is closed, so an order placed in between is
+  // not missed.
+  const settled = await getStoreDeletionReview(store.id);
+  const lateBlockers = storeDeletionBlockers({ ...settled, paymentsInFlight: 0 });
+  if (lateBlockers.length > 0) {
+    await restoreStatus();
+    return { formError: describeStoreDeletionBlocker(lateBlockers[0]) };
+  }
+
+  let paymentsInFlight = 0;
+  for (const order of settled.openCheckouts) {
+    if (!order.stripePaymentIntentId || !order.stripeAccountId) continue;
+    try {
+      const intent = await cancelPaymentIntent(order.stripePaymentIntentId, order.stripeAccountId);
+      if (intent.status === "succeeded" || intent.status === "processing") paymentsInFlight += 1;
+    } catch (error) {
+      // Not known to be dead, so not safe to orphan.
+      console.error("deleteStoreAction: cancelling a PaymentIntent failed", error);
+      paymentsInFlight += 1;
+    }
+  }
+
+  if (paymentsInFlight > 0) {
+    await restoreStatus();
+    return {
+      formError: describeStoreDeletionBlocker({ kind: "payment-in-flight", count: paymentsInFlight }),
+    };
+  }
+
+  try {
+    await rootDb.$transaction([
+      rootDb.order.deleteMany({ where: { storeId: store.id } }),
+      rootDb.store.delete({ where: { id: store.id } }),
+    ]);
+  } catch (error) {
+    console.error("deleteStoreAction failed", error);
+    await restoreStatus();
+    return { formError: "Could not delete the store. Please try again." };
+  }
+
+  await deleteStoreObjects(store.id);
+
+  revalidatePath("/dashboard");
+  redirect(`${allStoresUrl()}?deleted=1`);
 }

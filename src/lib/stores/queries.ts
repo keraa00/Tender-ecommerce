@@ -73,3 +73,30 @@ export async function getStoreContactEmail(
   if (!store) return null;
   return (ownerOnly ? null : store.contactEmail) ?? store.owner.email;
 }
+
+/**
+ * What deleting the store would run into, for the Settings danger zone and
+ * `deleteStoreAction`: the orders that block it, the unpaid Stripe checkouts
+ * whose PaymentIntents get cancelled on the way, and how many orders carry an
+ * issue that may still want a refund in Stripe.
+ */
+export async function getStoreDeletionReview(storeId: string) {
+  const [paidUnfulfilled, pendingCod, needsAttention, openCheckouts] = await Promise.all([
+    rootDb.order.count({ where: { storeId, status: "PAID" } }),
+    rootDb.order.count({
+      where: { storeId, status: "PENDING", paymentMethod: "CASH_ON_DELIVERY" },
+    }),
+    rootDb.order.count({ where: { storeId, issues: { isEmpty: false } } }),
+    rootDb.order.findMany({
+      where: {
+        storeId,
+        status: "PENDING",
+        paymentMethod: "STRIPE",
+        stripePaymentIntentId: { not: null },
+      },
+      select: { id: true, stripePaymentIntentId: true, stripeAccountId: true },
+    }),
+  ]);
+
+  return { paidUnfulfilled, pendingCod, needsAttention, openCheckouts };
+}

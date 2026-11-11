@@ -93,3 +93,42 @@ export async function deleteProductImageObjects(
     console.error("Failed to remove product image objects", error);
   }
 }
+
+/**
+ * Removes every object under a deleted store's prefix: products, logos and
+ * theme images alike. Listed from storage rather than collected from rows, so
+ * files no row points at any more go too.
+ *
+ * Best effort, after the store's rows are gone: an object left behind costs
+ * storage, not correctness. `remove()` reports success even when it removed
+ * nothing, so each round lists again to see whether the prefix really emptied.
+ */
+export async function deleteStoreObjects(storeId: string): Promise<void> {
+  try {
+    const bucket = createSupabaseAdminClient().storage.from(PRODUCT_IMAGE_BUCKET);
+    const attempted = new Set<string>();
+
+    // Always offset 0: each round deletes what the last one listed.
+    for (let round = 0; round < 50; round += 1) {
+      const { data, error } = await bucket.list(storeId, { limit: 1000 });
+      if (error) throw error;
+
+      // Entries without an id are folders; the layout is flat, but be safe.
+      const paths = (data ?? [])
+        .filter((entry) => entry.id !== null)
+        .map((entry) => `${storeId}/${entry.name}`);
+      if (paths.length === 0) return;
+
+      const stuck = paths.filter((path) => attempted.has(path));
+      if (stuck.length > 0) {
+        throw new Error(`${stuck.length} objects under ${storeId}/ would not delete`);
+      }
+      for (const path of paths) attempted.add(path);
+
+      const { error: removeError } = await bucket.remove(paths);
+      if (removeError) throw removeError;
+    }
+  } catch (error) {
+    console.error("deleteStoreObjects failed", error);
+  }
+}

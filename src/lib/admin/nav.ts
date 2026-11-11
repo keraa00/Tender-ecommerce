@@ -18,7 +18,14 @@ export type AdminIcon =
   | "discounts"
   | "analytics"
   | "online-store"
-  | "settings";
+  | "settings"
+  | "general"
+  | "payments"
+  | "shipping"
+  | "checkout"
+  | "profile"
+  | "security"
+  | "privacy";
 
 export type AdminSection = {
   /** Path segment under the store, or null for the store's home page. */
@@ -73,16 +80,34 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
 export type SettingsSection = {
   segment: string | null;
   label: string;
+  icon: AdminIcon;
 };
 
 export const SETTINGS_NAV: readonly SettingsSection[] = [
-  { segment: null, label: "General" },
-  { segment: "payments", label: "Payments" },
-  { segment: "shipping", label: "Shipping and delivery" },
-  { segment: "checkout", label: "Checkout" },
+  { segment: null, label: "General", icon: "general" },
+  { segment: "payments", label: "Payments", icon: "payments" },
+  { segment: "shipping", label: "Shipping and delivery", icon: "shipping" },
+  { segment: "checkout", label: "Checkout", icon: "checkout" },
 ];
 
 /** The path of a settings page under the store, for `storeAdminPath`. */
 export function settingsPath(segment: string | null): string {
   return segment ? `settings/${segment}` : "settings";
+}
+
+/**
+ * The tabs of account settings, at `/dashboard/account`. Shaped like
+ * `SETTINGS_NAV`: `segment` is relative to the account layout, null on the
+ * profile page. Account settings belong to the platform, not to a store, so
+ * these are plain root-host paths — see `PLATFORM_DASHBOARD_SEGMENTS`.
+ */
+export const ACCOUNT_NAV: readonly SettingsSection[] = [
+  { segment: null, label: "Profile", icon: "profile" },
+  { segment: "security", label: "Security", icon: "security" },
+  { segment: "privacy", label: "Data & privacy", icon: "privacy" },
+];
+
+/** The path of an account settings page, on the root host. */
+export function accountPath(segment: string | null = null): string {
+  return segment ? `/dashboard/account/${segment}` : "/dashboard/account";
 }

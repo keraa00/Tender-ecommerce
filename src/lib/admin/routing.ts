@@ -12,11 +12,14 @@ import { RESERVED_STORE_SLUGS } from "@/lib/slug";
 
 /**
  * Dashboard pages that belong to the platform rather than to one store: the
- * store list and the create-store form. They stay on the root host — a host
- * named after one store's admin is the wrong place to stand when you do not
- * have a store yet.
+ * store list, the create-store form and account settings. They stay on the
+ * root host — a host named after one store's admin is the wrong place to stand
+ * when you do not have a store yet, or are about to delete your account.
+ *
+ * Every name here other than "" is also a reserved store slug, or a store could
+ * claim it and have its admin shadowed by the platform page.
  */
-const PLATFORM_DASHBOARD_SEGMENTS = new Set(["", "new"]);
+const PLATFORM_DASHBOARD_SEGMENTS = new Set(["", "new", "account"]);
 
 /**
  * Framework and API paths are served from whichever host asked for them. In

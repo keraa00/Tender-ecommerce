@@ -46,6 +46,27 @@ describe("parseConfirmationRequest", () => {
     expect(parse("token_hash=abc")).toEqual({ kind: "invalid" });
   });
 
+  it("accepts the reset and email-change links the account pages send", () => {
+    expect(
+      parse("token_hash=abc&type=recovery&next=%2Freset-password"),
+    ).toEqual({
+      kind: "token-hash",
+      tokenHash: "abc",
+      type: "recovery",
+      next: "/reset-password",
+    });
+    expect(parse("token_hash=abc&type=email_change")).toMatchObject({
+      kind: "token-hash",
+      type: "email_change",
+    });
+  });
+
+  it("refuses link types the app never sends", () => {
+    // Each would be one more way to plant a session (TND-12).
+    expect(parse("token_hash=abc&type=magiclink")).toEqual({ kind: "invalid" });
+    expect(parse("token_hash=abc&type=invite")).toEqual({ kind: "invalid" });
+  });
+
   it("falls back to /dashboard for an off-origin next", () => {
     expect(parse("code=abc&next=%2F%2Fevil.com")).toMatchObject({
       next: "/dashboard",

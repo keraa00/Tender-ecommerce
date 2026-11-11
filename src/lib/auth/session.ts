@@ -9,6 +9,7 @@ import { rootDb } from "@/lib/db/root";
 import { PlatformRole, Prisma, type User } from "@/lib/db/types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isFreshRecovery } from "./recovery";
 
 /**
  * Supabase Auth owns `auth.users`; Prisma owns `public.users`. The two are kept
@@ -59,10 +60,13 @@ async function mirrorAuthUser(authUser: SupabaseUser): Promise<User | null> {
 }
 
 /**
- * The signed-in user, or null. Deduplicated per request by `cache()`, so
- * calling it from a layout and three components costs one round trip.
+ * The signed-in Supabase Auth user, or null. Most code wants `getCurrentUser()`
+ * instead; this is for the few fields only Auth has — a pending `new_email`,
+ * `last_sign_in_at`, `recovery_sent_at` — which account settings shows.
+ * Deduplicated per request by `cache()`, and shared with `getCurrentUser()`, so
+ * reading both still costs one round trip.
  */
-export const getCurrentUser = cache(async (): Promise<User | null> => {
+export const getAuthUser = cache(async (): Promise<SupabaseUser | null> => {
   // Opt any page that reads the session into dynamic rendering, *before* the
   // configuration check. Without this, a build with no Supabase keys returns
   // early, never touches cookies, and Next happily prerenders /dashboard as a
@@ -75,8 +79,10 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
 
   const supabase = await createSupabaseServerClient();
 
-  // `getUser()` revalidates the JWT with Supabase. Never trust `getSession()`
-  // for authorization — it reads the cookie without verifying it.
+  // `getUser()` revalidates the JWT with Supabase — and fails once the session
+  // behind it is revoked, which is what makes signing out another device take
+  // effect immediately. Never trust `getSession()` for authorization — it reads
+  // the cookie without verifying it.
   const {
     data: { user },
     error,
@@ -84,8 +90,37 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
 
   if (error || !user) return null;
 
-  return mirrorAuthUser(user);
+  return user;
 });
+
+/**
+ * The signed-in user, or null. Deduplicated per request by `cache()`, so
+ * calling it from a layout and three components costs one round trip.
+ */
+export const getCurrentUser = cache(async (): Promise<User | null> => {
+  const authUser = await getAuthUser();
+  return authUser ? mirrorAuthUser(authUser) : null;
+});
+
+/**
+ * Whether this request's session came from a password-reset link within the
+ * last few minutes — the one case where a new password may be set without the
+ * old one. See `isFreshRecovery()` for what that is read from.
+ */
+export async function hasFreshRecoverySession(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser) return false;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data) return false;
+
+  return isFreshRecovery({
+    amr: data.claims.amr,
+    recoverySentAt: authUser.recovery_sent_at,
+    now: Math.floor(Date.now() / 1000),
+  });
+}
 
 /** Redirects to login when signed out. Use in any authenticated route. */
 export async function requireUser(returnTo?: string): Promise<User> {

@@ -66,7 +66,18 @@ export function AuthForm({ mode, action, next, initialError }: Props) {
         label="Password"
         htmlFor="password"
         error={state.fieldErrors?.password}
-        hint={isSignup ? "At least 8 characters." : undefined}
+        hint={
+          isSignup ? (
+            "At least 8 characters."
+          ) : (
+            <Link
+              href="/forgot-password"
+              className="underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          )
+        }
       >
         <Input
           id="password"

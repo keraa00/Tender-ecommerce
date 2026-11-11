@@ -95,6 +95,24 @@ describe("resolveAdminHostRoute", () => {
     });
   });
 
+  it("sends account settings to the root host, tabs included", () => {
+    expect(resolveAdminHostRoute("/account")).toEqual({
+      kind: "redirect",
+      host: "root",
+      pathname: "/dashboard/account",
+    });
+    expect(resolveAdminHostRoute("/account/security")).toEqual({
+      kind: "redirect",
+      host: "root",
+      pathname: "/dashboard/account/security",
+    });
+    expect(resolveAdminHostRoute("/dashboard/account/privacy")).toEqual({
+      kind: "redirect",
+      host: "root",
+      pathname: "/dashboard/account/privacy",
+    });
+  });
+
   it("sends platform routes back to the root host", () => {
     expect(resolveAdminHostRoute("/login")).toEqual({
       kind: "redirect",
@@ -158,6 +176,10 @@ describe("resolveRootHostRoute", () => {
   it("keeps the platform dashboard pages", () => {
     expect(resolveRootHostRoute("/dashboard")).toEqual({ kind: "pass" });
     expect(resolveRootHostRoute("/dashboard/new")).toEqual({ kind: "pass" });
+    expect(resolveRootHostRoute("/dashboard/account")).toEqual({ kind: "pass" });
+    expect(resolveRootHostRoute("/dashboard/account/export")).toEqual({
+      kind: "pass",
+    });
   });
 
   it("ignores everything outside /dashboard", () => {

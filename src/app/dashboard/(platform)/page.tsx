@@ -3,18 +3,48 @@ import type { Metadata } from "next";
 import { StoreMark } from "@/components/store-mark";
 import { StoreStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
+import { FormNotice } from "@/components/ui/field";
+import { initialsFor } from "@/lib/account/display";
 import { storeAdminUrl } from "@/lib/admin/links";
+import { accountPath } from "@/lib/admin/nav";
 import { requireUser } from "@/lib/auth/session";
 import { listStoresForUser } from "@/lib/stores/queries";
 
 export const metadata: Metadata = { title: "Your stores" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const user = await requireUser("/dashboard");
-  const stores = await listStoresForUser(user.id);
+  const [stores, { deleted }] = await Promise.all([
+    listStoresForUser(user.id),
+    props.searchParams,
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
+      {deleted === "1" ? (
+        <div className="mb-6">
+          <FormNotice>Store deleted.</FormNotice>
+        </div>
+      ) : null}
+
+      {/* Who is signed in, and the way to everything about the account itself
+          rather than one store. */}
+      <div className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <span
+          aria-hidden
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface-subtle text-sm font-semibold"
+        >
+          {initialsFor(user.name, user.email)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{user.name ?? user.email}</p>
+          {user.name ? <p className="truncate text-sm text-muted">{user.email}</p> : null}
+        </div>
+        <ButtonLink href={accountPath()} variant="secondary" size="sm">
+          Account settings
+        </ButtonLink>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Your stores</h1>

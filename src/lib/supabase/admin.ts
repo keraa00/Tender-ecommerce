@@ -11,11 +11,14 @@ import { requireSupabaseConfig } from "./config";
  * non-`NEXT_PUBLIC_` variable and this module is `server-only`, so it cannot be
  * pulled into a client bundle by an accidental import.
  *
- * Authorization for anything this client touches is the caller's job, and in
- * this app that means `getStoreContext()` — which resolves the tenant from the
- * URL slug plus the session before any write is attempted. Storage objects are
- * keyed by `storeId`, so a verified `store.id` is what confines a seller to
- * their own prefix.
+ * Authorization for anything this client touches is the caller's job:
+ *
+ * - Storage: `getStoreContext()` resolves the tenant from the URL slug plus the
+ *   session before any write is attempted. Objects are keyed by `storeId`, so
+ *   a verified `store.id` is what confines a seller to their own prefix.
+ * - `auth.admin`: only ever called with the id of the signed-in user, after
+ *   they have re-entered their password — deleting their own account, or
+ *   setting a new password from a fresh recovery link.
  */
 export function createSupabaseAdminClient() {
   const { url } = requireSupabaseConfig();
@@ -23,8 +26,8 @@ export function createSupabaseAdminClient() {
 
   if (!serviceRoleKey) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is not set. Product image uploads need it — " +
-        "see README → Local setup.",
+      "SUPABASE_SERVICE_ROLE_KEY is not set. Image uploads and account " +
+        "deletion need it — see README → Local setup.",
     );
   }
 

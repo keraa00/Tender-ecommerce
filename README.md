@@ -18,7 +18,9 @@ Stripe account; the platform takes a commission at the moment of the charge.
 |---|---|
 | Platform landing | Lists live stores at `/` |
 | Storefronts | Seven seeded demo stores — `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR), `/s/wildmoor-apothecary` (GBP), `/s/halden-coffee` (AUD), `/s/marlowe-paper` (CAD), `/s/bakar-atelier` (BAM), `/s/kehre-velo` (CHF) — branded per store, priced in each store's own currency |
-| Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired |
+| Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired, and "Forgot your password?" — a reset link that signs you in for 15 minutes to choose a new one |
+| Account settings | `/dashboard/account` — **Profile**: name, and changing the sign-in email (confirmed by link before it takes effect). **Security**: change the password (current one required; every other device is signed out) and see where you're signed in — browser and system, last active — with sign-out per device or everywhere else. **Data & privacy**: download everything kept about you as JSON, and delete the account (current password plus typing your email; blocked while you still own a store). Reached from the header's account menu, the store list, and the email at the foot of the admin drawer |
+| Closing a store | Settings → General, owner only: deletes the store with its products, orders and images after the slug is typed out. Blocked while a paid order is unfulfilled or cash on delivery is uncollected; unpaid Stripe checkouts are cancelled first. The seller's Stripe account is theirs and is left alone |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
 | Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived; a weight per option (kg in, integer grams stored) and a "requires shipping" flag for digital products and services |
@@ -392,6 +394,42 @@ Appending to `{{ .RedirectTo }}` rather than rebuilding the URL from
 `{{ .SiteURL }}` is what preserves the `next` path the app put on
 `emailRedirectTo`, so a user confirming from a deep link still lands where they
 were headed.
+
+Do the same for the two templates account settings sends, for the same
+reason — a reset link is very often opened on a phone:
+
+- **Reset password**:
+  `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a>`
+- **Change email address**:
+  `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email_change">Confirm the change</a>`
+
+And under Authentication → Providers → Email (Sign In / Providers in newer
+dashboards):
+
+- **Secure email change: on** — the default. Both the old and the new inbox
+  have to confirm, so a session left open somewhere cannot move the account to
+  an address its owner has never seen. Account settings shows the pending
+  address until both links are clicked.
+- **Secure password change: off** — the default. The app asks for the current
+  password itself before changing it (`src/lib/auth/password.ts`), because
+  Supabase's own "require current password" check is a setting this repo
+  cannot see, and with it off a wrong `current_password` is quietly accepted.
+  Turning it on makes password changes in sessions older than a day fail with
+  "sign out and back in".
+- Optional: turn on Supabase's security notification emails (password
+  changed, email changed) in the Emails section, so a change made by someone
+  else does not go unnoticed.
+
+Supabase's built-in email sender allows only a couple of emails an hour, which
+sign-up, reset and email-change links all share. Set up custom SMTP before
+real users arrive.
+
+Account deletion and store deletion use the secret key
+(`SUPABASE_SERVICE_ROLE_KEY`) as image uploads do: the Auth user is deleted
+through `auth.admin`. "Where you're signed in" reads and revokes rows of
+Supabase's internal `auth.sessions` table directly — there is no public API for
+listing one user's sessions — see `src/lib/account/sessions.ts` for what was
+checked and what still works if Supabase ever closes that off.
 
 If you point `DATABASE_URL` at Supabase rather than a local database, append
 `?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`. The pooler serves a

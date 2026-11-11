@@ -24,13 +24,19 @@ import { safeRedirectPath } from "./redirect";
  * the template changes.
  */
 
+/**
+ * The links this app actually sends: sign-up confirmation, password reset and
+ * email change (`email` is the newer name some templates use for sign-up).
+ * Invites and magic links are refused — nothing here sends them, and each type
+ * accepted is one more way to plant a session through a link someone else
+ * sent (SECURITY_AUDIT.md TND-12). `/reset-password` also relies on magic
+ * links being out: see `isFreshRecovery()`.
+ */
 const EMAIL_OTP_TYPES = [
   "signup",
-  "invite",
-  "magiclink",
+  "email",
   "recovery",
   "email_change",
-  "email",
 ] as const satisfies readonly EmailOtpType[];
 
 function isEmailOtpType(value: string): value is EmailOtpType {

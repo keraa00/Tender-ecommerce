@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { authCookieOptions, requireSupabaseConfig } from "./config";
 
 /**
@@ -10,9 +10,15 @@ import { authCookieOptions, requireSupabaseConfig } from "./config";
 export async function createSupabaseServerClient() {
   const config = requireSupabaseConfig();
   const cookieStore = await cookies();
+  const userAgent = (await headers()).get("user-agent");
 
   return createServerClient(config.url, config.anonKey, {
     cookieOptions: authCookieOptions(config),
+    // Sessions are created here, server-side, so without this Supabase records
+    // every one as the server's own runtime ("node") and the sessions list in
+    // account settings cannot tell a phone from a laptop. Display-only: a
+    // spoofed value can only mislabel the sender's own session.
+    global: userAgent ? { headers: { "User-Agent": userAgent } } : undefined,
     cookies: {
       getAll() {
         return cookieStore.getAll();

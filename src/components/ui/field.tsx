@@ -94,3 +94,17 @@ export function FormError({ children }: { children?: ReactNode }) {
     </div>
   );
 }
+
+/** FormError's counterpart for a form that went through: "Saved." */
+export function FormNotice({ children }: { children?: ReactNode }) {
+  if (!children) return null;
+
+  return (
+    <p
+      role="status"
+      className="rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-sm text-success text-pretty"
+    >
+      {children}
+    </p>
+  );
+}
