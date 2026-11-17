@@ -12,6 +12,10 @@
  * Shared by the browser and the tests, so nothing here may import Prisma.
  */
 
+import { plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { Locale } from "@/lib/i18n/locales";
+
 /**
  * When an order became news to the seller, or null if it never did: a
  * cash-on-delivery order when it was placed — there is a parcel to send — and
@@ -103,7 +107,12 @@ export function formatNewOrderCount(count: number): string {
   return count > 99 ? "99+" : String(count);
 }
 
-export function describeNewOrders(count: number): string {
-  if (count > 99) return "99+ new orders";
-  return count === 1 ? "1 new order" : `${count} new orders`;
+/** "3 new orders", in the seller's language, capped like the pill. */
+export function describeNewOrders(
+  count: number,
+  locale: Locale,
+  t: AdminMessages["liveOrders"],
+): string {
+  if (count > 99) return t.capped;
+  return plural(locale, count, t.newOrders);
 }

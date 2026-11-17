@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+
 /**
  * Store slugs live at `/s/[storeSlug]`, so they cannot collide with top-level
  * routes. These are reserved anyway — partly to keep `/s/api` and friends free
@@ -55,25 +58,21 @@ export function slugify(input: string): string {
     .replace(/-+$/g, "");
 }
 
-export const storeSlugSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .min(SLUG_MIN_LENGTH, `Must be at least ${SLUG_MIN_LENGTH} characters.`)
-  .max(SLUG_MAX_LENGTH, `Must be at most ${SLUG_MAX_LENGTH} characters.`)
-  .regex(
-    SLUG_PATTERN,
-    "Use lowercase letters, numbers and single hyphens only.",
-  )
-  .refine((value) => !RESERVED_STORE_SLUGS.has(value), {
-    message: "That address is reserved. Try another.",
-  });
+/** The schemas' messages, in the seller's language: `t.validation.slug`. */
+export type SlugMessages = AdminMessages["validation"]["slug"];
+
+export function storeSlugSchema(t: SlugMessages) {
+  return z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(SLUG_MIN_LENGTH, format(t.tooShort, { min: SLUG_MIN_LENGTH }))
+    .max(SLUG_MAX_LENGTH, format(t.tooLong, { max: SLUG_MAX_LENGTH }))
+    .regex(SLUG_PATTERN, t.pattern)
+    .refine((value) => !RESERVED_STORE_SLUGS.has(value), { message: t.reserved });
+}
 
 /** Product and collection slugs are unique per store, so no reserved list. */
-export const resourceSlugSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .min(1)
-  .max(80)
-  .regex(SLUG_PATTERN, "Use lowercase letters, numbers and single hyphens only.");
+export function resourceSlugSchema(t: SlugMessages) {
+  return z.string().trim().toLowerCase().min(1).max(80).regex(SLUG_PATTERN, t.pattern);
+}

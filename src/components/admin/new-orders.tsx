@@ -15,6 +15,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { getUnseenOrdersAction, markOrdersSeenAction } from "@/lib/orders/actions";
 import {
   ORDER_PAID_EVENT,
@@ -43,6 +45,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 type NewOrders = {
   storeSlug: string;
   count: number;
+  /** "3 new orders", in the seller's language. */
+  describe: (count: number) => string;
   /** Replaces the count with the database's, from one of the order actions. */
   sync: (load: () => Promise<UnseenOrders>) => void;
 };
@@ -59,14 +63,17 @@ export function NewOrdersProvider({
   storeId,
   storeSlug,
   initial,
+  t,
   children,
 }: {
   storeId: string;
   storeSlug: string;
   /** Read by the layout, so the first paint already has the right number. */
   initial: UnseenOrders;
+  t: AdminMessages["liveOrders"];
   children: ReactNode;
 }) {
+  const { locale } = useAdminI18n();
   const [state, dispatch] = useReducer(newOrdersReducer, initial, toNewOrdersState);
 
   // The layout reads the count again whenever the route is refreshed. Take it
@@ -143,7 +150,14 @@ export function NewOrdersProvider({
   }, [storeSlug, sync]);
 
   const count = state.ids.size;
-  const value = useMemo(() => ({ storeSlug, count, sync }), [storeSlug, count, sync]);
+  const describe = useCallback(
+    (n: number) => describeNewOrders(n, locale, t),
+    [locale, t],
+  );
+  const value = useMemo(
+    () => ({ storeSlug, count, sync, describe }),
+    [storeSlug, count, sync, describe],
+  );
 
   return <NewOrdersContext.Provider value={value}>{children}</NewOrdersContext.Provider>;
 }
@@ -157,8 +171,14 @@ export function NewOrdersProvider({
  * Floats over the top of the list rather than taking room in it, so its
  * arrival never shifts a row out from under the seller's pointer.
  */
-export function NewOrdersNotice({ renderedAt }: { renderedAt: string }) {
-  const { storeSlug, count, sync } = useNewOrders();
+export function NewOrdersNotice({
+  renderedAt,
+  t,
+}: {
+  renderedAt: string;
+  t: AdminMessages["liveOrders"];
+}) {
+  const { storeSlug, count, sync, describe } = useNewOrders();
   const router = useRouter();
   const [updating, startUpdate] = useTransition();
 
@@ -192,11 +212,11 @@ export function NewOrdersNotice({ renderedAt }: { renderedAt: string }) {
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
             <path d="M21 3v6h-6" />
           </svg>
-          <span className="tabular">{describeNewOrders(count)}</span>
+          <span className="tabular">{describe(count)}</span>
           <span aria-hidden className="opacity-60">
             ·
           </span>
-          <span>{updating ? "Updating…" : "Click to update"}</span>
+          <span>{updating ? t.updating : t.clickToUpdate}</span>
         </button>
       ) : null}
     </div>

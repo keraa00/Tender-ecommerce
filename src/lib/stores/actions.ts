@@ -5,11 +5,15 @@ import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
 import { allStoresUrl, storeAdminUrl } from "@/lib/admin/links";
+import { verifyPassword } from "@/lib/auth/password";
 import { requireUser } from "@/lib/auth/session";
 import { rootDb } from "@/lib/db/root";
 import { Prisma, StoreMemberRole, StoreStatus } from "@/lib/db/types";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { cancelPaymentIntent } from "@/lib/payments/intents";
 import {
+  UnrecognisedImageError,
   deleteProductImageObjects,
   deleteStoreObjects,
   uploadStoreLogo,
@@ -23,6 +27,7 @@ import {
   parseDeleteStoreForm,
   storeDeletionBlockers,
   type DeleteStoreField,
+  type StoreDeletionBlocker,
 } from "./deletion";
 import { canChangeCurrency, canDeleteStore } from "./policy";
 import { getStoreDeletionReview, isStoreSlugTaken } from "./queries";
@@ -35,11 +40,13 @@ import {
   type GeneralSettingsErrors,
 } from "./settings-form";
 
-const createStoreSchema = z.object({
-  name: z.string().trim().min(2, "Give your store a name.").max(60),
-  slug: storeSlugSchema,
-  description: z.string().trim().max(280).optional(),
-});
+function createStoreSchema(t: AdminMessages) {
+  return z.object({
+    name: z.string().trim().min(2, t.stores.errors.nameRequired).max(60),
+    slug: storeSlugSchema(t.validation.slug),
+    description: z.string().trim().max(280).optional(),
+  });
+}
 
 export type CreateStoreState = {
   fieldErrors?: Partial<Record<"name" | "slug" | "description" | "logo", string>>;
@@ -51,7 +58,7 @@ export async function createStoreAction(
   _prev: CreateStoreState,
   formData: FormData,
 ): Promise<CreateStoreState> {
-  const user = await requireUser("/dashboard/new");
+  const [user, { t }] = await Promise.all([requireUser("/dashboard/new"), getAdminI18n()]);
 
   const values = {
     name: String(formData.get("name") ?? ""),
@@ -59,7 +66,7 @@ export async function createStoreAction(
     description: String(formData.get("description") ?? ""),
   };
 
-  const parsed = createStoreSchema.safeParse({
+  const parsed = createStoreSchema(t).safeParse({
     name: values.name,
     // An empty slug field means "derive it from the name", which is what the
     // form does client-side anyway; this is the no-JavaScript fallback.
@@ -69,7 +76,7 @@ export async function createStoreAction(
   });
 
   const logo = logoFrom(formData);
-  const logoError = logo ? logoRejectionReason(logo) : null;
+  const logoError = logo ? logoRejectionReason(logo, t.validation.images) : null;
 
   if (!parsed.success || logoError) {
     const fieldErrors = parsed.success ? {} : z.flattenError(parsed.error).fieldErrors;
@@ -113,14 +120,14 @@ export async function createStoreAction(
     ) {
       return {
         values,
-        fieldErrors: { slug: "That address was just taken. Try another." },
+        fieldErrors: { slug: t.stores.errors.slugTaken },
       };
     }
 
     console.error("createStoreAction failed", error);
     return {
       values,
-      formError: "Could not create the store. Please try again.",
+      formError: t.stores.errors.createFailed,
     };
   }
 
@@ -172,9 +179,9 @@ export async function updateStoreSettingsAction(
   _prev: StoreSettingsState,
   formData: FormData,
 ): Promise<StoreSettingsState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseGeneralSettingsForm(formData);
+  const parsed = parseGeneralSettingsForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
   const { settings } = parsed;
 
@@ -183,7 +190,7 @@ export async function updateStoreSettingsAction(
     if (!canChangeCurrency({ orderCount })) {
       return {
         fieldErrors: {
-          currency: "Your store has taken orders, so its currency can no longer change.",
+          currency: t.stores.errors.currencyLocked,
         },
       };
     }
@@ -193,7 +200,7 @@ export async function updateStoreSettingsAction(
   const removeLogo = formData.get("removeLogo") === "1";
   const logoChanged = Boolean(logo) || removeLogo;
 
-  const logoError = logo ? logoRejectionReason(logo) : null;
+  const logoError = logo ? logoRejectionReason(logo, t.validation.images) : null;
   if (logoError) return { fieldErrors: { logo: logoError } };
 
   let logoUrl: string | null = store.logoUrl;
@@ -208,9 +215,12 @@ export async function updateStoreSettingsAction(
       data: { logoUrl, currency: settings.currency, contactEmail: settings.contactEmail },
     });
   } catch (error) {
+    if (error instanceof UnrecognisedImageError) {
+      return { fieldErrors: { logo: t.validation.images.unrecognised } };
+    }
     console.error("updateStoreSettingsAction failed", error);
     if (uploaded) await deleteProductImageObjects([uploaded], requireSupabaseConfig().url);
-    return { formError: "Could not save your settings. Please try again." };
+    return { formError: t.stores.errors.settingsFailed };
   }
 
   // Nothing points at the old file any more. Only objects this app uploaded
@@ -225,7 +235,7 @@ export async function updateStoreSettingsAction(
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/${storeSlug}`, "layout");
 
-  return { notice: "Saved." };
+  return { notice: t.stores.saved };
 }
 
 export type CheckoutSettingsState = {
@@ -240,20 +250,20 @@ export async function updateCheckoutSettingsAction(
   _prev: CheckoutSettingsState,
   formData: FormData,
 ): Promise<CheckoutSettingsState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseCheckoutSettingsForm(formData);
+  const parsed = parseCheckoutSettingsForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   try {
     await rootDb.store.update({ where: { id: store.id }, data: parsed.settings });
   } catch (error) {
     console.error("updateCheckoutSettingsAction failed", error);
-    return { formError: "Could not save your checkout settings. Please try again." };
+    return { formError: t.stores.errors.checkoutFailed };
   }
 
   revalidatePath(`/dashboard/${storeSlug}/settings/checkout`);
-  return { notice: "Saved." };
+  return { notice: t.stores.saved };
 }
 
 export type CodSettingsState = {
@@ -276,9 +286,9 @@ export async function updateCodSettingsAction(
   _prev: CodSettingsState,
   formData: FormData,
 ): Promise<CodSettingsState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseCodSettingsForm(formData);
+  const parsed = parseCodSettingsForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   try {
@@ -293,13 +303,13 @@ export async function updateCodSettingsAction(
     });
   } catch (error) {
     console.error("updateCodSettingsAction failed", error);
-    return { formError: "Could not save cash on delivery. Please try again." };
+    return { formError: t.stores.errors.codFailed };
   }
 
   // Whether the store can take orders shows across the admin — the overview's
   // checklist, the orders page — so the whole store layout is refreshed.
   revalidatePath(`/dashboard/${storeSlug}`, "layout");
-  return { notice: "Saved." };
+  return { notice: t.stores.saved };
 }
 
 /**
@@ -324,13 +334,13 @@ export type SlugAvailability =
 export async function checkStoreSlugAction(
   rawSlug: string,
 ): Promise<SlugAvailability> {
-  await requireUser("/dashboard/new");
+  const [, { t }] = await Promise.all([requireUser("/dashboard/new"), getAdminI18n()]);
 
-  const parsed = storeSlugSchema.safeParse(rawSlug);
+  const parsed = storeSlugSchema(t.validation.slug).safeParse(rawSlug);
   if (!parsed.success) {
     return {
       status: "invalid",
-      message: z.flattenError(parsed.error).formErrors[0] ?? "Invalid address.",
+      message: z.flattenError(parsed.error).formErrors[0] ?? t.stores.errors.invalidAddress,
     };
   }
 
@@ -348,6 +358,7 @@ export type DeleteStoreState = {
  * Deletes the store and everything in it, orders included, for good.
  *
  * In order:
+ * 0. Check the slug typed out and the owner's current password.
  * 1. Refuse while a buyer is owed something (`storeDeletionBlockers`).
  * 2. Suspend the store, so no new checkout can start — `checkoutBlockedReason`
  *    turns buyers away from a suspended store — while the next step runs.
@@ -367,19 +378,33 @@ export async function deleteStoreAction(
   _prev: DeleteStoreState,
   formData: FormData,
 ): Promise<DeleteStoreState> {
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ user, store, membership }, { t, locale }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const say = t.stores.errors;
+  const blocker = (found: StoreDeletionBlocker) =>
+    describeStoreDeletionBlocker(found, locale, t.stores.deletionBlockers);
 
   if (!canDeleteStore(membership)) {
-    return { formError: "Only the store's owner can delete it." };
+    return { formError: say.ownerOnly };
   }
 
-  const parsed = parseDeleteStoreForm(formData, store.slug);
+  const parsed = parseDeleteStoreForm(formData, store.slug, say);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+
+  const check = await verifyPassword(user.email, parsed.currentPassword);
+  if (check === "rate-limited") {
+    return { formError: say.rateLimited };
+  }
+  if (check === "wrong") {
+    return { fieldErrors: { currentPassword: say.wrongPassword } };
+  }
 
   const review = await getStoreDeletionReview(store.id);
   const blockers = storeDeletionBlockers({ ...review, paymentsInFlight: 0 });
   if (blockers.length > 0) {
-    return { formError: describeStoreDeletionBlocker(blockers[0]) };
+    return { formError: blocker(blockers[0]) };
   }
 
   const restoreStatus = () =>
@@ -398,7 +423,7 @@ export async function deleteStoreAction(
   const lateBlockers = storeDeletionBlockers({ ...settled, paymentsInFlight: 0 });
   if (lateBlockers.length > 0) {
     await restoreStatus();
-    return { formError: describeStoreDeletionBlocker(lateBlockers[0]) };
+    return { formError: blocker(lateBlockers[0]) };
   }
 
   let paymentsInFlight = 0;
@@ -417,7 +442,7 @@ export async function deleteStoreAction(
   if (paymentsInFlight > 0) {
     await restoreStatus();
     return {
-      formError: describeStoreDeletionBlocker({ kind: "payment-in-flight", count: paymentsInFlight }),
+      formError: blocker({ kind: "payment-in-flight", count: paymentsInFlight }),
     };
   }
 
@@ -429,7 +454,7 @@ export async function deleteStoreAction(
   } catch (error) {
     console.error("deleteStoreAction failed", error);
     await restoreStatus();
-    return { formError: "Could not delete the store. Please try again." };
+    return { formError: say.deleteFailed };
   }
 
   await deleteStoreObjects(store.id);

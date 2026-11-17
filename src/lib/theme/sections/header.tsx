@@ -14,7 +14,7 @@ import { field } from "../fields";
 export default defineSection({
   type: "header",
   name: "Header",
-  description: "Your store's name, menu, search and cart.",
+  description: "Your store’s name, menu, search and cart.",
   layout: "full-bleed",
   pinned: "header",
   settings: {
@@ -43,7 +43,7 @@ export default defineSection({
             href={paths.home}
             className="flex min-w-0 items-center gap-2.5 pe-2"
           >
-            {/* The store's uploaded logo, or a square in its accent colour when
+            {/* The store’s uploaded logo, or a square in its accent colour when
                 it has none or the theme turns the logo off. */}
             {logoUrl ? (
               <Image

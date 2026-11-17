@@ -99,6 +99,20 @@ export function AuthForm({ mode, action, next, initialError }: Props) {
             : "Sign in"}
       </Button>
 
+      {isSignup ? (
+        <p className="text-center text-xs text-muted text-pretty">
+          By creating an account you agree to the{" "}
+          <Link href="/terms" className="underline underline-offset-4 hover:text-foreground">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-foreground">
+            Privacy
+          </Link>{" "}
+          pages.
+        </p>
+      ) : null}
+
       <p className="text-center text-sm text-muted">
         {isSignup ? "Already have an account? " : "New to Tender? "}
         <Link

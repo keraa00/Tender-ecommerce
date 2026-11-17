@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
+
 import { getStoreContext } from "@/lib/stores/context";
+
+/** Nothing behind sign-in, or on the way to it, belongs in search results. */
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /**
  * One store's admin, whichever chrome it is drawn in.

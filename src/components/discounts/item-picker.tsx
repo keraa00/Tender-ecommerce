@@ -3,8 +3,11 @@
 import Image from "next/image";
 import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { Input } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 /**
  * Chooses a set of things — products, collections, customers — from a list
@@ -36,6 +39,7 @@ export function ItemPicker({
   empty,
   parseEntry,
   invalid = false,
+  t,
 }: {
   name: string;
   /** Names the filter box for screen readers: "Find products". */
@@ -48,7 +52,10 @@ export function ItemPicker({
   empty: ReactNode;
   parseEntry?: (query: string) => string[];
   invalid?: boolean;
+  t: AdminMessages["discounts"]["picker"];
 }) {
+  const { locale, intl } = useAdminI18n();
+  const number = new Intl.NumberFormat(intl);
   const [query, setQuery] = useState("");
   const listId = useId();
 
@@ -93,21 +100,21 @@ export function ItemPicker({
       ))}
 
       {selected.length > 0 ? (
-        <ul className="flex flex-wrap gap-2" aria-label="Chosen">
+        <ul className="flex flex-wrap gap-2" aria-label={t.chosen}>
           {selected.map((id) => {
             const option = byId.get(id);
             const text = option?.label ?? id;
             return (
               <li
                 key={id}
-                className="flex max-w-full items-center gap-1 rounded-full border border-border-strong bg-surface py-1 pr-1 pl-3 text-sm"
+                className="flex max-w-full items-center gap-1 rounded-full border border-border-strong bg-surface py-1 pe-1 ps-3 text-sm"
               >
                 <span className="truncate">{text}</span>
                 <button
                   type="button"
                   onClick={() => onChange(selected.filter((entry) => entry !== id))}
-                  aria-label={`Remove ${text}`}
-                  title={`Remove ${text}`}
+                  aria-label={format(t.remove, { item: text })}
+                  title={format(t.remove, { item: text })}
                   className="grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
                 >
                   <svg
@@ -156,12 +163,12 @@ export function ItemPicker({
                     add(typed);
                     setQuery("");
                   }}
-                  className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover"
+                  className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-start text-sm transition-colors hover:bg-surface-hover"
                 >
                   <span className="min-w-0 flex-1 truncate">
-                    {typed.length === 1 ? typed[0] : `${typed.length} email addresses`}
+                    {typed.length === 1 ? typed[0] : plural(locale, typed.length, t.emails)}
                   </span>
-                  <span className="shrink-0 font-medium text-muted">Add</span>
+                  <span className="shrink-0 font-medium text-muted">{t.add}</span>
                 </button>
               </li>
             ) : null}
@@ -171,7 +178,7 @@ export function ItemPicker({
                 <button
                   type="button"
                   onClick={() => add([option.id])}
-                  className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-hover"
+                  className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-start transition-colors hover:bg-surface-hover"
                 >
                   {option.imageUrl !== undefined ? <Thumb url={option.imageUrl} /> : null}
                   <span className="min-w-0 flex-1">
@@ -180,7 +187,7 @@ export function ItemPicker({
                       <span className="block truncate text-xs text-muted">{option.detail}</span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 text-sm font-medium text-muted">Add</span>
+                  <span className="shrink-0 text-sm font-medium text-muted">{t.add}</span>
                 </button>
               </li>
             ))}
@@ -188,8 +195,11 @@ export function ItemPicker({
 
           <p className={cn("text-xs text-muted", matches.length <= MAX_SHOWN && "sr-only")}>
             {matches.length > MAX_SHOWN
-              ? `Showing ${MAX_SHOWN} of ${matches.length}. Type to narrow the list.`
-              : `${matches.length} available.`}
+              ? format(t.showing, {
+                  shown: number.format(MAX_SHOWN),
+                  total: number.format(matches.length),
+                })
+              : format(t.available, { count: number.format(matches.length) })}
           </p>
 
           {options.length === 0 && typed.length === 0 ? (

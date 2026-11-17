@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
-  imageRejectionReason,
+  imageRejectionReason as serverReason,
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_UPLOAD,
-  sourceImageRejectionReason,
+  sourceImageRejectionReason as browserReason,
   storagePathFromPublicUrl,
 } from "@/lib/products/constants";
+
+type Picked = { size: number; type: string };
+const imageRejectionReason = (file: Picked) => serverReason(file, en.validation.images);
+const sourceImageRejectionReason = (file: Picked) => browserReason(file, en.validation.images);
 
 const SUPABASE = "https://project.supabase.co";
 const PUBLIC = `${SUPABASE}/storage/v1/object/public/product-images`;

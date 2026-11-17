@@ -6,7 +6,9 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Label, Textarea } from "@/components/ui/field";
-import { shrinkImage } from "@/lib/images/shrink-image";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { ImageTooLargeError, shrinkImage } from "@/lib/images/shrink-image";
 import { centsToInputValue } from "@/lib/money";
 import { gramsToInputValue } from "@/lib/weight";
 import type { ProductFormState } from "@/lib/products/actions";
@@ -17,7 +19,7 @@ import {
   MAX_SOURCE_IMAGE_MB,
   MAX_VARIANTS,
   PRODUCT_IMAGE_MAX_EDGE,
-  PRODUCT_STATUS_OPTIONS,
+  PRODUCT_STATUSES,
   sourceImageRejectionReason,
 } from "@/lib/products/constants";
 import { slugify } from "@/lib/slug";
@@ -90,6 +92,8 @@ function blankRow(): VariantRow {
 
 function rowsFrom(product?: ProductFormProduct): VariantRow[] {
   if (!product || product.variants.length === 0) {
+    // Not copy: an only option still called "Default" is what the storefront
+    // hides from buyers, so the name stays the same in every admin language.
     return [{ ...blankRow(), title: "Default" }];
   }
 
@@ -114,6 +118,11 @@ type ProductFormProps = {
   /** Every collection in the store, for the picker. */
   collections?: ProductFormCollection[];
   submitLabel: string;
+  t: {
+    form: AdminMessages["products"]["form"];
+    status: AdminMessages["products"]["status"];
+    images: AdminMessages["validation"]["images"];
+  };
 };
 
 export function ProductForm(props: ProductFormProps) {
@@ -126,6 +135,7 @@ function ProductFormBody({
   product,
   collections = [],
   submitLabel,
+  t: { form: t, status: statusCopy, images: imageCopy },
   onDiscard,
 }: ProductFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<ProductFormState, FormData>(
@@ -191,7 +201,7 @@ function ProductFormBody({
     } catch (problem) {
       if (run !== prepareRun.current) return;
       setFileError(
-        problem instanceof Error ? problem.message : "Could not prepare those photos.",
+        problem instanceof ImageTooLargeError ? imageCopy.tooLarge : imageCopy.couldNotPrepare,
       );
     } finally {
       if (run === prepareRun.current) setPreparing(false);
@@ -251,17 +261,17 @@ function ProductFormBody({
 
       <section className="space-y-5">
         <Field
-          label="Title"
+          label={t.title}
           htmlFor="title"
           error={state.fieldErrors?.title}
-          hint="What buyers see on the product card."
+          hint={t.titleHint}
         >
           <Input
             id="title"
             name="title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Stoneware mug"
+            placeholder={t.titlePlaceholder}
             autoComplete="off"
             required
             aria-invalid={Boolean(state.fieldErrors?.title)}
@@ -269,13 +279,17 @@ function ProductFormBody({
         </Field>
 
         <Field
-          label="Address"
+          label={t.address}
           htmlFor="slug"
           error={state.fieldErrors?.slug}
-          hint="The product's URL within your storefront."
+          hint={t.addressHint}
         >
-          <div className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground">
-            <span className="pl-3 text-sm text-muted select-none">/p/</span>
+          {/* A URL reads left to right in every language. */}
+          <div
+            dir="ltr"
+            className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground"
+          >
+            <span className="ps-3 text-sm text-muted select-none">/p/</span>
             <Input
               id="slug"
               name="slug"
@@ -284,49 +298,49 @@ function ProductFormBody({
                 setSlugEdited(true);
                 setSlug(slugify(event.target.value));
               }}
-              placeholder="stoneware-mug"
+              placeholder={t.addressPlaceholder}
               autoComplete="off"
-              className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+              className="border-0 bg-transparent ps-1 focus-visible:outline-none"
               aria-invalid={Boolean(state.fieldErrors?.slug)}
             />
           </div>
         </Field>
 
         <Field
-          label="Description"
+          label={t.description}
           htmlFor="description"
           error={state.fieldErrors?.description}
-          hint="Optional. What it is, what it is made of, how big it is."
+          hint={t.descriptionHint}
         >
           <Textarea
             id="description"
             name="description"
             rows={4}
             defaultValue={product?.description ?? ""}
-            placeholder="Thrown by hand in Lisbon and glazed in a matte oatmeal."
+            placeholder={t.descriptionPlaceholder}
           />
         </Field>
 
         <fieldset className="space-y-2">
           <legend className="block text-sm font-medium text-foreground">
-            Visibility
+            {t.visibility}
           </legend>
           <div className="grid gap-2 sm:grid-cols-3">
-            {PRODUCT_STATUS_OPTIONS.map((option) => (
+            {PRODUCT_STATUSES.map((value) => (
               <label
-                key={option.value}
+                key={value}
                 className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border-strong bg-surface px-3 py-2.5 has-checked:border-foreground"
               >
                 <input
                   type="radio"
                   name="status"
-                  value={option.value}
-                  defaultChecked={(product?.status ?? "DRAFT") === option.value}
+                  value={value}
+                  defaultChecked={(product?.status ?? "DRAFT") === value}
                   className="mt-0.5"
                 />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium">{option.label}</span>
-                  <span className="block text-xs text-muted">{option.hint}</span>
+                  <span className="block text-sm font-medium">{statusCopy[value].label}</span>
+                  <span className="block text-xs text-muted">{statusCopy[value].hint}</span>
                 </span>
               </label>
             ))}
@@ -342,11 +356,8 @@ function ProductFormBody({
             className="mt-1"
           />
           <span className="min-w-0">
-            <span className="block text-sm font-medium">Physical product — requires shipping</span>
-            <span className="block text-xs text-muted text-pretty">
-              Untick for digital products and services. An order made only of these
-              skips delivery at checkout and ships free.
-            </span>
+            <span className="block text-sm font-medium">{t.requiresShipping}</span>
+            <span className="block text-xs text-muted text-pretty">{t.requiresShippingHint}</span>
           </span>
         </label>
       </section>
@@ -359,11 +370,9 @@ function ProductFormBody({
           */}
           <input type="hidden" name="collectionsSubmitted" value="1" />
           <legend className="block text-sm font-medium text-foreground">
-            Collections
+            {t.collections}
           </legend>
-          <p className="text-sm text-muted">
-            Where this product appears when buyers browse by collection.
-          </p>
+          <p className="text-sm text-muted">{t.collectionsHint}</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {collections.map((collection) => (
               <label
@@ -385,8 +394,8 @@ function ProductFormBody({
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-sm font-medium tracking-tight">Options</h2>
-          <p className="text-sm text-muted">Each one has its own price, stock and weight in kg.</p>
+          <h2 className="text-sm font-medium tracking-tight">{t.options}</h2>
+          <p className="text-sm text-muted">{t.optionsHint}</p>
         </div>
 
         {state.fieldErrors?.variants ? (
@@ -411,7 +420,7 @@ function ProductFormBody({
                 )}
 
                 <div className="col-span-2 sm:col-span-4">
-                  <Label htmlFor={`${row.key}-title`}>Name</Label>
+                  <Label htmlFor={`${row.key}-title`}>{t.optionName}</Label>
                   <Input
                     id={`${row.key}-title`}
                     name="variantTitle"
@@ -419,7 +428,7 @@ function ProductFormBody({
                     onChange={(event) =>
                       updateRow(row.key, { title: event.target.value })
                     }
-                    placeholder="Small"
+                    placeholder={t.optionNamePlaceholder}
                     autoComplete="off"
                     className="mt-1"
                     aria-invalid={Boolean(rowErrors[index])}
@@ -427,7 +436,7 @@ function ProductFormBody({
                 </div>
 
                 <div className="col-span-2 sm:col-span-2">
-                  <Label htmlFor={`${row.key}-sku`}>SKU</Label>
+                  <Label htmlFor={`${row.key}-sku`}>{t.sku}</Label>
                   <Input
                     id={`${row.key}-sku`}
                     name="variantSku"
@@ -435,14 +444,14 @@ function ProductFormBody({
                     onChange={(event) =>
                       updateRow(row.key, { sku: event.target.value })
                     }
-                    placeholder="Optional"
+                    placeholder={t.skuPlaceholder}
                     autoComplete="off"
                     className="mt-1"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <Label htmlFor={`${row.key}-price`}>Price</Label>
+                  <Label htmlFor={`${row.key}-price`}>{t.price}</Label>
                   <Input
                     id={`${row.key}-price`}
                     name="variantPrice"
@@ -459,7 +468,7 @@ function ProductFormBody({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <Label htmlFor={`${row.key}-compare`}>Compare at</Label>
+                  <Label htmlFor={`${row.key}-compare`}>{t.compareAt}</Label>
                   <Input
                     id={`${row.key}-compare`}
                     name="variantCompareAt"
@@ -475,7 +484,7 @@ function ProductFormBody({
                 </div>
 
                 <div className="sm:col-span-1">
-                  <Label htmlFor={`${row.key}-stock`}>Stock</Label>
+                  <Label htmlFor={`${row.key}-stock`}>{t.stock}</Label>
                   <Input
                     id={`${row.key}-stock`}
                     name="variantStock"
@@ -491,7 +500,7 @@ function ProductFormBody({
                 </div>
 
                 <div className="sm:col-span-1">
-                  <Label htmlFor={`${row.key}-weight`}>Weight</Label>
+                  <Label htmlFor={`${row.key}-weight`}>{t.weight}</Label>
                   <Input
                     id={`${row.key}-weight`}
                     name="variantWeight"
@@ -500,7 +509,7 @@ function ProductFormBody({
                       updateRow(row.key, { weight: event.target.value })
                     }
                     placeholder="kg"
-                    aria-label="Weight in kilograms"
+                    aria-label={t.weightLabel}
                     inputMode="decimal"
                     autoComplete="off"
                     className="mt-1 tabular"
@@ -527,7 +536,7 @@ function ProductFormBody({
                       )
                     }
                   >
-                    Remove option
+                    {t.removeOption}
                   </Button>
                 </div>
               ) : null}
@@ -542,13 +551,13 @@ function ProductFormBody({
             size="sm"
             onClick={() => setRows((current) => [...current, blankRow()])}
           >
-            Add another option
+            {t.addOption}
           </Button>
         ) : null}
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium tracking-tight">Photos</h2>
+        <h2 className="text-sm font-medium tracking-tight">{t.photos}</h2>
 
         {state.fieldErrors?.images || fileError ? (
           <p className="text-sm text-danger" role="alert">
@@ -584,8 +593,8 @@ function ProductFormBody({
                   <Input
                     name="existingImageAlt"
                     defaultValue={image.altText ?? ""}
-                    placeholder="Alt text"
-                    aria-label="Alt text"
+                    placeholder={t.altText}
+                    aria-label={t.altText}
                     className="h-8 text-xs"
                   />
 
@@ -597,7 +606,7 @@ function ProductFormBody({
                       checked={markedForRemoval}
                       onChange={() => toggleRemoved(image.id)}
                     />
-                    Remove on save
+                    {t.removeOnSave}
                   </label>
                 </li>
               );
@@ -619,7 +628,7 @@ function ProductFormBody({
                   {image.name}
                 </p>
                 <p className="text-xs text-muted">
-                  {preparing ? "Preparing…" : "Uploads on save"}
+                  {preparing ? t.preparing : t.uploadsOnSave}
                 </p>
               </li>
             ))}
@@ -627,9 +636,9 @@ function ProductFormBody({
         ) : null}
 
         <Field
-          label={product ? "Add more photos" : "Add photos"}
+          label={product ? t.addMorePhotos : t.addPhotos}
           htmlFor="imageFile"
-          hint={`JPEG, PNG, WebP or AVIF, up to ${MAX_SOURCE_IMAGE_MB}MB. Up to ${MAX_IMAGES_PER_UPLOAD} at a time; large photos are resized before upload.`}
+          hint={format(t.photosHint, { mb: MAX_SOURCE_IMAGE_MB, count: MAX_IMAGES_PER_UPLOAD })}
         >
           <input
             id="imageFile"
@@ -644,12 +653,15 @@ function ProductFormBody({
               const tooMany = files.length > MAX_IMAGES_PER_UPLOAD;
               setFileError(
                 tooMany
-                  ? `Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.`
-                  : (files.map(sourceImageRejectionReason).find(Boolean) ?? null),
+                  ? format(imageCopy.tooMany, { count: MAX_IMAGES_PER_UPLOAD })
+                  : (files.map((file) => sourceImageRejectionReason(file, imageCopy)).find(Boolean) ??
+                      null),
               );
               // Only files that can be used get a preview; the rest are
               // covered by the error above and would render as broken images.
-              const usable = files.filter((file) => sourceImageRejectionReason(file) === null);
+              const usable = files.filter(
+                (file) => sourceImageRejectionReason(file, imageCopy) === null,
+              );
               setPendingImages(
                 usable.map((file) => ({
                   url: URL.createObjectURL(file),
@@ -658,7 +670,7 @@ function ProductFormBody({
               );
               void prepareImages(tooMany ? [] : usable);
             }}
-            className="block w-full cursor-pointer text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:transition-colors hover:file:bg-surface-hover"
+            className="block w-full cursor-pointer text-sm text-muted file:me-3 file:cursor-pointer file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:transition-colors hover:file:bg-surface-hover"
           />
         </Field>
       </section>

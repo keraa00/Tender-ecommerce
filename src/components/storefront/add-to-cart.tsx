@@ -5,7 +5,8 @@ import { useFormStatus } from "react-dom";
 
 import type { AddToCartState } from "@/lib/cart/actions";
 import { cn } from "@/lib/cn";
-import { format, type Messages } from "@/lib/i18n/messages";
+import { format } from "@/lib/i18n/format";
+import type { Messages } from "@/lib/i18n/messages";
 import { usePanel } from "./storefront-ui";
 
 export type PurchasableVariant = {

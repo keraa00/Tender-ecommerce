@@ -21,17 +21,17 @@ export default defineSection({
   settings: {
     image: field.image({
       label: "Image",
-      help: "Leave empty to use your store's banner.",
+      help: "Leave empty to use your store’s banner.",
     }),
     heading: field.text({
       label: "Heading",
       maxLength: 80,
-      placeholder: "Your store's name",
+      placeholder: "Your store’s name",
     }),
     text: field.textarea({
       label: "Text",
       maxLength: 280,
-      placeholder: "Your store's description",
+      placeholder: "Your store’s description",
     }),
   },
   blocks: {
@@ -126,9 +126,9 @@ export default defineSection({
 });
 
 /**
- * The picture at the top of a store's home page, for showing the store
+ * The picture at the top of a store’s home page, for showing the store
  * outside it — the card on Tender's landing page. The first visible banner's
- * image, with the same fallback to the store's banner it renders with.
+ * image, with the same fallback to the store’s banner it renders with.
  */
 export function storeCoverImage(
   theme: ThemeDocument,
@@ -141,7 +141,7 @@ export function storeCoverImage(
   return (typeof image === "string" ? image : null) ?? store.bannerUrl;
 }
 
-/** The banner's copy and image, after the store's own fallbacks. */
+/** The banner's copy and image, after the store’s own fallbacks. */
 export function heroContent(
   settings: { image: string | null; heading: string; text: string },
   ctx: Pick<StorefrontContext, "store">,

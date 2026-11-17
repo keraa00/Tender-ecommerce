@@ -6,7 +6,10 @@ import { SaveBar, useDiscard, useResyncAfterReset } from "@/components/admin/sav
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input } from "@/components/ui/field";
 import { regionsOf } from "@/lib/address/regions";
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { cn } from "@/lib/cn";
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { ZoneFormState } from "@/lib/shipping/actions";
 import { MAX_ZONE_NAME } from "@/lib/shipping/form";
 
@@ -16,7 +19,7 @@ type Selection = { countryCode: string; regionCodes: string[] };
 
 type ZoneFormProps = {
   action: (state: ZoneFormState, formData: FormData) => Promise<ZoneFormState>;
-  /** Every country, named in English on the server — see `countryOptions`. */
+  /** Every country, named in the admin's language on the server — see `countryOptions`. */
   countries: CountryOption[];
   /** Countries in the store's other zones, with the zone they are in. */
   taken: Record<string, string>;
@@ -24,7 +27,10 @@ type ZoneFormProps = {
   restOfWorld: boolean;
   submitLabel: string;
   initialNotice?: string;
+  t: ZoneFormCopy;
 };
+
+type ZoneFormCopy = AdminMessages["settings"]["shipping"]["zoneForm"];
 
 export function ZoneForm(props: ZoneFormProps) {
   const { key, discard } = useDiscard();
@@ -46,6 +52,7 @@ function ZoneFormBody({
   restOfWorld,
   submitLabel,
   initialNotice,
+  t,
   onDiscard,
 }: ZoneFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<ZoneFormState, FormData>(
@@ -56,7 +63,7 @@ function ZoneFormBody({
   const resync = useResyncAfterReset();
   // Controlled, so an error reply does not lose what was typed — React resets
   // uncontrolled fields once a form action settles.
-  const [name, setName] = useState(zone?.name ?? (restOfWorld ? "Rest of world" : ""));
+  const [name, setName] = useState(zone?.name ?? (restOfWorld ? t.defaultRestOfWorldName : ""));
 
   return (
     <form action={formAction} className="space-y-6" noValidate {...resync}>
@@ -79,10 +86,10 @@ function ZoneFormBody({
 
       <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <Field
-          label="Zone name"
+          label={t.name}
           htmlFor="zone-name"
           error={errors.name}
-          hint="For you — buyers see the rates' names, not the zone's."
+          hint={t.nameHint}
         >
           <Input
             id="zone-name"
@@ -90,7 +97,7 @@ function ZoneFormBody({
             maxLength={MAX_ZONE_NAME}
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Europe"
+            placeholder={t.namePlaceholder}
             aria-invalid={Boolean(errors.name)}
             className="sm:max-w-sm"
           />
@@ -99,11 +106,8 @@ function ZoneFormBody({
 
       {restOfWorld ? (
         <section className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="text-sm font-medium tracking-tight">Countries</h2>
-          <p className="mt-1 text-sm text-muted text-pretty">
-            Every country that isn&apos;t in another zone. Add a country to a zone of
-            its own to give it different rates.
-          </p>
+          <h2 className="text-sm font-medium tracking-tight">{t.countries}</h2>
+          <p className="mt-1 text-sm text-muted text-pretty">{t.restOfWorldCountries}</p>
         </section>
       ) : (
         <CountryPicker
@@ -111,6 +115,7 @@ function ZoneFormBody({
           taken={taken}
           initial={zone?.countries ?? []}
           error={errors.countries}
+          t={t}
         />
       )}
     </form>
@@ -127,12 +132,15 @@ function CountryPicker({
   taken,
   initial,
   error,
+  t,
 }: {
   countries: CountryOption[];
   taken: Record<string, string>;
   initial: Selection[];
   error?: string;
+  t: ZoneFormCopy;
 }) {
+  const { locale, intl } = useAdminI18n();
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Selection[]>(initial);
@@ -182,17 +190,20 @@ function CountryPicker({
   };
 
   const sorted = [...selected].sort((a, b) =>
-    (names.get(a.countryCode) ?? a.countryCode).localeCompare(names.get(b.countryCode) ?? b.countryCode),
+    (names.get(a.countryCode) ?? a.countryCode).localeCompare(
+      names.get(b.countryCode) ?? b.countryCode,
+      intl,
+    ),
   );
 
   return (
     <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
       <div>
-        <h2 className="text-sm font-medium tracking-tight">Countries</h2>
+        <h2 className="text-sm font-medium tracking-tight">{t.countries}</h2>
         <p className="mt-0.5 text-sm text-muted text-pretty">
           {selected.length === 0
-            ? "Choose where this zone delivers. A country can be in one zone only."
-            : `${selected.length} ${selected.length === 1 ? "country" : "countries"} in this zone.`}
+            ? t.chooseCountries
+            : plural(locale, selected.length, t.countriesInZone)}
         </p>
       </div>
 
@@ -227,8 +238,11 @@ function CountryPicker({
                       <span className="text-muted">
                         {" · "}
                         {some
-                          ? `${entry.regionCodes.length} of ${regions.length} regions`
-                          : "All regions"}
+                          ? format(t.regionsOf, {
+                              count: entry.regionCodes.length,
+                              total: regions.length,
+                            })
+                          : t.allRegions}
                       </span>
                     ) : null}
                   </p>
@@ -237,9 +251,9 @@ function CountryPicker({
                     variant="ghost"
                     size="sm"
                     onClick={() => remove(entry.countryCode)}
-                    aria-label={`Remove ${name}`}
+                    aria-label={format(t.removeCountry, { name })}
                   >
-                    Remove
+                    {t.remove}
                   </Button>
                 </div>
 
@@ -252,7 +266,7 @@ function CountryPicker({
                           checked={!some}
                           onChange={() => setScope(entry.countryCode, false)}
                         />
-                        All of {name}
+                        {format(t.allOf, { name })}
                       </label>
                       <label className="flex cursor-pointer items-center gap-2">
                         <input
@@ -260,7 +274,7 @@ function CountryPicker({
                           checked={some}
                           onChange={() => setScope(entry.countryCode, true)}
                         />
-                        Only some regions
+                        {t.someRegions}
                       </label>
                     </div>
 
@@ -300,19 +314,19 @@ function CountryPicker({
 
       <div className="space-y-2">
         <label htmlFor={searchId} className="block text-sm font-medium">
-          Add countries
+          {t.addCountries}
         </label>
         <Input
           id={searchId}
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search countries"
+          placeholder={t.searchCountries}
           autoComplete="off"
         />
         <ul className="max-h-64 overflow-y-auto rounded-lg border border-border">
           {matches.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted">No countries match.</li>
+            <li className="px-3 py-2 text-sm text-muted">{t.noMatch}</li>
           ) : (
             matches.map((country) => {
               const owner = taken[country.code];
@@ -323,13 +337,13 @@ function CountryPicker({
                     disabled={Boolean(owner)}
                     onClick={() => add(country.code)}
                     className={cn(
-                      "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors",
+                      "flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm transition-colors",
                       owner ? "cursor-default text-muted" : "cursor-pointer hover:bg-surface-hover",
                     )}
                   >
                     <span className="min-w-0 truncate">{country.name}</span>
                     <span className="shrink-0 text-xs text-muted">
-                      {owner ? `In “${owner}”` : "Add"}
+                      {owner ? format(t.inZone, { zone: owner }) : t.add}
                     </span>
                   </button>
                 </li>

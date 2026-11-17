@@ -10,6 +10,8 @@ import {
 } from "@/components/admin/page-shell";
 import { getStoreTotals, listTopProducts } from "@/lib/analytics/queries";
 import { daysAgo } from "@/lib/dates";
+import { format, plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -19,15 +21,22 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/analytics">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Analytics · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.analytics.title} · ${store.name}` };
 }
 
 export default async function AnalyticsPage(
   props: PageProps<"/dashboard/[storeSlug]/analytics">,
 ) {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t: messages, locale, intl }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.analytics;
+  const money = (cents: number) => formatMoney(cents, store.currency, intl);
+  const number = new Intl.NumberFormat(intl);
+  const days = number.format(WINDOW_DAYS);
 
   const since = daysAgo(WINDOW_DAYS);
 
@@ -39,40 +48,30 @@ export default async function AnalyticsPage(
 
   return (
     <AdminPage
-      title="Analytics"
-      description={`Settled orders over the last ${WINDOW_DAYS} days. Orders awaiting payment and cancelled orders are excluded.`}
+      title={t.title}
+      description={format(t.description, { days })}
     >
       <StatGrid>
-        <Stat label="Revenue" value={formatMoney(window.grossCents, store.currency)} />
-        <Stat label="Orders" value={String(window.orders)} />
+        <Stat label={t.revenue} value={money(window.grossCents)} />
+        <Stat label={t.orders} value={number.format(window.orders)} />
         <Stat
-          label="Average order"
-          value={
-            window.averageOrderCents === null
-              ? "—"
-              : formatMoney(window.averageOrderCents, store.currency)
-          }
+          label={t.averageOrder}
+          value={window.averageOrderCents === null ? "—" : money(window.averageOrderCents)}
         />
         <Stat
-          label="Your earnings"
-          value={formatMoney(window.netCents, store.currency)}
-          hint={`${formatMoney(window.feeCents, store.currency)} commission`}
+          label={t.earnings}
+          value={money(window.netCents)}
+          hint={format(t.commission, { amount: money(window.feeCents) })}
         />
       </StatGrid>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium tracking-tight">Best sellers</h2>
-        <p className="mt-1 text-sm text-muted">
-          By revenue after discounts, over the same {WINDOW_DAYS} days.
-        </p>
+        <h2 className="text-lg font-medium tracking-tight">{t.bestSellers}</h2>
+        <p className="mt-1 text-sm text-muted">{format(t.bestSellersHint, { days })}</p>
 
         <div className="mt-4">
           {topProducts.length === 0 ? (
-            <EmptyState title="Nothing sold yet">
-              Once buyers start checking out, your best-selling products will be
-              ranked here. Figures come from the price and title recorded on each
-              order, so renaming a product later will not rewrite its history.
-            </EmptyState>
+            <EmptyState title={t.emptyTitle}>{t.emptyBody}</EmptyState>
           ) : (
             <Rows>
               {topProducts.map((product, index) => (
@@ -81,16 +80,16 @@ export default async function AnalyticsPage(
                     aria-hidden
                     className="w-5 shrink-0 text-sm text-muted tabular"
                   >
-                    {index + 1}
+                    {number.format(index + 1)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{product.title}</p>
                     <p className="text-sm text-muted tabular">
-                      {product.units} sold
+                      {format(t.sold, { count: number.format(product.units) })}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right font-medium tabular">
-                    {formatMoney(product.revenueCents, store.currency)}
+                  <div className="shrink-0 text-end font-medium tabular">
+                    {money(product.revenueCents)}
                   </div>
                 </Row>
               ))}
@@ -100,13 +99,13 @@ export default async function AnalyticsPage(
       </section>
 
       <div className="mt-8 rounded-xl border border-border bg-surface-subtle p-5">
-        <h3 className="text-sm font-medium">All time</h3>
+        <h3 className="text-sm font-medium">{t.allTime}</h3>
         <p className="mt-1 text-sm text-muted text-pretty tabular">
-          {allTime.orders} settled{" "}
-          {allTime.orders === 1 ? "order" : "orders"} ·{" "}
-          {formatMoney(allTime.grossCents, store.currency)} taken ·{" "}
-          {formatMoney(allTime.netCents, store.currency)} yours after{" "}
-          {formatMoney(allTime.feeCents, store.currency)} commission.
+          {plural(locale, allTime.orders, t.allTimeSummary, {
+            gross: money(allTime.grossCents),
+            net: money(allTime.netCents),
+            fee: money(allTime.feeCents),
+          })}
         </p>
       </div>
     </AdminPage>

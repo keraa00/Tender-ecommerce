@@ -192,6 +192,8 @@ export const zh: Messages = {
     payNow: "立即支付",
     paying: "正在处理付款…",
     backToCart: "返回购物车",
+    demoNotice:
+      "这是一个演示商店。付款在 Stripe 测试模式下进行——请使用卡号 4242 4242 4242 4242——不会发货。请勿输入真实地址。",
     unavailable: "本店目前不接受订单。",
     questions: "有疑问？",
     blocked: {

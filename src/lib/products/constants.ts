@@ -8,6 +8,12 @@
  * the browser bundle.
  */
 
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+
+/** The refusals' wording, in the seller's language: `t.validation.images`. */
+export type ImageMessages = AdminMessages["validation"]["images"];
+
 export const PRODUCT_IMAGE_BUCKET = "product-images";
 
 export const MAX_VARIANTS = 20;
@@ -46,42 +52,27 @@ export const MAX_SOURCE_IMAGE_MB = Math.floor(MAX_SOURCE_IMAGE_BYTES / (1024 * 1
  * Product status is spelled out here rather than imported from `@/lib/db/types`,
  * which re-exports the generated Prisma client and would pull it into the
  * browser bundle. The values match the `ProductStatus` enum; the cast at the
- * boundary in `form.ts` is what keeps them honest.
+ * boundary in `form.ts` is what keeps them honest. Their labels are in the
+ * admin messages, under `products.status`.
  */
-export const PRODUCT_STATUS_OPTIONS = [
-  {
-    value: "DRAFT",
-    label: "Draft",
-    hint: "Only you can see it.",
-  },
-  {
-    value: "ACTIVE",
-    label: "Published",
-    hint: "Listed on your storefront.",
-  },
-  {
-    value: "ARCHIVED",
-    label: "Archived",
-    hint: "Hidden, but kept on past orders.",
-  },
-] as const;
+export const PRODUCT_STATUSES = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
 
 /**
  * Human-readable reason a file the seller picked cannot be used, or null when
  * it can be scaled down and uploaded. The browser's check, before scaling.
  */
-export function sourceImageRejectionReason(file: {
-  size: number;
-  type: string;
-}): string | null {
-  if (file.size === 0) return "That file is empty.";
+export function sourceImageRejectionReason(
+  file: { size: number; type: string },
+  t: ImageMessages,
+): string | null {
+  if (file.size === 0) return t.empty;
 
   if (file.size > MAX_SOURCE_IMAGE_BYTES) {
-    return `Images must be under ${MAX_SOURCE_IMAGE_MB}MB.`;
+    return format(t.sourceTooLarge, { mb: MAX_SOURCE_IMAGE_MB });
   }
 
   if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    return "Use a JPEG, PNG, WebP or AVIF image.";
+    return t.wrongType;
   }
 
   return null;
@@ -91,18 +82,18 @@ export function sourceImageRejectionReason(file: {
  * Human-readable reason an uploaded image is refused, or null when it is fine.
  * The server's check, on what the browser sent after scaling it down.
  */
-export function imageRejectionReason(file: {
-  size: number;
-  type: string;
-}): string | null {
-  if (file.size === 0) return "That file is empty.";
+export function imageRejectionReason(
+  file: { size: number; type: string },
+  t: ImageMessages,
+): string | null {
+  if (file.size === 0) return t.empty;
 
   if (file.size > MAX_IMAGE_BYTES) {
-    return "That image is too large. Try a smaller one.";
+    return t.tooLarge;
   }
 
   if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    return "Use a JPEG, PNG, WebP or AVIF image.";
+    return t.wrongType;
   }
 
   return null;

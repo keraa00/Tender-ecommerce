@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { APPEARANCE_COOKIE, parseAppearance } from "@/lib/appearance";
+import { SITE } from "@/lib/site";
 
 // Typed by hand rather than with `LayoutProps`: that helper is keyed on route
 // paths, and a layout inside the `(marketing)` route group owns no path of its
@@ -30,6 +31,15 @@ export default async function MarketingLayout({
       data-appearance={appearance}
       className="theme-home relative isolate flex flex-1 flex-col overflow-x-clip bg-background text-foreground"
     >
+      {SITE.demo ? (
+        <p
+          role="note"
+          className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning sm:px-6"
+        >
+          Tender is a demo. Payments run in Stripe test mode and no order is
+          ever shipped — open a store to try the seller side.
+        </p>
+      ) : null}
       <SiteHeader fullBleed appearanceToggle />
       {children}
       <SiteFooter />

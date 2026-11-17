@@ -1,6 +1,6 @@
 import type { CustomerSegment } from "@/lib/db/types";
 import {
-  CUSTOMER_SEGMENT_OPTIONS,
+  CUSTOMER_SEGMENTS,
   matchesAnySegment,
   type CustomerProfile,
 } from "@/lib/discounts/segments";
@@ -44,27 +44,12 @@ export const CUSTOMER_FILTERS = [
 
 export type CustomerFilter = (typeof CUSTOMER_FILTERS)[number];
 
-export const CUSTOMER_FILTER_LABELS: Record<CustomerFilter, string> = {
-  all: "All",
-  repeat: "Repeat",
-  loyal: "Loyal",
-  lapsed: "Lapsed",
-  "signed-in": "Signed in",
-  guest: "Guest",
-};
-
 /** Not a discount segment — the plain "came back at least once" count. */
 export const REPEAT_MIN_ORDERS = 2;
 
 export const CUSTOMER_SORTS = ["spend", "orders", "recent"] as const;
 
 export type CustomerSort = (typeof CUSTOMER_SORTS)[number];
-
-export const CUSTOMER_SORT_LABELS: Record<CustomerSort, string> = {
-  spend: "Total spent",
-  orders: "Orders",
-  recent: "Most recent",
-};
 
 export const CUSTOMERS_PAGE_SIZE = 25;
 
@@ -260,7 +245,7 @@ export function customerSegments(
   now: Date,
 ): CustomerSegment[] {
   const profile = customerProfile(customer);
-  return CUSTOMER_SEGMENT_OPTIONS.map((option) => option.value).filter((segment) =>
+  return CUSTOMER_SEGMENTS.filter((segment) =>
     matchesAnySegment([segment], profile, now),
   );
 }

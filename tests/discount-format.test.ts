@@ -2,11 +2,26 @@ import { describe, expect, it } from "vitest";
 
 import { DiscountType } from "@/lib/db/types";
 import {
-  describeDiscount,
+  describeDiscount as describeIn,
   discountState,
-  formatDiscountValue,
+  formatDiscountValue as formatValueIn,
+  type DiscountFormat,
   type DiscountSummary,
 } from "@/lib/discounts/format";
+import { en } from "@/lib/i18n/admin/en";
+
+const EN: DiscountFormat = {
+  locale: "en",
+  intl: "en-US",
+  t: en.discountFormat,
+  segments: en.segments,
+};
+const describeDiscount = (summary: DiscountSummary, currency: string) =>
+  describeIn(summary, currency, EN);
+const formatDiscountValue = (
+  discount: Parameters<typeof formatValueIn>[0],
+  currency: string,
+) => formatValueIn(discount, currency, EN);
 
 describe("formatDiscountValue", () => {
   it("reads a percentage out of basis points", () => {
@@ -82,7 +97,7 @@ describe("describeDiscount", () => {
       "No minimum purchase",
       "For all customers",
       "No usage limits",
-      "Can't be combined with other discounts",
+      "Can’t be combined with other discounts",
     ]);
   });
 

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/field";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { PaymentsFormState } from "@/lib/payments/actions";
 
 /**
@@ -21,7 +22,9 @@ export function ConnectStripeButton({
   variant = "primary",
   countries,
   defaultCountry = "",
+  t,
 }: {
+  t: AdminMessages["settings"]["connect"];
   action: (state: PaymentsFormState, formData: FormData) => Promise<PaymentsFormState>;
   label: string;
   variant?: "primary" | "secondary";
@@ -36,7 +39,7 @@ export function ConnectStripeButton({
       {countries ? (
         <div className="w-full max-w-sm space-y-1.5">
           <label htmlFor="stripe-country" className="block text-sm font-medium text-foreground">
-            Where is your business based?
+            {t.country}
           </label>
           <select
             id="stripe-country"
@@ -48,7 +51,7 @@ export function ConnectStripeButton({
             className="h-10 w-full rounded-lg border border-border-strong bg-surface px-3 text-sm text-foreground aria-[invalid=true]:border-danger"
           >
             <option value="" disabled>
-              Choose a country…
+              {t.chooseCountry}
             </option>
             {countries.map((country) => (
               <option key={country.code} value={country.code}>
@@ -64,7 +67,7 @@ export function ConnectStripeButton({
         </div>
       ) : null}
       <Button type="submit" variant={variant} disabled={pending}>
-        {pending ? "Opening Stripe…" : label}
+        {pending ? t.opening : label}
       </Button>
       <FormError>{state.formError}</FormError>
     </form>

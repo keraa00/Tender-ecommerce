@@ -6,6 +6,8 @@ import { AdminPage, EmptyState, Rows } from "@/components/admin/page-shell";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { storeAdminPath } from "@/lib/admin/links";
+import { format, plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
 import {
   listStoreProducts,
@@ -18,8 +20,8 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/products">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Products · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.products.title} · ${store.name}` };
 }
 
 export default async function ProductsPage(
@@ -27,17 +29,20 @@ export default async function ProductsPage(
 ) {
   const { storeSlug } = await props.params;
   // Membership is verified here; `store.id` is the only tenant key used below.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t: messages, locale, intl }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.products;
+  const number = new Intl.NumberFormat(intl);
 
   const products = await listStoreProducts(store.id);
 
   return (
     <AdminPage
-      title="Products"
+      title={t.title}
       description={
-        products.length === 0
-          ? "Your catalogue is empty."
-          : `${products.length} ${products.length === 1 ? "product" : "products"} in your catalogue.`
+        products.length === 0 ? t.empty : plural(locale, products.length, t.count)
       }
       action={
         products.length > 0 ? (
@@ -45,25 +50,24 @@ export default async function ProductsPage(
             href={storeAdminPath(store.slug, "products/new")}
             size="sm"
           >
-            New product
+            {t.newProduct}
           </ButtonLink>
         ) : null
       }
     >
       {products.length === 0 ? (
         <EmptyState
-          title="Nothing to sell yet"
+          title={t.emptyTitle}
           action={
             <ButtonLink
               href={storeAdminPath(store.slug, "products/new")}
               size="lg"
             >
-              Add your first product
+              {t.addFirst}
             </ButtonLink>
           }
         >
-          Add a product with a photo, a price and some stock. You can save it as
-          a draft and publish it when you are ready.
+          {t.emptyBody}
         </EmptyState>
       ) : (
         <Rows>
@@ -89,7 +93,7 @@ export default async function ProductsPage(
                       />
                     ) : (
                       <span className="grid h-full place-items-center text-[10px] text-muted">
-                        No photo
+                        {t.noPhoto}
                       </span>
                     )}
                   </div>
@@ -99,11 +103,11 @@ export default async function ProductsPage(
                     <p className="truncate text-sm text-muted tabular">
                       {price
                         ? price.varies
-                          ? `From ${formatMoney(price.min, store.currency)}`
-                          : formatMoney(price.min, store.currency)
-                        : "No price"}
+                          ? format(t.from, { price: formatMoney(price.min, store.currency, intl) })
+                          : formatMoney(price.min, store.currency, intl)
+                        : t.noPrice}
                       {" · "}
-                      {stock} in stock
+                      {format(t.inStock, { count: number.format(stock) })}
                     </p>
                   </div>
 

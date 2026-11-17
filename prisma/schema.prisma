@@ -60,8 +60,9 @@ enum OrderStatus {
 }
 
 /// Something about an order the seller has to sort out by hand, raised by the
-/// code path that found it. Shown on the order until there are tools to clear
-/// it — refunds are done in the seller's Stripe Dashboard for now.
+/// code path that found it. Shown on the order until it is dealt with —
+/// refunds and disputes are handled in the seller's Stripe Dashboard, and
+/// their webhooks bring the outcome back here.
 enum OrderIssue {
   /// Paid for more units of a variant than were left. Stock is taken when the
   /// money is in, not at checkout, so two buyers can pay for the last one; the
@@ -70,6 +71,9 @@ enum OrderIssue {
   /// The payment succeeded after the order had been cancelled, so the buyer
   /// paid for an order that will not be fulfilled. Refund it.
   PAID_AFTER_CANCEL
+  /// The buyer disputed the charge with their bank. Answer it in the Stripe
+  /// Dashboard; cleared when Stripe reports the dispute won.
+  DISPUTED
 
   @@map("order_issue")
 }
@@ -206,6 +210,11 @@ model Store {
   /// Hex colour driving the storefront accent. Stores must look like different
   /// businesses, not one template with the name swapped out.
   accentColor String? @map("accent_color")
+  /// Shown on the platform's landing page and /stores. Off for every new
+  /// store: a platform admin features one, so a stranger's sign-up never
+  /// appears on the front page by itself. A store need not be featured to be
+  /// reached at its own address.
+  featured    Boolean @default(false)
 
   ownerId String @map("owner_id") @db.Uuid
 
@@ -715,9 +724,16 @@ model Order {
   /// largest one, for the simple case; redemptions link them all.
   appliedDiscounts Json @default("[]") @map("applied_discounts") @db.JsonB
 
+  /// How much of the charge the seller has refunded in Stripe, as Stripe
+  /// reports it on `charge.refunded`. Only ever goes up, and never past the
+  /// total. A full refund of an order not yet sent also cancels it.
+  refundedCents Int @default(0) @map("refunded_cents")
+
   paidAt      DateTime? @map("paid_at")
   fulfilledAt DateTime? @map("fulfilled_at")
   cancelledAt DateTime? @map("cancelled_at")
+  /// When the latest refund came in.
+  refundedAt  DateTime? @map("refunded_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

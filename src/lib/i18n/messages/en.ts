@@ -200,6 +200,8 @@ export const en = {
     payNow: "Pay now",
     paying: "Processing payment…",
     backToCart: "Return to cart",
+    demoNotice:
+      "This is a demo store. Payments run in Stripe test mode — pay with card 4242 4242 4242 4242 — and nothing will be shipped. Please don't enter a real address.",
     unavailable: "This store isn’t taking orders right now.",
     questions: "Questions?",
     blocked: {

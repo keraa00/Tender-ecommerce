@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { SNIFF_BYTES, UNRECOGNISED_IMAGE, sniffImageType } from "@/lib/images/sniff";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PRODUCT_IMAGE_BUCKET, storagePathFromPublicUrl } from "./constants";
 
@@ -25,6 +26,17 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
   "image/avif": "avif",
 };
+
+/**
+ * The upload's content is not an accepted image, whatever type it was sent
+ * as. Its message is written for the seller; callers show it as it is.
+ */
+export class UnrecognisedImageError extends Error {
+  constructor() {
+    super(UNRECOGNISED_IMAGE);
+    this.name = "UnrecognisedImageError";
+  }
+}
 
 /** Uploads one image and returns its public URL. */
 export async function uploadProductImage(
@@ -51,14 +63,23 @@ export async function uploadThemeImage(storeId: string, file: File): Promise<str
   return uploadImage(storeId, `theme-${randomUUID()}`, file);
 }
 
+/**
+ * The type, extension and `Content-Type` of every upload come from the file's
+ * own bytes (SECURITY_AUDIT.md TND-11): the bucket is public, so a file the
+ * browser merely *called* an image would otherwise be hosted, and served, as
+ * whatever it really is.
+ */
 async function uploadImage(storeId: string, name: string, file: File): Promise<string> {
+  const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
+  const contentType = sniffImageType(head);
+  if (!contentType) throw new UnrecognisedImageError();
+
   const supabase = createSupabaseAdminClient();
-  const extension = EXTENSIONS[file.type] ?? "bin";
-  const path = `${storeId}/${name}.${extension}`;
+  const path = `${storeId}/${name}.${EXTENSIONS[contentType]}`;
 
   const { error } = await supabase.storage
     .from(PRODUCT_IMAGE_BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, file, { contentType, upsert: false });
 
   if (error) {
     throw new Error(`Image upload failed: ${error.message}`);

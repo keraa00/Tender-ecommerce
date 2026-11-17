@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { TenderMark } from "@/components/tender-mark";
+
+/** Nothing behind sign-in, or on the way to it, belongs in search results. */
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 // Typed by hand rather than with `LayoutProps`: that helper is keyed on route
 // paths, and a layout inside the `(auth)` route group owns no path of its own.

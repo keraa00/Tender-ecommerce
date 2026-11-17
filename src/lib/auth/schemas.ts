@@ -6,21 +6,47 @@ import * as z from "zod";
  * async functions.
  */
 
-export const emailSchema = z.email("Enter a valid email address.");
+/**
+ * The rules' refusals. English by default — sign-up and sign-in are not
+ * translated — and in the seller's language when account settings pass
+ * theirs (`t.account.errors`).
+ */
+export type FieldRuleMessages = {
+  email: string;
+  passwordMin: string;
+  passwordMax: string;
+  nameRequired: string;
+  nameMax: string;
+};
+
+const ENGLISH: FieldRuleMessages = {
+  email: "Enter a valid email address.",
+  passwordMin: "Use at least 8 characters.",
+  passwordMax: "Passwords are limited to 72 characters.",
+  nameRequired: "Tell us your name.",
+  nameMax: "Keep it to {max} characters.",
+};
+
+export const NAME_MAX_LENGTH = 80;
 
 /**
  * Supabase's own floor is 6 characters; 8 is ours. 72 is bcrypt's limit —
  * anything past it would be silently ignored when the password is checked.
  */
-export const passwordSchema = z
-  .string()
-  .min(8, "Use at least 8 characters.")
-  .max(72, "Passwords are limited to 72 characters.");
+export function fieldSchemas(t: FieldRuleMessages = ENGLISH) {
+  return {
+    email: z.email(t.email),
+    password: z.string().min(8, t.passwordMin).max(72, t.passwordMax),
+    name: z
+      .string()
+      .trim()
+      .min(1, t.nameRequired)
+      .max(NAME_MAX_LENGTH, t.nameMax.replace("{max}", String(NAME_MAX_LENGTH))),
+  };
+}
 
-export const NAME_MAX_LENGTH = 80;
+const english = fieldSchemas();
 
-export const nameSchema = z
-  .string()
-  .trim()
-  .min(1, "Tell us your name.")
-  .max(NAME_MAX_LENGTH, `Keep it to ${NAME_MAX_LENGTH} characters.`);
+export const emailSchema = english.email;
+export const passwordSchema = english.password;
+export const nameSchema = english.name;

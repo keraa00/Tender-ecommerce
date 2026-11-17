@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
   codSettingsFormValues,
-  parseCheckoutSettingsForm,
-  parseCodSettingsForm,
-  parseGeneralSettingsForm,
+  parseCheckoutSettingsForm as parseCheckoutIn,
+  parseCodSettingsForm as parseCodIn,
+  parseGeneralSettingsForm as parseGeneralIn,
 } from "@/lib/stores/settings-form";
+
+const parseGeneralSettingsForm = (formData: FormData) => parseGeneralIn(formData, en);
+const parseCheckoutSettingsForm = (formData: FormData) => parseCheckoutIn(formData, en);
+const parseCodSettingsForm = (formData: FormData) => parseCodIn(formData, en);
 
 function data(entries: Record<string, string>): FormData {
   const form = new FormData();

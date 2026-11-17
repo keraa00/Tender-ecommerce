@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
   MAX_LOGO_BYTES,
-  logoRejectionReason,
+  logoRejectionReason as rejectIn,
   markTextColor,
   storeInitials,
 } from "@/lib/stores/logo";
+
+const logoRejectionReason = (file: { size: number; type: string }) =>
+  rejectIn(file, en.validation.images);
 
 describe("storeInitials", () => {
   it("takes the first letter of the first two words", () => {

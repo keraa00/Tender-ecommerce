@@ -7,6 +7,8 @@ import type {
   DiscountType,
 } from "@/lib/db/types";
 import { parseDateTimeInput } from "@/lib/dates";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { isUuid } from "@/lib/ids";
 import { parseMoneyToCents } from "@/lib/money";
 import {
@@ -175,11 +177,16 @@ function parseScope(
   productIds: string[],
   collectionIds: string[],
   noun: { products: string; collections: string },
+  errors: DiscountErrors,
 ): ScopeResult {
   if (scope === "PRODUCT") {
     if (productIds.length === 0) return { productIds, collectionIds: [], error: noun.products };
     if (productIds.length > MAX_DISCOUNT_TARGETS) {
-      return { productIds, collectionIds: [], error: `Choose at most ${MAX_DISCOUNT_TARGETS} products.` };
+      return {
+        productIds,
+        collectionIds: [],
+        error: format(errors.tooManyProducts, { max: MAX_DISCOUNT_TARGETS }),
+      };
     }
     return { productIds, collectionIds: [] };
   }
@@ -192,7 +199,7 @@ function parseScope(
       return {
         productIds: [],
         collectionIds,
-        error: `Choose at most ${MAX_DISCOUNT_TARGETS} collections.`,
+        error: format(errors.tooManyCollections, { max: MAX_DISCOUNT_TARGETS }),
       };
     }
     return { productIds: [], collectionIds };
@@ -202,12 +209,17 @@ function parseScope(
   return { productIds: [], collectionIds: [] };
 }
 
+type DiscountErrors = AdminMessages["discounts"]["errors"];
+
 export function parseDiscountForm(
   formData: FormData,
+  /** The admin's copy in the seller's language, which the errors are said in. */
+  t: AdminMessages,
   /** Fills in a blank start date. Injected so tests do not depend on the clock. */
   now: Date = new Date(),
 ): ParsedDiscountForm {
   const errors: DiscountFieldErrors = {};
+  const say = t.discounts.errors;
 
   // --- Method: a code the buyer types, or automatic -------------------------
 
@@ -217,11 +229,14 @@ export function parseDiscountForm(
   if (!automatic) {
     code = normalizeDiscountCode(field(formData, "code"));
     if (code === "") {
-      errors.code = "Enter a code for buyers to type at checkout.";
+      errors.code = say.codeRequired;
     } else if (code.length < DISCOUNT_CODE_MIN_LENGTH || code.length > DISCOUNT_CODE_MAX_LENGTH) {
-      errors.code = `Use ${DISCOUNT_CODE_MIN_LENGTH} to ${DISCOUNT_CODE_MAX_LENGTH} characters.`;
+      errors.code = format(say.codeLength, {
+        min: DISCOUNT_CODE_MIN_LENGTH,
+        max: DISCOUNT_CODE_MAX_LENGTH,
+      });
     } else if (!CODE_PATTERN.test(code)) {
-      errors.code = "Use letters, numbers, hyphens and underscores only — no spaces.";
+      errors.code = say.codePattern;
     }
   }
 
@@ -230,34 +245,32 @@ export function parseDiscountForm(
   let title = field(formData, "title").trim();
   if (title === "" && code && !errors.code) title = code;
   if (title === "") {
-    errors.title = automatic
-      ? "Give the discount a title. Buyers see it at checkout."
-      : "Give the discount a title.";
+    errors.title = automatic ? say.titleRequiredAutomatic : say.titleRequired;
   } else if (title.length > MAX_DISCOUNT_TITLE) {
-    errors.title = `Keep the title under ${MAX_DISCOUNT_TITLE} characters.`;
+    errors.title = format(say.titleTooLong, { max: MAX_DISCOUNT_TITLE });
   }
 
   // --- Type and value -------------------------------------------------------
 
   const rawType = field(formData, "type");
   const type = oneOf<DiscountType>(rawType, TYPES, "PERCENTAGE");
-  if (rawType !== "" && rawType !== type) errors.type = "Choose a discount type.";
+  if (rawType !== "" && rawType !== type) errors.type = say.type;
 
   let value = 0;
 
   if (type === "PERCENTAGE") {
     const bps = parsePercentToBps(field(formData, "percentValue"));
     if (bps === null || bps < 1 || bps > FULL_DISCOUNT_BPS) {
-      errors.value = "Enter a percentage between 0.01 and 100.";
+      errors.value = say.percentage;
     } else {
       value = bps;
     }
   } else if (type === "FIXED_AMOUNT") {
     const cents = parseMoneyToCents(field(formData, "amountValue"));
     if (cents === null || cents < 1) {
-      errors.value = "Enter an amount like 10.00.";
+      errors.value = say.amount;
     } else if (cents > MAX_DISCOUNT_CENTS) {
-      errors.value = "That amount is too large.";
+      errors.value = say.amountTooLarge;
     } else {
       value = cents;
     }
@@ -265,7 +278,7 @@ export function parseDiscountForm(
     if (field(formData, "getDiscount") === "percentage") {
       const bps = parsePercentToBps(field(formData, "getPercent"));
       if (bps === null || bps < 1 || bps > FULL_DISCOUNT_BPS) {
-        errors.value = "Enter a percentage between 0.01 and 100.";
+        errors.value = say.percentage;
       } else {
         value = bps;
       }
@@ -286,14 +299,9 @@ export function parseDiscountForm(
     ids(formData, "productId"),
     ids(formData, "collectionId"),
     type === "BUY_X_GET_Y"
-      ? {
-          products: "Choose at least one product the customer gets.",
-          collections: "Choose at least one collection the customer gets from.",
-        }
-      : {
-          products: "Choose at least one product.",
-          collections: "Choose at least one collection.",
-        },
+      ? { products: say.getProducts, collections: say.getCollections }
+      : { products: say.products, collections: say.collections },
+    say,
   );
   if (discounted.error) errors.appliesTo = discounted.error;
 
@@ -312,26 +320,27 @@ export function parseDiscountForm(
       ids(formData, "buyProductId"),
       ids(formData, "buyCollectionId"),
       {
-        products: "Choose at least one product the customer buys.",
-        collections: "Choose at least one collection the customer buys from.",
+        products: say.buyProducts,
+        collections: say.buyCollections,
       },
+      say,
     );
     if (qualifying.error) errors.buysFrom = qualifying.error;
 
     buyQuantity = parseCount(field(formData, "buyQuantity"), 1, MAX_BXGY_QUANTITY);
     if (buyQuantity === null) {
-      errors.buyQuantity = `Enter how many items to buy, from 1 to ${MAX_BXGY_QUANTITY}.`;
+      errors.buyQuantity = format(say.buyQuantity, { max: MAX_BXGY_QUANTITY });
     }
 
     getQuantity = parseCount(field(formData, "getQuantity"), 1, MAX_BXGY_QUANTITY);
     if (getQuantity === null) {
-      errors.getQuantity = `Enter how many items they get, from 1 to ${MAX_BXGY_QUANTITY}.`;
+      errors.getQuantity = format(say.getQuantity, { max: MAX_BXGY_QUANTITY });
     }
 
     if (checked(formData, "limitUsesPerOrder")) {
       maxUsesPerOrder = parseCount(field(formData, "maxUsesPerOrder"), 1, MAX_BXGY_QUANTITY);
       if (maxUsesPerOrder === null) {
-        errors.maxUsesPerOrder = `Enter a number from 1 to ${MAX_BXGY_QUANTITY}.`;
+        errors.maxUsesPerOrder = format(say.maxUsesPerOrder, { max: MAX_BXGY_QUANTITY });
       }
     }
   }
@@ -347,14 +356,14 @@ export function parseDiscountForm(
     if (minimum === "SUBTOTAL") {
       minSubtotalCents = parseMoneyToCents(field(formData, "minSubtotal"));
       if (minSubtotalCents === null || minSubtotalCents < 1) {
-        errors.minimum = "Enter a minimum purchase amount like 50.00.";
+        errors.minimum = say.minimumAmount;
       } else if (minSubtotalCents > MAX_DISCOUNT_CENTS) {
-        errors.minimum = "That amount is too large.";
+        errors.minimum = say.amountTooLarge;
       }
     } else if (minimum === "QUANTITY") {
       minQuantity = parseCount(field(formData, "minQuantity"), 1, MAX_MINIMUM_QUANTITY);
       if (minQuantity === null) {
-        errors.minimum = `Enter a minimum quantity from 1 to ${MAX_MINIMUM_QUANTITY}.`;
+        errors.minimum = format(say.minimumQuantity, { max: MAX_MINIMUM_QUANTITY });
       }
     }
   }
@@ -371,17 +380,17 @@ export function parseDiscountForm(
 
   if (eligibility === "SEGMENTS") {
     segments = [...new Set(column(formData, "segment").filter(isCustomerSegment))];
-    if (segments.length === 0) errors.eligibility = "Choose at least one segment.";
+    if (segments.length === 0) errors.eligibility = say.segments;
   } else if (eligibility === "CUSTOMERS") {
     const parsed = parseEmails(formData);
     customerEmails = parsed.emails;
 
     if (parsed.invalid !== null) {
-      errors.eligibility = `"${parsed.invalid}" is not an email address.`;
+      errors.eligibility = format(say.invalidEmail, { email: parsed.invalid });
     } else if (customerEmails.length === 0) {
-      errors.eligibility = "Add at least one customer.";
+      errors.eligibility = say.noCustomers;
     } else if (customerEmails.length > MAX_DISCOUNT_CUSTOMERS) {
-      errors.eligibility = `Add at most ${MAX_DISCOUNT_CUSTOMERS} customers.`;
+      errors.eligibility = format(say.tooManyCustomers, { max: MAX_DISCOUNT_CUSTOMERS });
     }
   }
 
@@ -390,14 +399,14 @@ export function parseDiscountForm(
   let usageLimit: number | null = null;
   if (checked(formData, "limitTotalUses")) {
     usageLimit = parseCount(field(formData, "usageLimit"), 1, MAX_USAGE_LIMIT);
-    if (usageLimit === null) errors.usageLimit = "Enter how many times it can be used, 1 or more.";
+    if (usageLimit === null) errors.usageLimit = say.usageLimit;
   }
 
   let perCustomerLimit: number | null = null;
   if (checked(formData, "limitPerCustomer")) {
     perCustomerLimit = parseCount(field(formData, "perCustomerLimit"), 1, MAX_USAGE_LIMIT);
     if (perCustomerLimit === null) {
-      errors.perCustomerLimit = "Enter how many times each customer can use it, 1 or more.";
+      errors.perCustomerLimit = say.perCustomerLimit;
     }
   }
 
@@ -407,16 +416,16 @@ export function parseDiscountForm(
   let startsAt: Date | null = now;
   if (rawStart.trim() !== "") {
     startsAt = parseDateTimeInput(rawStart);
-    if (!startsAt) errors.startsAt = "Enter a valid start date and time.";
+    if (!startsAt) errors.startsAt = say.startsAt;
   }
 
   let endsAt: Date | null = null;
   if (checked(formData, "hasEndDate")) {
     endsAt = parseDateTimeInput(field(formData, "endsAt"));
     if (!endsAt) {
-      errors.endsAt = "Enter a valid end date and time.";
+      errors.endsAt = say.endsAt;
     } else if (startsAt && endsAt <= startsAt) {
-      errors.endsAt = "The end has to come after the start.";
+      errors.endsAt = say.endBeforeStart;
     }
   }
 

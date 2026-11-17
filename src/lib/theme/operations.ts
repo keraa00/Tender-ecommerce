@@ -6,6 +6,9 @@ import {
 } from "./document";
 import { settingsDefaults, type Fields } from "./fields";
 import type { ThemeIssue } from "./validate";
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { Locale } from "@/lib/i18n/locales";
 
 /**
  * The edits the theme editor makes to a document, as pure functions.
@@ -70,21 +73,31 @@ export function uniqueId(base: string, taken: ReadonlySet<string>): string {
   }
 }
 
+/**
+ * How the editor words a refusal, in the seller's language. The manifest's
+ * name is already theirs — see `sectionManifests()`.
+ */
+export type BlockedCopy = {
+  locale: Locale;
+  t: AdminMessages["themeEditor"]["operations"];
+};
+
 /** Why a section of this type cannot be added to the page, or null if it can. */
 export function addSectionBlockedReason(
   document: ThemeDocument,
   manifest: ManifestLike,
+  { t }: BlockedCopy,
 ): string | null {
-  if (manifest.pinned) return `The ${manifest.name.toLowerCase()} is always on the page.`;
+  if (manifest.pinned) return format(t.pinned, { section: manifest.name });
 
   const { sections } = document.pages.home;
   if (sections.length >= MAX_SECTIONS_PER_PAGE) {
-    return `A page holds at most ${MAX_SECTIONS_PER_PAGE} sections.`;
+    return format(t.pageFull, { max: MAX_SECTIONS_PER_PAGE });
   }
 
   const count = sections.filter((section) => section.type === manifest.type).length;
   if (count >= manifest.maxPerPage) {
-    return `A page holds at most ${manifest.maxPerPage} of “${manifest.name}”.`;
+    return format(t.tooManyOfType, { max: manifest.maxPerPage, section: manifest.name });
   }
 
   return null;
@@ -97,9 +110,10 @@ export function addSectionBlockedReason(
 export function addSection(
   document: ThemeDocument,
   manifest: ManifestLike,
+  copy: BlockedCopy,
   index?: number,
 ): { ok: true; document: ThemeDocument; id: string } | { ok: false; reason: string } {
-  const reason = addSectionBlockedReason(document, manifest);
+  const reason = addSectionBlockedReason(document, manifest, copy);
   if (reason) return { ok: false, reason };
 
   const taken = themeIds(document);
@@ -213,17 +227,16 @@ export function addBlockBlockedReason(
   sectionId: string,
   manifest: ManifestLike,
   blockType: string,
+  { locale, t }: BlockedCopy,
 ): string | null {
   const section = findSection(document, sectionId);
-  if (!section || section.type !== manifest.type) return "That section is no longer on the page.";
+  if (!section || section.type !== manifest.type) return t.sectionGone;
 
   const block = manifest.blocks[blockType];
-  if (!block) return `A ${manifest.name.toLowerCase()} cannot hold that.`;
+  if (!block) return format(t.cannotHold, { section: manifest.name });
 
   if (section.blocks.length >= manifest.maxBlocks) {
-    return `A ${manifest.name.toLowerCase()} holds at most ${manifest.maxBlocks} ${
-      manifest.maxBlocks === 1 ? "block" : "blocks"
-    }.`;
+    return plural(locale, manifest.maxBlocks, t.blocksFull, { section: manifest.name });
   }
   return null;
 }
@@ -234,8 +247,9 @@ export function addBlock(
   sectionId: string,
   manifest: ManifestLike,
   blockType: string,
+  copy: BlockedCopy,
 ): { ok: true; document: ThemeDocument; id: string } | { ok: false; reason: string } {
-  const reason = addBlockBlockedReason(document, sectionId, manifest, blockType);
+  const reason = addBlockBlockedReason(document, sectionId, manifest, blockType, copy);
   if (reason) return { ok: false, reason };
 
   const id = uniqueId(`${sectionId}-${blockType}`, themeIds(document));

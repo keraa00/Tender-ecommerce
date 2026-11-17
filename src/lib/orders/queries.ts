@@ -46,6 +46,7 @@ export async function listStoreOrders(
       paidAt: true,
       shippingRateName: true,
       issues: true,
+      refundedCents: true,
       _count: { select: { lines: true } },
     },
   });

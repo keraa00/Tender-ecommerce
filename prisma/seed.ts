@@ -8,10 +8,15 @@
  *
  *   npm run db:seed
  *
- * If SUPABASE_SERVICE_ROLE_KEY is set, the seller accounts and the platform
- * admin are created in Supabase Auth as well, so you can actually log in as
- * them. Without it the rows still exist in `public.users` (so the storefronts
- * work), they just have no credentials behind them.
+ * If SUPABASE_SERVICE_ROLE_KEY and SEED_PASSWORD are set, the seller accounts
+ * and the platform admin are created in Supabase Auth as well, so you can
+ * actually log in as them — and accounts that already exist are moved onto
+ * SEED_PASSWORD, so changing it and reseeding rotates every demo login. Without
+ * them the rows still exist in `public.users` (so the storefronts work), they
+ * just have no credentials behind them.
+ *
+ * The password is read from the environment, never from this repo: a password
+ * committed here is a password published to anyone who can read the repo.
  *
  * With the key, photos from Wikimedia are also copied into each store's
  * storage prefix on first seed (a few minutes: Wikimedia paces downloads) and
@@ -36,7 +41,6 @@ import { PRODUCT_IMAGE_BUCKET } from "../src/lib/products/constants";
 import { chooseRate, eligibleRates, zoneFor, type ZoneRule } from "../src/lib/shipping/rates";
 import {
   PLATFORM_ADMIN,
-  SEED_PASSWORD,
   SEED_STORES,
   type SeedCod,
   type SeedDiscount,
@@ -249,32 +253,46 @@ function supabaseAdmin() {
   });
 }
 
+/** The demo accounts' password, from `.env`. Null leaves Auth credentials alone. */
+function seedPassword(): string | null {
+  return process.env.SEED_PASSWORD?.trim() || null;
+}
+
 /**
  * Returns the id to use for a demo account, creating it in Supabase Auth when
- * a service-role key is available. Already-registered accounts are looked up
- * rather than treated as an error, which is what makes reseeding safe.
+ * a service-role key and SEED_PASSWORD are available. Already-registered
+ * accounts are looked up rather than treated as an error, which is what makes
+ * reseeding safe — and are moved onto SEED_PASSWORD, so a reseed rotates them.
  */
 async function resolveUserId(email: string, name: string): Promise<string> {
   const admin = supabaseAdmin();
   const fallback = FALLBACK_USER_IDS[email];
+  const password = seedPassword();
 
   if (!admin) return fallback;
 
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password: SEED_PASSWORD,
-    email_confirm: true,
-    user_metadata: { name },
-  });
-
-  if (!error && data.user) return data.user.id;
+  if (password) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name },
+    });
+    if (!error && data.user) return data.user.id;
+  }
 
   const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const existing = list?.users.find((user) => user.email === email);
 
-  if (existing) return existing.id;
+  if (existing) {
+    if (password) {
+      const { error } = await admin.auth.admin.updateUserById(existing.id, { password });
+      if (error) console.warn(`! could not set the password of ${email}: ${error.message}`);
+    }
+    return existing.id;
+  }
 
-  console.warn(`! could not provision ${email} in Supabase Auth: ${error?.message}`);
+  if (password) console.warn(`! could not provision ${email} in Supabase Auth`);
   return fallback;
 }
 
@@ -329,6 +347,8 @@ async function seedStore(store: SeedStore, images: Record<string, SeedImage[]>) 
     // Only where the catalogue says: a seller who set up cash on delivery
     // by hand keeps it.
     ...(store.cod ? codColumns(store.cod) : {}),
+    // The demo stores are what the landing page shows.
+    featured: true,
   } satisfies Prisma.StoreUncheckedUpdateInput;
 
   const record = await db.store.upsert({
@@ -981,13 +1001,15 @@ function postalAddress(name: string, address: SeedOrder["address"]): PostalAddre
 
 async function main() {
   const images = await loadImages();
-  const withAuth = supabaseAdmin() !== null;
+  const withAuth = supabaseAdmin() !== null && seedPassword() !== null;
 
   console.log(
     `Seeding ${SEED_STORES.length} stores` +
       (withAuth
         ? " (provisioning Supabase Auth accounts)"
-        : " (no SUPABASE_SERVICE_ROLE_KEY — database rows only)"),
+        : supabaseAdmin()
+          ? " (no SEED_PASSWORD — demo logins are neither created nor changed)"
+          : " (no SUPABASE_SERVICE_ROLE_KEY — database rows only)"),
   );
 
   await upsertUser(PLATFORM_ADMIN.email, PLATFORM_ADMIN.name, "PLATFORM_ADMIN");
@@ -1005,7 +1027,7 @@ async function main() {
   for (const store of SEED_STORES) {
     console.log(`  ${store.owner.email.padEnd(24)} owns /s/${store.slug}`);
   }
-  if (withAuth) console.log(`  password: ${SEED_PASSWORD}`);
+  if (withAuth) console.log("  password: SEED_PASSWORD from .env");
 }
 
 main()

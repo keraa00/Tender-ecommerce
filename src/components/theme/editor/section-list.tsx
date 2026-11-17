@@ -3,10 +3,13 @@
 import { useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { ThemeBlock, ThemeDocument, ThemeSection } from "@/lib/theme/document";
 import {
   addBlockBlockedReason,
   addSectionBlockedReason,
+  type BlockedCopy,
   type SettingsTarget,
 } from "@/lib/theme/operations";
 import type { SectionManifest } from "@/lib/theme/registry";
@@ -38,12 +41,17 @@ export function SectionList({
   manifests,
   selected,
   actions,
+  t,
+  blockedCopy,
 }: {
   document: ThemeDocument;
   manifests: SectionManifest[];
   selected: SettingsTarget;
   actions: SectionListActions;
+  t: AdminMessages["themeEditor"];
+  blockedCopy: BlockedCopy;
 }) {
+  const list = t.list;
   const [adding, setAdding] = useState(false);
   // Block lists start open: a section's headings, text and buttons are blocks,
   // and a seller who cannot see them has no way to find where to type.
@@ -74,21 +82,21 @@ export function SectionList({
           isSelected(section.id) ? "bg-surface-hover font-medium" : "hover:bg-surface-hover/60",
         )}
       >
-        {manifestByType.get(section.type)?.name ?? "Section"}
+        {manifestByType.get(section.type)?.name ?? t.section}
       </button>
     </div>
   );
 
   return (
     <div className="flex min-h-full flex-col">
-      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">Header</p>
+      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">{list.header}</p>
       {pinned(document.layout.header)}
 
-      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">Home page</p>
-      <ol aria-label="Home page sections" className="space-y-0.5 px-2">
+      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">{list.homePage}</p>
+      <ol aria-label={list.homePageSections} className="space-y-0.5 px-2">
         {sections.map((section, index) => {
           const manifest = manifestByType.get(section.type);
-          const name = manifest?.name ?? "Unknown section";
+          const name = manifest?.name ?? t.unknownSection;
           const active = isSelected(section.id);
           const hasBlocks = (manifest?.maxBlocks ?? 0) > 0;
           const open = hasBlocks && isOpen(section.id);
@@ -105,12 +113,13 @@ export function SectionList({
                 hidden={section.hidden}
                 name={name}
                 summary={summaryOf(section.settings)}
+                dragLabel={list.dragToReorder}
                 onSelect={() => actions.onSelect({ kind: "section", id: section.id })}
                 handle={sortable.handleProps(index)}
                 leading={
                   hasBlocks ? (
                     <IconButton
-                      label={open ? `Collapse ${name}` : `Expand ${name}`}
+                      label={format(open ? list.collapse : list.expand, { name })}
                       pressed={open}
                       onClick={() => toggleOpen(section.id)}
                       className="h-6 w-6"
@@ -123,27 +132,30 @@ export function SectionList({
                 }
               >
                 <IconButton
-                  label={`Move ${name} up`}
+                  label={format(list.moveUp, { name })}
                   disabled={index === 0}
                   onClick={() => actions.onMoveSection(section.id, index - 1)}
                 >
                   <Chevron direction="up" />
                 </IconButton>
                 <IconButton
-                  label={`Move ${name} down`}
+                  label={format(list.moveDown, { name })}
                   disabled={index === sections.length - 1}
                   onClick={() => actions.onMoveSection(section.id, index + 1)}
                 >
                   <Chevron direction="down" />
                 </IconButton>
                 <IconButton
-                  label={section.hidden ? `Show ${name}` : `Hide ${name}`}
+                  label={format(section.hidden ? list.show : list.hide, { name })}
                   pressed={section.hidden}
                   onClick={() => actions.onToggleSection(section.id)}
                 >
                   <Eye closed={section.hidden} />
                 </IconButton>
-                <IconButton label={`Remove ${name}`} onClick={() => actions.onRemoveSection(section.id)}>
+                <IconButton
+                  label={format(list.remove, { name })}
+                  onClick={() => actions.onRemoveSection(section.id)}
+                >
                   <Trash />
                 </IconButton>
               </Row>
@@ -155,6 +167,8 @@ export function SectionList({
                   manifest={manifest}
                   selected={selected}
                   actions={actions}
+                  t={t}
+                  blockedCopy={blockedCopy}
                 />
               ) : null}
             </li>
@@ -162,12 +176,12 @@ export function SectionList({
         })}
       </ol>
       {sections.length === 0 ? (
-        <p className="px-4 py-2 text-sm text-muted">This page has no sections yet.</p>
+        <p className="px-4 py-2 text-sm text-muted">{list.noSections}</p>
       ) : null}
 
       <div className="px-2 pt-1">
         <AddButton open={adding} onToggle={() => setAdding((current) => !current)}>
-          Add section
+          {list.addSection}
         </AddButton>
         {adding ? (
           <Menu
@@ -177,7 +191,7 @@ export function SectionList({
                 key: manifest.type,
                 label: manifest.name,
                 hint: manifest.description,
-                blocked: addSectionBlockedReason(document, manifest),
+                blocked: addSectionBlockedReason(document, manifest, blockedCopy),
               }))}
             onChoose={(type) => {
               actions.onAddSection(type);
@@ -187,7 +201,7 @@ export function SectionList({
         ) : null}
       </div>
 
-      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">Footer</p>
+      <p className="px-4 pb-1 pt-4 text-xs font-medium text-muted">{list.footer}</p>
       {pinned(document.layout.footer)}
 
       <div className="mt-auto border-t border-border p-2">
@@ -200,8 +214,8 @@ export function SectionList({
             selected.kind === "theme" ? "bg-surface-hover font-medium" : "hover:bg-surface-hover",
           )}
         >
-          Theme settings
-          <span className="ms-auto text-xs text-muted">Colours, fonts</span>
+          {list.themeSettings}
+          <span className="ms-auto text-xs text-muted">{list.themeSettingsHint}</span>
         </button>
       </div>
     </div>
@@ -215,13 +229,18 @@ function BlockList({
   manifest,
   selected,
   actions,
+  t,
+  blockedCopy,
 }: {
   document: ThemeDocument;
   section: ThemeSection;
   manifest: SectionManifest;
   selected: SettingsTarget;
   actions: SectionListActions;
+  t: AdminMessages["themeEditor"];
+  blockedCopy: BlockedCopy;
 }) {
+  const list = t.list;
   const [adding, setAdding] = useState(false);
   const { blocks } = section;
   const sortable = useSortable((from, to) =>
@@ -230,9 +249,9 @@ function BlockList({
 
   return (
     <div className="ms-6 border-s border-border ps-1 pb-1">
-      <ol aria-label={`${manifest.name} blocks`} className="space-y-0.5">
+      <ol aria-label={format(list.blocksOf, { name: manifest.name })} className="space-y-0.5">
         {blocks.map((block: ThemeBlock, index) => {
-          const name = manifest.blocks[block.type]?.name ?? "Block";
+          const name = manifest.blocks[block.type]?.name ?? t.block;
           const active =
             selected.kind === "block" &&
             selected.sectionId === section.id &&
@@ -249,6 +268,7 @@ function BlockList({
                 hidden={block.hidden}
                 name={name}
                 summary={summaryOf(block.settings)}
+                dragLabel={list.dragToReorder}
                 onSelect={() =>
                   actions.onSelect({ kind: "block", sectionId: section.id, blockId: block.id })
                 }
@@ -256,28 +276,28 @@ function BlockList({
                 compact
               >
                 <IconButton
-                  label={`Move ${name} up`}
+                  label={format(list.moveUp, { name })}
                   disabled={index === 0}
                   onClick={() => actions.onMoveBlock(section.id, block.id, index - 1)}
                 >
                   <Chevron direction="up" />
                 </IconButton>
                 <IconButton
-                  label={`Move ${name} down`}
+                  label={format(list.moveDown, { name })}
                   disabled={index === blocks.length - 1}
                   onClick={() => actions.onMoveBlock(section.id, block.id, index + 1)}
                 >
                   <Chevron direction="down" />
                 </IconButton>
                 <IconButton
-                  label={block.hidden ? `Show ${name}` : `Hide ${name}`}
+                  label={format(block.hidden ? list.show : list.hide, { name })}
                   pressed={block.hidden}
                   onClick={() => actions.onToggleBlock(section.id, block.id)}
                 >
                   <Eye closed={block.hidden} />
                 </IconButton>
                 <IconButton
-                  label={`Remove ${name}`}
+                  label={format(list.remove, { name })}
                   onClick={() => actions.onRemoveBlock(section.id, block.id)}
                 >
                   <Trash />
@@ -289,14 +309,14 @@ function BlockList({
       </ol>
 
       <AddButton open={adding} onToggle={() => setAdding((current) => !current)} small>
-        Add block
+        {list.addBlock}
       </AddButton>
       {adding ? (
         <Menu
           items={Object.entries(manifest.blocks).map(([type, block]) => ({
             key: type,
             label: block.name,
-            blocked: addBlockBlockedReason(document, section.id, manifest, type),
+            blocked: addBlockBlockedReason(document, section.id, manifest, type, blockedCopy),
           }))}
           onChoose={(type) => {
             actions.onAddBlock(section.id, type);
@@ -318,12 +338,15 @@ function Row({
   handle,
   leading,
   compact = false,
+  dragLabel,
   children,
 }: {
   active: boolean;
   hidden: boolean;
   name: string;
   summary: string | null;
+  /** The drag handle's tooltip. */
+  dragLabel: string;
   onSelect: () => void;
   handle: ReturnType<ReturnType<typeof useSortable>["handleProps"]>;
   leading?: ReactNode;
@@ -340,7 +363,7 @@ function Row({
       <span
         {...handle}
         aria-hidden
-        title="Drag to reorder"
+        title={dragLabel}
         className="grid h-7 w-5 shrink-0 place-items-center text-muted/70 hover:text-foreground"
       >
         <Grip />

@@ -3,9 +3,12 @@
 import Image from "next/image";
 import { useActionState, useMemo, useState } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { SaveBar, useDiscard } from "@/components/admin/save-bar";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
 import type { CollectionFormState } from "@/lib/collections/actions";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { slugify } from "@/lib/slug";
 
 /**
@@ -39,6 +42,7 @@ type CollectionFormProps = {
   collection?: CollectionFormCollection;
   products: CollectionProductOption[];
   submitLabel: string;
+  t: AdminMessages["collections"]["form"];
 };
 
 export function CollectionForm(props: CollectionFormProps) {
@@ -51,8 +55,10 @@ function CollectionFormBody({
   collection,
   products,
   submitLabel,
+  t,
   onDiscard,
 }: CollectionFormProps & { onDiscard: () => void }) {
+  const { intl } = useAdminI18n();
   const [state, formAction, pending] = useActionState<CollectionFormState, FormData>(
     action,
     {},
@@ -113,17 +119,17 @@ function CollectionFormBody({
 
       <section className="space-y-5">
         <Field
-          label="Title"
+          label={t.title}
           htmlFor="title"
           error={state.fieldErrors?.title}
-          hint="Shown as the heading on the collection page."
+          hint={t.titleHint}
         >
           <Input
             id="title"
             name="title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Summer essentials"
+            placeholder={t.titlePlaceholder}
             autoComplete="off"
             required
             aria-invalid={Boolean(state.fieldErrors?.title)}
@@ -131,13 +137,17 @@ function CollectionFormBody({
         </Field>
 
         <Field
-          label="Address"
+          label={t.address}
           htmlFor="slug"
           error={state.fieldErrors?.slug}
-          hint="The collection's URL within your storefront."
+          hint={t.addressHint}
         >
-          <div className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground">
-            <span className="pl-3 text-sm text-muted select-none">
+          {/* A URL reads left to right in every language. */}
+          <div
+            dir="ltr"
+            className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground"
+          >
+            <span className="ps-3 text-sm text-muted select-none">
               /collections/
             </span>
             <Input
@@ -148,36 +158,36 @@ function CollectionFormBody({
                 setSlugEdited(true);
                 setSlug(slugify(event.target.value));
               }}
-              placeholder="summer-essentials"
+              placeholder={t.addressPlaceholder}
               autoComplete="off"
-              className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+              className="border-0 bg-transparent ps-1 focus-visible:outline-none"
               aria-invalid={Boolean(state.fieldErrors?.slug)}
             />
           </div>
         </Field>
 
         <Field
-          label="Description"
+          label={t.description}
           htmlFor="description"
           error={state.fieldErrors?.description}
-          hint="Optional. A line or two introducing the collection."
+          hint={t.descriptionHint}
         >
           <Textarea
             id="description"
             name="description"
             rows={3}
             defaultValue={collection?.description ?? ""}
-            placeholder="Light layers and everyday pieces for warm days."
+            placeholder={t.descriptionPlaceholder}
           />
         </Field>
       </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-sm font-medium tracking-tight">
-            Products in this collection
-          </h2>
-          <p className="text-sm text-muted tabular">{selected.length} chosen</p>
+          <h2 className="text-sm font-medium tracking-tight">{t.productsInCollection}</h2>
+          <p className="text-sm text-muted tabular">
+            {format(t.chosen, { count: new Intl.NumberFormat(intl).format(selected.length) })}
+          </p>
         </div>
 
         {state.fieldErrors?.products ? (
@@ -188,7 +198,7 @@ function CollectionFormBody({
 
         {selected.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border-strong px-4 py-6 text-center text-sm text-muted">
-            None yet. Pick products from the list below.
+            {t.noneYet}
           </p>
         ) : (
           <ol className="divide-y divide-border overflow-hidden rounded-xl border border-border">
@@ -202,8 +212,8 @@ function CollectionFormBody({
                   className="flex items-center gap-3 bg-surface px-3 py-2"
                 >
                   <input type="hidden" name="productId" value={id} />
-                  <span className="w-5 shrink-0 text-right text-xs text-muted tabular">
-                    {index + 1}
+                  <span className="w-5 shrink-0 text-end text-xs text-muted tabular">
+                    {new Intl.NumberFormat(intl).format(index + 1)}
                   </span>
                   <Thumb url={product.imageUrl} />
                   <span className="min-w-0 flex-1">
@@ -212,27 +222,27 @@ function CollectionFormBody({
                     </span>
                     {!product.published ? (
                       <span className="block text-xs text-warning">
-                        {product.statusLabel} — hidden from buyers
+                        {format(t.hiddenFromBuyers, { status: product.statusLabel })}
                       </span>
                     ) : null}
                   </span>
                   <span className="flex shrink-0 items-center gap-0.5">
                     <IconButton
-                      label={`Move ${product.title} up`}
+                      label={format(t.moveUp, { product: product.title })}
                       disabled={index === 0}
                       onClick={() => move(index, -1)}
                     >
                       <path d="m6 15 6-6 6 6" />
                     </IconButton>
                     <IconButton
-                      label={`Move ${product.title} down`}
+                      label={format(t.moveDown, { product: product.title })}
                       disabled={index === selected.length - 1}
                       onClick={() => move(index, 1)}
                     >
                       <path d="m6 9 6 6 6-6" />
                     </IconButton>
                     <IconButton
-                      label={`Remove ${product.title}`}
+                      label={format(t.remove, { product: product.title })}
                       onClick={() =>
                         setSelected((current) =>
                           current.filter((candidate) => candidate !== id),
@@ -250,11 +260,11 @@ function CollectionFormBody({
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium tracking-tight">Add products</h2>
+        <h2 className="text-sm font-medium tracking-tight">{t.addProducts}</h2>
 
         {products.length === 0 ? (
           <p className="text-sm text-muted">
-            Your catalogue is empty. Add products first, then group them here.
+            {t.emptyCatalogue}
           </p>
         ) : (
           <>
@@ -262,15 +272,15 @@ function CollectionFormBody({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter products by name"
-              aria-label="Filter products by name"
+              placeholder={t.filter}
+              aria-label={t.filter}
             />
 
             {available.length === 0 ? (
               <p className="text-sm text-muted">
                 {needle
-                  ? "No other products match that name."
-                  : "Every product is already in this collection."}
+                  ? t.noMatch
+                  : t.allAdded}
               </p>
             ) : (
               <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-xl border border-border">
@@ -281,7 +291,7 @@ function CollectionFormBody({
                       onClick={() =>
                         setSelected((current) => [...current, product.id])
                       }
-                      className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-hover"
+                      className="flex w-full cursor-pointer items-center gap-3 bg-surface px-3 py-2 text-start transition-colors hover:bg-surface-hover"
                     >
                       <Thumb url={product.imageUrl} />
                       <span className="min-w-0 flex-1 truncate text-sm">
@@ -293,7 +303,7 @@ function CollectionFormBody({
                         </span>
                       ) : null}
                       <span className="shrink-0 text-sm font-medium text-muted">
-                        Add
+                        {t.add}
                       </span>
                     </button>
                   </li>

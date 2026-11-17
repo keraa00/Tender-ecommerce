@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { countryName } from "@/lib/address/countries";
+import { format } from "@/lib/i18n/format";
+import { getAdminI18n, type AdminI18n } from "@/lib/i18n/server";
 import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
@@ -37,7 +39,6 @@ export type RateFormState = {
   fieldErrors?: RateFieldErrors;
 };
 
-const SAVE_FAILED = "Could not save. Please try again.";
 
 function revalidateShipping(storeSlug: string) {
   // Internal route paths, not admin-host URLs — see `lib/products/actions.ts`.
@@ -65,6 +66,7 @@ async function takenCountry(
   storeId: string,
   draft: ZoneDraft,
   exceptZoneId: string | null,
+  { t, intl }: AdminI18n,
 ): Promise<string | null> {
   if (draft.countries.length === 0) return null;
   const clash = await rootDb.shippingZoneCountry.findFirst({
@@ -77,11 +79,13 @@ async function takenCountry(
     select: { countryCode: true, zone: { select: { name: true } } },
   });
   return clash
-    ? `${countryName(clash.countryCode, "en")} is already in “${clash.zone.name}”. A country can be in one zone only.`
+    ? format(t.settings.shipping.errors.clash, {
+        country: countryName(clash.countryCode, intl),
+        zone: clash.zone.name,
+      })
     : null;
 }
 
-const RACED = "One of those countries was just added to another zone. Check the list and save again.";
 
 // ---------------------------------------------------------------------------
 // Zones
@@ -93,13 +97,14 @@ export async function createZoneAction(
   _prev: ZoneFormState,
   formData: FormData,
 ): Promise<ZoneFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, i18n] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  const say = i18n.t.settings.shipping.errors;
 
-  const parsed = parseZoneForm(formData, { restOfWorld });
+  const parsed = parseZoneForm(formData, { restOfWorld }, i18n);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
   const { draft } = parsed;
 
-  const taken = await takenCountry(store.id, draft, null);
+  const taken = await takenCountry(store.id, draft, null, i18n);
   if (taken) return { fieldErrors: { countries: taken } };
 
   let zoneId: string;
@@ -132,11 +137,11 @@ export async function createZoneAction(
   } catch (error) {
     if (isTaken(error)) {
       return restOfWorld
-        ? { formError: "Your store already has a rest-of-world zone." }
-        : { fieldErrors: { countries: RACED } };
+        ? { formError: say.restOfWorldExists }
+        : { fieldErrors: { countries: say.raced } };
     }
     console.error("createZoneAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: say.saveFailed };
   }
 
   revalidateShipping(storeSlug);
@@ -150,7 +155,8 @@ export async function updateZoneAction(
   _prev: ZoneFormState,
   formData: FormData,
 ): Promise<ZoneFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, i18n] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  const say = i18n.t.settings.shipping.errors;
   if (!isUuid(zoneId)) notFound();
 
   const zone = await rootDb.shippingZone.findFirst({
@@ -159,11 +165,11 @@ export async function updateZoneAction(
   });
   if (!zone) notFound();
 
-  const parsed = parseZoneForm(formData, { restOfWorld: zone.restOfWorld === true });
+  const parsed = parseZoneForm(formData, { restOfWorld: zone.restOfWorld === true }, i18n);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
   const { draft } = parsed;
 
-  const taken = await takenCountry(store.id, draft, zone.id);
+  const taken = await takenCountry(store.id, draft, zone.id, i18n);
   if (taken) return { fieldErrors: { countries: taken } };
 
   try {
@@ -183,13 +189,13 @@ export async function updateZoneAction(
       }
     });
   } catch (error) {
-    if (isTaken(error)) return { fieldErrors: { countries: RACED } };
+    if (isTaken(error)) return { fieldErrors: { countries: say.raced } };
     console.error("updateZoneAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: say.saveFailed };
   }
 
   revalidateShipping(storeSlug);
-  return { notice: "Saved." };
+  return { notice: i18n.t.settings.shipping.saved };
 }
 
 export async function deleteZoneAction(storeSlug: string, zoneId: string): Promise<void> {
@@ -234,10 +240,11 @@ export async function createRateAction(
   _prev: RateFormState,
   formData: FormData,
 ): Promise<RateFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, i18n] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  const say = i18n.t.settings.shipping.errors;
   const zone = await ownZone(store.id, zoneId);
 
-  const parsed = parseRateForm(formData);
+  const parsed = parseRateForm(formData, i18n.t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   try {
@@ -255,7 +262,7 @@ export async function createRateAction(
     });
   } catch (error) {
     console.error("createRateAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: say.saveFailed };
   }
 
   revalidateShipping(storeSlug);
@@ -269,10 +276,11 @@ export async function updateRateAction(
   _prev: RateFormState,
   formData: FormData,
 ): Promise<RateFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, i18n] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  const say = i18n.t.settings.shipping.errors;
   if (!isUuid(zoneId) || !isUuid(rateId)) notFound();
 
-  const parsed = parseRateForm(formData);
+  const parsed = parseRateForm(formData, i18n.t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   let updated = 0;
@@ -285,14 +293,14 @@ export async function updateRateAction(
     }));
   } catch (error) {
     console.error("updateRateAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: say.saveFailed };
   }
 
   // Outside the try block, like redirect(): notFound() signals by throwing.
   if (updated === 0) notFound();
 
   revalidateShipping(storeSlug);
-  return { notice: "Saved." };
+  return { notice: i18n.t.settings.shipping.saved };
 }
 
 export async function deleteRateAction(

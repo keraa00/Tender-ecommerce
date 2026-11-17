@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseProductForm } from "@/lib/products/form";
+import { en } from "@/lib/i18n/admin/en";
+import { parseProductForm as parseWith } from "@/lib/products/form";
+
+const parseProductForm = (formData: FormData) => parseWith(formData, en);
 
 type Row = Partial<{
   id: string;

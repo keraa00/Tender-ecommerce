@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  escapeLikePattern,
   matchRanges,
   normalizeSearchQuery,
   rankByTitle,
@@ -99,5 +100,17 @@ describe("matchRanges", () => {
 
   it("gives up rather than misplace a highlight when case-folding shifts offsets", () => {
     expect(matchRanges("İstanbul mug", ["mug"])).toEqual([]);
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("makes LIKE wildcards and the escape character literal", () => {
+    expect(escapeLikePattern("50%")).toBe("50\\%");
+    expect(escapeLikePattern("a_b")).toBe("a\\_b");
+    expect(escapeLikePattern("c:\\d")).toBe("c:\\\\d");
+  });
+
+  it("leaves ordinary words alone", () => {
+    expect(escapeLikePattern("ceramic")).toBe("ceramic");
   });
 });

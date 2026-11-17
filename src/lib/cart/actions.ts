@@ -85,7 +85,10 @@ export async function addToCartAction(
       const cart = await tx.cart.upsert({
         where: { storeId_sessionId_kind: { storeId, sessionId, kind: CartKind.STANDARD } },
         create: { storeId, sessionId },
-        update: {},
+        // Stamped by hand: an empty update writes nothing. `updatedAt` is when
+        // the cart cookie last slid forward, which the daily sweep reads to
+        // tell an abandoned cart from one a buyer can still reach.
+        update: { updatedAt: new Date() },
         select: { id: true },
       });
 

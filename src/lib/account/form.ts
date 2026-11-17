@@ -1,6 +1,28 @@
 import * as z from "zod";
 
-import { emailSchema, nameSchema, passwordSchema } from "@/lib/auth/schemas";
+import { fieldSchemas } from "@/lib/auth/schemas";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+
+/**
+ * The account forms' refusals in the seller's language: `t.account.errors`.
+ * Optional, and English when left out — the sign-in and password-reset pages
+ * share these parsers and are not translated.
+ */
+export type AccountErrors = AdminMessages["account"]["errors"];
+
+const ENGLISH = {
+  checkField: "Check this field.",
+  sameEmail: "That's already your email address.",
+  passwordRequired: "Enter your current password.",
+  passwordsDiffer: "The two passwords don't match.",
+  samePassword: "Your new password has to be different from the current one.",
+  confirmEmail: "Type {email} to confirm.",
+} satisfies Partial<AccountErrors>;
+
+function copy(t: AccountErrors | undefined) {
+  return t ?? ENGLISH;
+}
 
 /**
  * The account settings forms, parsed. Kept apart from the Server Actions — no
@@ -32,8 +54,11 @@ function requiredPassword(formData: FormData, key: string): string | null {
   return value.length > 0 ? value : null;
 }
 
-function firstIssue(result: { success: false; error: z.ZodError }): string {
-  return result.error.issues[0]?.message ?? "Check this field.";
+function firstIssue(
+  result: { success: false; error: z.ZodError },
+  t?: AccountErrors,
+): string {
+  return result.error.issues[0]?.message ?? copy(t).checkField;
 }
 
 function sameEmail(a: string, b: string): boolean {
@@ -48,10 +73,11 @@ export type ProfileField = "name";
 
 export function parseProfileForm(
   formData: FormData,
+  t?: AccountErrors,
 ): Parsed<{ name: string }, ProfileField> {
-  const result = nameSchema.safeParse(text(formData, "name"));
+  const result = fieldSchemas(t).name.safeParse(text(formData, "name"));
   if (!result.success) {
-    return { ok: false, fieldErrors: { name: firstIssue(result) } };
+    return { ok: false, fieldErrors: { name: firstIssue(result, t) } };
   }
   return { ok: true, data: { name: result.data } };
 }
@@ -65,20 +91,21 @@ export type EmailChangeField = "email" | "currentPassword";
 export function parseEmailChangeForm(
   formData: FormData,
   currentEmail: string,
+  t?: AccountErrors,
 ): Parsed<{ email: string; currentPassword: string }, EmailChangeField> {
   const fieldErrors: FieldErrors<EmailChangeField> = {};
 
   const email = text(formData, "email").trim().toLowerCase();
-  const emailResult = emailSchema.safeParse(email);
+  const emailResult = fieldSchemas(t).email.safeParse(email);
   if (!emailResult.success) {
-    fieldErrors.email = firstIssue(emailResult);
+    fieldErrors.email = firstIssue(emailResult, t);
   } else if (sameEmail(email, currentEmail)) {
-    fieldErrors.email = "That's already your email address.";
+    fieldErrors.email = copy(t).sameEmail;
   }
 
   const currentPassword = requiredPassword(formData, "currentPassword");
   if (!currentPassword) {
-    fieldErrors.currentPassword = "Enter your current password.";
+    fieldErrors.currentPassword = copy(t).passwordRequired;
   }
 
   if (fieldErrors.email || fieldErrors.currentPassword || !currentPassword) {
@@ -96,16 +123,17 @@ export type NewPasswordField = "newPassword" | "confirmPassword";
 /** A new password and its confirmation — shared by change and reset. */
 function parseNewPassword(
   formData: FormData,
+  t?: AccountErrors,
 ): { password: string | null; fieldErrors: FieldErrors<NewPasswordField> } {
   const fieldErrors: FieldErrors<NewPasswordField> = {};
   const newPassword = text(formData, "newPassword");
   const confirmPassword = text(formData, "confirmPassword");
 
-  const result = passwordSchema.safeParse(newPassword);
+  const result = fieldSchemas(t).password.safeParse(newPassword);
   if (!result.success) {
-    fieldErrors.newPassword = firstIssue(result);
+    fieldErrors.newPassword = firstIssue(result, t);
   } else if (confirmPassword !== newPassword) {
-    fieldErrors.confirmPassword = "The two passwords don't match.";
+    fieldErrors.confirmPassword = copy(t).passwordsDiffer;
   }
 
   return {
@@ -118,15 +146,16 @@ export type PasswordChangeField = "currentPassword" | NewPasswordField;
 
 export function parsePasswordChangeForm(
   formData: FormData,
+  t?: AccountErrors,
 ): Parsed<{ currentPassword: string; newPassword: string }, PasswordChangeField> {
-  const { password, fieldErrors: newErrors } = parseNewPassword(formData);
+  const { password, fieldErrors: newErrors } = parseNewPassword(formData, t);
   const fieldErrors: FieldErrors<PasswordChangeField> = { ...newErrors };
 
   const currentPassword = requiredPassword(formData, "currentPassword");
   if (!currentPassword) {
-    fieldErrors.currentPassword = "Enter your current password.";
+    fieldErrors.currentPassword = copy(t).passwordRequired;
   } else if (password !== null && password === currentPassword) {
-    fieldErrors.newPassword = "Your new password has to be different from the current one.";
+    fieldErrors.newPassword = copy(t).samePassword;
   }
 
   if (!currentPassword || password === null || fieldErrors.newPassword) {
@@ -154,7 +183,7 @@ export function parseForgotPasswordForm(
   formData: FormData,
 ): Parsed<{ email: string }, ForgotPasswordField> {
   const email = text(formData, "email").trim().toLowerCase();
-  const result = emailSchema.safeParse(email);
+  const result = fieldSchemas().email.safeParse(email);
   if (!result.success) {
     return { ok: false, fieldErrors: { email: firstIssue(result) } };
   }
@@ -174,16 +203,17 @@ export type DeleteAccountField = "confirmEmail" | "currentPassword";
 export function parseDeleteAccountForm(
   formData: FormData,
   accountEmail: string,
+  t?: AccountErrors,
 ): Parsed<{ currentPassword: string }, DeleteAccountField> {
   const fieldErrors: FieldErrors<DeleteAccountField> = {};
 
   if (!sameEmail(text(formData, "confirmEmail"), accountEmail)) {
-    fieldErrors.confirmEmail = `Type ${accountEmail} to confirm.`;
+    fieldErrors.confirmEmail = format(copy(t).confirmEmail, { email: accountEmail });
   }
 
   const currentPassword = requiredPassword(formData, "currentPassword");
   if (!currentPassword) {
-    fieldErrors.currentPassword = "Enter your current password.";
+    fieldErrors.currentPassword = copy(t).passwordRequired;
   }
 
   if (fieldErrors.confirmEmail || !currentPassword) {

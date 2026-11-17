@@ -91,6 +91,17 @@ export function isStorePubliclyVisible(store: Pick<Store, "status">): boolean {
   return store.status !== StoreStatus.SUSPENDED;
 }
 
+/**
+ * Where a store goes when the platform lifts its suspension: open again if it
+ * has a way to be paid — what opened it in the first place, a finished Stripe
+ * onboarding or cash on delivery — and otherwise back to waiting for setup.
+ */
+export function statusAfterSuspension(
+  store: StripeFields & Pick<Store, "codEnabled">,
+): StoreStatus {
+  return stripeReady(store) || store.codEnabled ? StoreStatus.ACTIVE : StoreStatus.PENDING;
+}
+
 // ---------------------------------------------------------------------------
 // Storefront design
 // ---------------------------------------------------------------------------

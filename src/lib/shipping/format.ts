@@ -1,19 +1,34 @@
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { Locale } from "@/lib/i18n/locales";
 import { formatMoney } from "@/lib/money";
 import { formatWeight } from "@/lib/weight";
 
 /**
- * How the admin describes a rate, in English. The storefront words the same
- * facts through its message files instead, in the buyer's language.
+ * How the admin describes a rate, in the seller's language. The storefront
+ * words the same facts through its own message files, in the buyer's.
  */
+
+export type ShippingFormat = {
+  locale: Locale;
+  /** The BCP 47 tag for money and weights. */
+  intl: string;
+  t: AdminMessages["shippingFormat"];
+};
 
 type Estimate = { minDeliveryDays: number | null; maxDeliveryDays: number | null };
 
 /** "2–4 business days", "1 business day", or null for no estimate. */
-export function formatEstimate({ minDeliveryDays: min, maxDeliveryDays: max }: Estimate): string | null {
+export function formatEstimate(
+  { minDeliveryDays: min, maxDeliveryDays: max }: Estimate,
+  { locale, intl, t }: ShippingFormat,
+): string | null {
   if (min === null || max === null) return null;
-  if (max === 0) return "Same business day";
-  if (min === max) return `${min} business ${min === 1 ? "day" : "days"}`;
-  return `${min}–${max} business days`;
+  if (max === 0) return t.sameDay;
+  if (min === max) return plural(locale, min, t.days);
+
+  const number = new Intl.NumberFormat(intl);
+  return format(t.dayRange, { min: number.format(min), max: number.format(max) });
 }
 
 type Conditions = {
@@ -23,27 +38,42 @@ type Conditions = {
   maxWeightGrams: number | null;
 };
 
-function range(min: number | null, max: number | null, show: (value: number) => string) {
-  if (min !== null && max !== null) return `${show(min)}–${show(max)}`;
-  if (min !== null) return `${show(min)} and up`;
-  if (max !== null) return `up to ${show(max)}`;
+type RangeCopy = { between: string; andUp: string; upTo: string };
+
+function range(
+  min: number | null,
+  max: number | null,
+  show: (value: number) => string,
+  copy: RangeCopy,
+): string | null {
+  if (min !== null && max !== null) return format(copy.between, { min: show(min), max: show(max) });
+  if (min !== null) return format(copy.andUp, { min: show(min) });
+  if (max !== null) return format(copy.upTo, { max: show(max) });
   return null;
 }
 
 /** "Orders €50.00 and up", "Up to 2 kg", or null when the rate always applies. */
-export function describeRateCondition(rate: Conditions, currency: string): string | null {
-  const subtotal = range(rate.minSubtotalCents, rate.maxSubtotalCents, (cents) =>
-    formatMoney(cents, currency),
+export function describeRateCondition(
+  rate: Conditions,
+  currency: string,
+  { intl, t }: ShippingFormat,
+): string | null {
+  return (
+    range(
+      rate.minSubtotalCents,
+      rate.maxSubtotalCents,
+      (cents) => formatMoney(cents, currency, intl),
+      t.subtotal,
+    ) ??
+    range(rate.minWeightGrams, rate.maxWeightGrams, (grams) => formatWeight(grams, intl), t.weight)
   );
-  if (subtotal) return `Orders ${subtotal}`;
-
-  const weight = range(rate.minWeightGrams, rate.maxWeightGrams, formatWeight);
-  if (weight) return weight.charAt(0).toUpperCase() + weight.slice(1);
-
-  return null;
 }
 
 /** "Free" or the price. */
-export function formatRatePrice(priceCents: number, currency: string): string {
-  return priceCents === 0 ? "Free" : formatMoney(priceCents, currency);
+export function formatRatePrice(
+  priceCents: number,
+  currency: string,
+  { intl, t }: ShippingFormat,
+): string {
+  return priceCents === 0 ? t.free : formatMoney(priceCents, currency, intl);
 }

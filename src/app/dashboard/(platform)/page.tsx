@@ -8,22 +8,29 @@ import { initialsFor } from "@/lib/account/display";
 import { storeAdminUrl } from "@/lib/admin/links";
 import { accountPath } from "@/lib/admin/nav";
 import { requireUser } from "@/lib/auth/session";
+import { plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { listStoresForUser } from "@/lib/stores/queries";
 
-export const metadata: Metadata = { title: "Your stores" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.platform.stores.title };
+}
 
 export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const user = await requireUser("/dashboard");
-  const [stores, { deleted }] = await Promise.all([
+  const [stores, { deleted }, { t: messages, locale }] = await Promise.all([
     listStoresForUser(user.id),
     props.searchParams,
+    getAdminI18n(),
   ]);
+  const t = messages.platform.stores;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
       {deleted === "1" ? (
         <div className="mb-6">
-          <FormNotice>Store deleted.</FormNotice>
+          <FormNotice>{t.deleted}</FormNotice>
         </div>
       ) : null}
 
@@ -40,35 +47,34 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
           <p className="truncate font-medium">{user.name ?? user.email}</p>
           {user.name ? <p className="truncate text-sm text-muted">{user.email}</p> : null}
         </div>
+        {user.platformRole === "PLATFORM_ADMIN" ? (
+          <ButtonLink href="/dashboard/platform" variant="secondary" size="sm">
+            {t.platform}
+          </ButtonLink>
+        ) : null}
         <ButtonLink href={accountPath()} variant="secondary" size="sm">
-          Account settings
+          {t.accountSettings}
         </ButtonLink>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Your stores</h1>
-          <p className="mt-1 text-sm text-muted">
-            Each store is a separate tenant with its own catalogue, orders and
-            Stripe account. Opening one takes you to its admin.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t.title}</h1>
+          <p className="mt-1 text-sm text-muted">{t.intro}</p>
         </div>
         {stores.length > 0 && (
           <ButtonLink href="/dashboard/new" size="sm">
-            New store
+            {t.newStore}
           </ButtonLink>
         )}
       </div>
 
       {stores.length === 0 ? (
         <div className="mt-8 rounded-xl border border-dashed border-border-strong px-6 py-16 text-center">
-          <h2 className="font-medium">You don&rsquo;t have a store yet</h2>
-          <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted text-pretty">
-            Open one and you&rsquo;ll have a live storefront in under a minute.
-            You can connect Stripe and add products afterwards.
-          </p>
+          <h2 className="font-medium">{t.emptyTitle}</h2>
+          <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted text-pretty">{t.emptyBody}</p>
           <ButtonLink href="/dashboard/new" className="mt-6" size="lg">
-            Open your first store
+            {t.openFirst}
           </ButtonLink>
         </div>
       ) : (
@@ -93,10 +99,9 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{store.name}</p>
                   <p className="truncate text-sm text-muted tabular">
-                    /s/{store.slug} · {store._count.products}{" "}
-                    {store._count.products === 1 ? "product" : "products"} ·{" "}
-                    {store._count.orders}{" "}
-                    {store._count.orders === 1 ? "order" : "orders"}
+                    <span dir="ltr">/s/{store.slug}</span> ·{" "}
+                    {plural(locale, store._count.products, t.products)} ·{" "}
+                    {plural(locale, store._count.orders, t.orders)}
                   </p>
                 </div>
                 <StoreStatusBadge status={store.status} />

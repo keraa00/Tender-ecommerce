@@ -2,9 +2,12 @@
 
 import { useActionState, useMemo, useState, type ReactNode } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { SaveBar, useDiscard, useResyncAfterReset } from "@/components/admin/save-bar";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
+import { plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { CodSettingsState } from "@/lib/stores/actions";
 import {
   COD_INSTRUCTIONS_MAX,
@@ -19,10 +22,12 @@ type Props = {
   values: CodFormValues;
   /** "$", "KM" — beside every amount. */
   currencySymbol: string;
-  /** The countries the store ships to, named in English, for the country limit. */
+  /** The countries the store ships to, named in the admin's language, for the country limit. */
   countries: CountryOption[];
   /** Whether the store can take cards too; the copy differs when cash is all there is. */
   stripeLive: boolean;
+  t: AdminMessages["settings"]["cod"];
+  saveLabel: string;
 };
 
 /**
@@ -42,6 +47,8 @@ function CodSettingsFormBody({
   currencySymbol,
   countries,
   stripeLive,
+  t,
+  saveLabel,
   onDiscard,
 }: Props & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<CodSettingsState, FormData>(action, {});
@@ -54,7 +61,7 @@ function CodSettingsFormBody({
   return (
     <form action={formAction} className="space-y-6" noValidate {...resync}>
       <SaveBar
-        label="Save changes"
+        label={saveLabel}
         pending={pending}
         onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
@@ -75,20 +82,16 @@ function CodSettingsFormBody({
         name="codEnabled"
         checked={values.codEnabled}
         onChange={(checked) => set("codEnabled", checked)}
-        label="Offer cash on delivery"
-        hint={
-          stripeLive
-            ? "Buyers choose between paying online and paying the courier in cash. Only for orders that are delivered."
-            : "Buyers pay the courier in cash when their parcel arrives. Switching it on opens checkout, even without Stripe. Only for orders that are delivered."
-        }
+        label={t.offer}
+        hint={stripeLive ? t.offerHintWithStripe : t.offerHintCashOnly}
       />
 
       <div className="grid gap-5 sm:grid-cols-2">
         <Field
-          label="Name at checkout"
+          label={t.name}
           htmlFor="codLabel"
           error={errors.codLabel}
-          hint="Leave blank to show “Cash on delivery” in the buyer’s language."
+          hint={t.nameHint}
         >
           <Input
             id="codLabel"
@@ -96,21 +99,21 @@ function CodSettingsFormBody({
             maxLength={COD_LABEL_MAX}
             value={values.codLabel}
             onChange={(event) => set("codLabel", event.target.value)}
-            placeholder="Cash on delivery"
+            placeholder={t.namePlaceholder}
             aria-invalid={Boolean(errors.codLabel)}
           />
         </Field>
 
         <div className="space-y-1.5">
           <p id="codFeeType-label" className="text-sm font-medium">
-            Fee
+            {t.fee}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div role="radiogroup" aria-labelledby="codFeeType-label" className="flex gap-1.5">
               {(
                 [
-                  ["FIXED_AMOUNT", "Fixed"],
-                  ["PERCENTAGE", "Percentage"],
+                  ["FIXED_AMOUNT", t.fixed],
+                  ["PERCENTAGE", t.percentage],
                 ] as const
               ).map(([type, label]) => (
                 <label
@@ -137,7 +140,7 @@ function CodSettingsFormBody({
                 id="codFee"
                 name="codFee"
                 inputMode="decimal"
-                aria-label="Fee"
+                aria-label={t.fee}
                 value={values.codFee}
                 onChange={(event) => set("codFee", event.target.value)}
                 placeholder="0"
@@ -152,20 +155,17 @@ function CodSettingsFormBody({
             </p>
           ) : (
             <p className="text-sm text-muted text-pretty">
-              {values.codFeeType === "PERCENTAGE"
-                ? "Of the order total after discounts, shipping included."
-                : "Added to every cash-on-delivery order."}{" "}
-              Leave blank for no fee.
+              {values.codFeeType === "PERCENTAGE" ? t.feeHintPercent : t.feeHintFixed} {t.noFee}
             </p>
           )}
         </div>
       </div>
 
       <Field
-        label="Instructions for buyers"
+        label={t.instructions}
         htmlFor="codInstructions"
         error={errors.codInstructions}
-        hint="Optional. Shown under the option at checkout and on the order confirmation."
+        hint={t.instructionsHint}
       >
         <Textarea
           id="codInstructions"
@@ -174,18 +174,18 @@ function CodSettingsFormBody({
           maxLength={COD_INSTRUCTIONS_MAX}
           value={values.codInstructions}
           onChange={(event) => set("codInstructions", event.target.value)}
-          placeholder="Please have the exact amount ready for the courier."
+          placeholder={t.instructionsPlaceholder}
           aria-invalid={Boolean(errors.codInstructions)}
         />
       </Field>
 
       <div className="space-y-1.5">
-        <p className="text-sm font-medium">Order total</p>
+        <p className="text-sm font-medium">{t.orderTotal}</p>
         <div className="grid max-w-md grid-cols-2 gap-3">
           {(
             [
-              ["codMinTotal", "Minimum", "No minimum"],
-              ["codMaxTotal", "Maximum", "No limit"],
+              ["codMinTotal", t.minimum, t.noMinimum],
+              ["codMaxTotal", t.maximum, t.noLimit],
             ] as const
           ).map(([name, label, placeholder]) => (
             <div key={name} className="space-y-1.5">
@@ -212,10 +212,7 @@ function CodSettingsFormBody({
             {errors.codMinTotal ?? errors.codMaxTotal}
           </p>
         ) : (
-          <p className="text-sm text-muted text-pretty">
-            Offer it only for orders in this range — products and shipping after discounts,
-            before the fee. A cap limits what a refused parcel can cost you.
-          </p>
+          <p className="text-sm text-muted text-pretty">{t.rangeHint}</p>
         )}
       </div>
 
@@ -226,14 +223,15 @@ function CodSettingsFormBody({
         error={errors.codCountries}
         onScope={(scope) => set("codCountryScope", scope)}
         onSelected={(codes) => set("codCountryCodes", codes)}
+        t={t}
       />
 
       <Toggle
         name="codRequirePhone"
         checked={values.codRequirePhone}
         onChange={(checked) => set("codRequirePhone", checked)}
-        label="Require a phone number"
-        hint="Couriers usually ring before delivering a parcel that has to be paid for. Asked for with the shipping address, whatever Settings → Checkout says."
+        label={t.requirePhone}
+        hint={t.requirePhoneHint}
       />
     </form>
   );
@@ -251,7 +249,9 @@ function CountryLimit({
   error,
   onScope,
   onSelected,
+  t,
 }: {
+  t: AdminMessages["settings"]["cod"];
   scope: "all" | "some";
   selected: string[];
   countries: CountryOption[];
@@ -259,6 +259,7 @@ function CountryLimit({
   onScope: (scope: "all" | "some") => void;
   onSelected: (codes: string[]) => void;
 }) {
+  const { locale, intl } = useAdminI18n();
   const [query, setQuery] = useState("");
   const chosen = new Set(selected);
   const needle = query.trim().toLowerCase();
@@ -275,13 +276,13 @@ function CountryLimit({
   return (
     <div className="space-y-2">
       <p id="codCountryScope-label" className="text-sm font-medium">
-        Countries
+        {t.countries}
       </p>
       <div role="radiogroup" aria-labelledby="codCountryScope-label" className="flex flex-wrap gap-1.5">
         {(
           [
-            ["all", "Everywhere you ship"],
-            ["some", "Only some countries"],
+            ["all", t.everywhere],
+            ["some", t.some],
           ] as const
         ).map(([value, label]) => (
           <label
@@ -307,23 +308,25 @@ function CountryLimit({
           ))}
           <p className="text-sm text-muted">
             {selected.length === 0
-              ? "Choose the shipping countries cash on delivery is offered for."
-              : `${selected.length} ${selected.length === 1 ? "country" : "countries"}: ${selected
-                  .map((code) => names.get(code) ?? code)
-                  .sort((a, b) => a.localeCompare(b, "en"))
-                  .join(", ")}.`}
+              ? t.chooseCountries
+              : plural(locale, selected.length, t.chosenCountries, {
+                  names: selected
+                    .map((code) => names.get(code) ?? code)
+                    .sort((a, b) => a.localeCompare(b, intl))
+                    .join(", "),
+                })}
           </p>
           {countries.length > 8 ? (
             <Input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search countries"
-              aria-label="Search countries"
+              placeholder={t.searchCountries}
+              aria-label={t.searchCountries}
             />
           ) : null}
           {countries.length === 0 ? (
-            <p className="text-sm text-muted">Add a shipping zone first: there is nowhere to deliver to yet.</p>
+            <p className="text-sm text-muted">{t.noZones}</p>
           ) : (
             <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
               {shown.map((country) => (
@@ -400,9 +403,9 @@ function Affixed({
         className,
       )}
     >
-      {prefix ? <span className="pl-3 text-sm text-muted select-none">{prefix}</span> : null}
+      {prefix ? <span className="ps-3 text-sm text-muted select-none">{prefix}</span> : null}
       {children}
-      {suffix ? <span className="pr-3 text-sm text-muted select-none">{suffix}</span> : null}
+      {suffix ? <span className="pe-3 text-sm text-muted select-none">{suffix}</span> : null}
     </div>
   );
 }

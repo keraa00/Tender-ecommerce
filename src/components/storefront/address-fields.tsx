@@ -12,7 +12,7 @@ import {
 } from "@/lib/address/validate";
 import { cn } from "@/lib/cn";
 import type { AddressPrefix } from "@/lib/checkout/fields";
-import { format } from "@/lib/i18n/messages";
+import { format } from "@/lib/i18n/format";
 import type { CheckoutMessages, CountryOptionDisplay } from "./types";
 
 /**

@@ -6,6 +6,8 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { UploadThemeImageResult } from "@/lib/theme/actions";
 import type {
   CollectionListField,
@@ -16,7 +18,7 @@ import type {
   LinkField,
   ThemeLink,
 } from "@/lib/theme/fields";
-import { shrinkImage } from "@/lib/images/shrink-image";
+import { ImageTooLargeError, shrinkImage } from "@/lib/images/shrink-image";
 
 /**
  * Inputs generated from field descriptors — a section's, a block's or the
@@ -34,7 +36,11 @@ export type SettingsFieldsContext = {
   /** The store's collections, for pickers and links. */
   collections: { id: string; title: string }[];
   uploadImage: (formData: FormData) => Promise<UploadThemeImageResult>;
+  /** The inputs' own words, in the seller's language. */
+  t: AdminMessages["themeEditor"]["fields"];
 };
+
+type FieldsCopy = SettingsFieldsContext["t"];
 
 export function SettingsFields({
   fields,
@@ -218,6 +224,7 @@ function SettingInput({
           onChange={onChange}
           upload={context.uploadImage}
           error={error}
+          t={context.t}
         />
       );
 
@@ -231,7 +238,7 @@ function SettingInput({
             aria-invalid={invalid}
             className={selectClasses}
           >
-            <option value="">None</option>
+            <option value="">{context.t.none}</option>
             {context.collections.map((collection) => (
               <option key={collection.id} value={collection.id}>
                 {collection.title}
@@ -250,6 +257,7 @@ function SettingInput({
           onChange={onChange}
           collections={context.collections}
           error={error}
+          t={context.t}
         />
       );
 
@@ -262,6 +270,7 @@ function SettingInput({
           onChange={onChange}
           collections={context.collections}
           error={error}
+          t={context.t}
         />
       );
   }
@@ -322,7 +331,9 @@ function ImageInput({
   onChange,
   upload,
   error,
+  t,
 }: {
+  t: FieldsCopy;
   id: string;
   field: ImageField;
   value: string | null;
@@ -347,7 +358,7 @@ function ImageInput({
       if (result.ok) onChange(result.url);
       else setUploadError(result.error);
     } catch (problem) {
-      setUploadError(problem instanceof Error ? problem.message : "Could not upload the image.");
+      setUploadError(problem instanceof ImageTooLargeError ? t.tooLarge : t.uploadFailed);
     } finally {
       setPending(false);
     }
@@ -360,7 +371,7 @@ function ImageInput({
           {value ? (
             <Image src={value} alt="" fill sizes="320px" className="object-cover" />
           ) : (
-            <p className="grid h-full place-items-center text-sm text-muted">No image</p>
+            <p className="grid h-full place-items-center text-sm text-muted">{t.noImage}</p>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -372,7 +383,7 @@ function ImageInput({
               pending && "pointer-events-none opacity-50",
             )}
           >
-            {pending ? "Uploading…" : value ? "Replace" : "Upload image"}
+            {pending ? t.uploading : value ? t.replace : t.uploadImage}
           </label>
           <input
             id={id}
@@ -384,7 +395,7 @@ function ImageInput({
           />
           {value ? (
             <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
-              Remove
+              {t.removeImage}
             </Button>
           ) : null}
         </div>
@@ -401,7 +412,9 @@ function CollectionListInput({
   onChange,
   collections,
   error,
+  t,
 }: {
+  t: FieldsCopy;
   id: string;
   field: CollectionListField;
   value: string[];
@@ -425,26 +438,26 @@ function CollectionListInput({
         {value.length > 0 ? (
           <ol className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {value.map((collectionId, index) => {
-              const title = titles.get(collectionId) ?? "Deleted collection";
+              const title = titles.get(collectionId) ?? t.deletedCollection;
               return (
                 <li key={collectionId} className="flex items-center gap-1 bg-surface px-2 py-1.5 text-sm">
                   <span className="min-w-0 flex-1 truncate ps-1">{title}</span>
                   <IconButton
-                    label={`Move ${title} up`}
+                    label={format(t.moveUp, { name: title })}
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
                   >
                     ↑
                   </IconButton>
                   <IconButton
-                    label={`Move ${title} down`}
+                    label={format(t.moveDown, { name: title })}
                     disabled={index === value.length - 1}
                     onClick={() => move(index, 1)}
                   >
                     ↓
                   </IconButton>
                   <IconButton
-                    label={`Remove ${title}`}
+                    label={format(t.remove, { name: title })}
                     onClick={() => onChange(value.filter((entry) => entry !== collectionId))}
                   >
                     ×
@@ -464,7 +477,9 @@ function CollectionListInput({
           className={selectClasses}
         >
           <option value="">
-            {value.length >= field.max ? `Up to ${field.max} collections` : "Add a collection…"}
+            {value.length >= field.max
+              ? format(t.upToCollections, { max: field.max })
+              : t.addCollection}
           </option>
           {available.map((collection) => (
             <option key={collection.id} value={collection.id}>
@@ -477,13 +492,7 @@ function CollectionListInput({
   );
 }
 
-const LINK_KINDS: { value: ThemeLink["kind"]; label: string }[] = [
-  { value: "catalog", label: "Catalogue" },
-  { value: "home", label: "Home page" },
-  { value: "contact", label: "Contact page" },
-  { value: "collection", label: "A collection" },
-  { value: "url", label: "Web address" },
-];
+const LINK_KINDS: readonly ThemeLink["kind"][] = ["catalog", "home", "contact", "collection", "url"];
 
 /** Where a button goes: a storefront page, a collection, or a web address. */
 function LinkInput({
@@ -493,7 +502,9 @@ function LinkInput({
   onChange,
   collections,
   error,
+  t,
 }: {
+  t: FieldsCopy;
   id: string;
   field: LinkField;
   value: ThemeLink;
@@ -524,17 +535,17 @@ function LinkInput({
         >
           {LINK_KINDS.map((kind) => (
             <option
-              key={kind.value}
-              value={kind.value}
-              disabled={kind.value === "collection" && collections.length === 0}
+              key={kind}
+              value={kind}
+              disabled={kind === "collection" && collections.length === 0}
             >
-              {kind.label}
+              {t.linkKinds[kind]}
             </option>
           ))}
         </select>
         {value.kind === "collection" ? (
           <select
-            aria-label="Collection"
+            aria-label={t.collection}
             value={value.collectionId}
             onChange={(event) => onChange({ kind: "collection", collectionId: event.target.value })}
             className={selectClasses}
@@ -548,7 +559,8 @@ function LinkInput({
         ) : null}
         {value.kind === "url" ? (
           <Input
-            aria-label="Web address"
+            aria-label={t.webAddress}
+            dir="ltr"
             type="url"
             inputMode="url"
             value={value.url}

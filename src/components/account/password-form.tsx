@@ -5,11 +5,14 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, FormNotice, Input } from "@/components/ui/field";
 import type { PasswordChangeState } from "@/lib/account/actions";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 export function PasswordForm({
   action,
+  t,
 }: {
   action: (state: PasswordChangeState, formData: FormData) => Promise<PasswordChangeState>;
+  t: AdminMessages["account"]["forms"];
 }) {
   const [state, formAction, pending] = useActionState<PasswordChangeState, FormData>(
     action,
@@ -23,7 +26,7 @@ export function PasswordForm({
       <FormNotice>{state.notice}</FormNotice>
 
       <Field
-        label="Current password"
+        label={t.currentPassword}
         htmlFor="password-current"
         error={errors.currentPassword}
       >
@@ -38,10 +41,10 @@ export function PasswordForm({
       </Field>
 
       <Field
-        label="New password"
+        label={t.newPassword}
         htmlFor="password-new"
         error={errors.newPassword}
-        hint="At least 8 characters."
+        hint={t.newPasswordHint}
       >
         <Input
           id="password-new"
@@ -54,7 +57,7 @@ export function PasswordForm({
       </Field>
 
       <Field
-        label="Confirm new password"
+        label={t.confirmPassword}
         htmlFor="password-confirm"
         error={errors.confirmPassword}
       >
@@ -69,7 +72,7 @@ export function PasswordForm({
       </Field>
 
       <Button type="submit" size="sm" disabled={pending}>
-        {pending ? "Updating…" : "Update password"}
+        {pending ? t.updating : t.updatePassword}
       </Button>
     </form>
   );

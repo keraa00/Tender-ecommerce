@@ -10,14 +10,20 @@ import { changePasswordAction, signOutOtherSessionsAction } from "@/lib/account/
 import { currentSessionId, listSessions, type AccountSession } from "@/lib/account/sessions";
 import { accountPath } from "@/lib/admin/nav";
 import { requireUser } from "@/lib/auth/session";
+import { formatRich } from "@/lib/i18n/rich";
+import { getAdminI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Security" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.account.security.title };
+}
 
 export default async function AccountSecurityPage(
   props: PageProps<"/dashboard/account/security">,
 ) {
   const user = await requireUser(accountPath("security"));
-  const { password } = await props.searchParams;
+  const [{ password }, { t: messages }] = await Promise.all([props.searchParams, getAdminI18n()]);
+  const t = messages.account.security;
 
   let sessions: AccountSession[] | null = null;
   try {
@@ -33,36 +39,35 @@ export default async function AccountSecurityPage(
   return (
     <div className="space-y-6">
       {password === "reset" ? (
-        <FormNotice>Your new password is set, and every other device has been signed out.</FormNotice>
+        <FormNotice>{t.passwordReset}</FormNotice>
       ) : null}
 
       <AccountSection
-        title="Password"
-        description={
-          <>
-            Changing it signs out every other device. Forgotten it?{" "}
+        title={t.password}
+        description={formatRich(t.passwordHint, {
+          link: (
             <Link href="/forgot-password" className="underline underline-offset-4">
-              Reset it by email
+              {t.resetByEmail}
             </Link>
-            .
-          </>
-        }
+          ),
+        })}
       >
-        <PasswordForm action={changePasswordAction} />
+        <PasswordForm action={changePasswordAction} t={messages.account.forms} />
       </AccountSection>
 
       <AccountSection
-        title="Where you're signed in"
-        description="Browsers and devices with access to your account. Sign out any you don't recognise, then change your password."
+        title={t.sessions}
+        description={t.sessionsHint}
       >
         {sessions ? (
           <SessionsList sessions={sessions} />
         ) : (
-          <FormError>Could not load your sessions right now.</FormError>
+          <FormError>{t.sessionsFailed}</FormError>
         )}
         <SignOutOthersForm
           action={signOutOtherSessionsAction}
           disabled={sessions !== null && others === 0}
+          t={messages.account.forms}
         />
       </AccountSection>
     </div>

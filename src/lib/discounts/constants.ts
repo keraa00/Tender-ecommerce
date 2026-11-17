@@ -5,14 +5,15 @@ import type {
 } from "@/lib/db/types";
 
 /**
- * Limits and labels shared by the discount form, its parser, the pricing
+ * Limits and choices shared by the discount form, its parser, the pricing
  * engine and the admin pages.
  *
  * Only *types* come from `@/lib/db/types`: its values re-export the generated
  * Prisma client, which must not reach the browser bundle (see the note in
  * `lib/products/constants.ts`). The enums are string unions, so the literals
- * below are checked against them, and each `Record<Enum, …>` fails to compile
- * the day a value is added to the schema without a label here.
+ * below are checked against them, and the labels in the admin messages are
+ * `Record<Enum, …>`s that fail to compile the day a value is added to the
+ * schema without one.
  */
 
 export const DISCOUNT_CODE_MIN_LENGTH = 3;
@@ -31,66 +32,27 @@ export const MAX_USAGE_LIMIT = 1_000_000_000;
 /** 100% in basis points — a buy-X-get-Y at this value gives the items away. */
 export const FULL_DISCOUNT_BPS = 10_000;
 
-type Option<T extends string> = { value: T; label: string; hint: string };
+/*
+ * The choices the form offers, in the order it lists them. What each is called
+ * is the admin's copy — `t.discounts.types`, `.scopes`, `.buysFrom`,
+ * `.minimums` and `.eligibilities` — in the seller's language.
+ */
 
-const TYPE_TEXT: Record<DiscountType, { label: string; hint: string }> = {
-  PERCENTAGE: {
-    label: "Percentage",
-    hint: "A share off selected items or the whole order.",
-  },
-  FIXED_AMOUNT: {
-    label: "Fixed amount",
-    hint: "A set amount off, once per order.",
-  },
-  BUY_X_GET_Y: {
-    label: "Buy X get Y",
-    hint: "Buy some items, get others free or reduced.",
-  },
-  FREE_SHIPPING: {
-    label: "Free shipping",
-    hint: "Waives the shipping charge.",
-  },
-};
-
-export const DISCOUNT_TYPE_OPTIONS: readonly Option<DiscountType>[] = (
-  ["PERCENTAGE", "FIXED_AMOUNT", "BUY_X_GET_Y", "FREE_SHIPPING"] as const
-).map((value) => ({ value, ...TYPE_TEXT[value] }));
-
-export function discountTypeLabel(type: DiscountType): string {
-  return TYPE_TEXT[type].label;
-}
-
-const SCOPE_TEXT: Record<DiscountAppliesTo, string> = {
-  ALL: "Entire order",
-  PRODUCT: "Specific products",
-  COLLECTION: "Specific collections",
-};
-
-export const APPLIES_TO_OPTIONS: readonly { value: DiscountAppliesTo; label: string }[] = (
-  ["ALL", "PRODUCT", "COLLECTION"] as const
-).map((value) => ({ value, label: SCOPE_TEXT[value] }));
-
-/** The same three scopes, worded for the "customer buys" side of a BXGY. */
-export const BUYS_FROM_OPTIONS: readonly { value: DiscountAppliesTo; label: string }[] = [
-  { value: "ALL", label: "Any items" },
-  { value: "PRODUCT", label: "Specific products" },
-  { value: "COLLECTION", label: "Specific collections" },
+export const DISCOUNT_TYPES: readonly DiscountType[] = [
+  "PERCENTAGE",
+  "FIXED_AMOUNT",
+  "BUY_X_GET_Y",
+  "FREE_SHIPPING",
 ];
+
+export const DISCOUNT_SCOPES: readonly DiscountAppliesTo[] = ["ALL", "PRODUCT", "COLLECTION"];
 
 export type DiscountMinimum = "NONE" | "SUBTOTAL" | "QUANTITY";
 
-export const MINIMUM_OPTIONS: readonly { value: DiscountMinimum; label: string }[] = [
-  { value: "NONE", label: "No minimum" },
-  { value: "SUBTOTAL", label: "Minimum purchase amount" },
-  { value: "QUANTITY", label: "Minimum quantity of items" },
+export const DISCOUNT_MINIMUMS: readonly DiscountMinimum[] = ["NONE", "SUBTOTAL", "QUANTITY"];
+
+export const DISCOUNT_ELIGIBILITIES: readonly DiscountEligibility[] = [
+  "ALL",
+  "SEGMENTS",
+  "CUSTOMERS",
 ];
-
-const ELIGIBILITY_TEXT: Record<DiscountEligibility, string> = {
-  ALL: "All customers",
-  SEGMENTS: "Customer segments",
-  CUSTOMERS: "Specific customers",
-};
-
-export const ELIGIBILITY_OPTIONS: readonly { value: DiscountEligibility; label: string }[] = (
-  ["ALL", "SEGMENTS", "CUSTOMERS"] as const
-).map((value) => ({ value, label: ELIGIBILITY_TEXT[value] }));

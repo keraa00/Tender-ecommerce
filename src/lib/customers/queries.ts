@@ -20,8 +20,9 @@ import { SETTLED_ORDER_STATUSES } from "@/lib/orders/queries";
 export type StoreCustomer = {
   /** Lower-cased — the key a customer is grouped, linked and looked up by. */
   email: string;
-  /** From the linked account, when the buyer had one. Guests have none. */
+  /** As written on their latest order's address, shipping or billing. */
   name: string | null;
+  /** Signed in for at least one of their orders in this store. */
   hasAccount: boolean;
   /** Settled orders, like every figure here. */
   orders: number;
@@ -41,6 +42,16 @@ type CustomerRow = {
 };
 
 /**
+ * The buyer's name on one order, from its shipping address or else its
+ * billing one: "First Last", or the single `name` of a legacy address.
+ */
+const ORDER_ADDRESS = Prisma.sql`coalesce(o."shipping_address", o."billing_address")`;
+const ORDER_NAME = Prisma.sql`coalesce(
+  nullif(trim(concat_ws(' ', ${ORDER_ADDRESS}->>'firstName', ${ORDER_ADDRESS}->>'lastName')), ''),
+  nullif(trim(${ORDER_ADDRESS}->>'name'), '')
+)`;
+
+/**
  * The one definition of "a customer and their totals", which the list, the
  * discount form's picker and the detail page all read through — so a row and
  * the page it links to cannot disagree about what someone has spent.
@@ -52,9 +63,11 @@ type CustomerRow = {
  * `lower(email) = $1` is exact. The epoch reads keep timestamps in UTC whatever
  * the driver's zone, as in `loadCustomerProfile`.
  *
- * An address that matches no account is a guest, which is a normal outcome
- * rather than a miss. The account join is case-folded too, and DISTINCT ON
- * keeps it to one row per customer even if two accounts differed only by case.
+ * Name and account status come from this store's own orders, never from the
+ * platform's `users` table: joining that by email would tell any seller
+ * whether an address they typed into their own checkout has a Tender account,
+ * and whose name is on it. The name is the one on the customer's latest order;
+ * "has an account" means they were signed in for at least one order here.
  */
 async function rollUpCustomers(
   storeId: string,
@@ -62,29 +75,27 @@ async function rollUpCustomers(
 ): Promise<StoreCustomer[]> {
   const rows = await rootDb.$queryRaw<CustomerRow[]>`
     SELECT c.email,
-           u.name,
-           (u.email IS NOT NULL) AS has_account,
+           c.name,
+           c.has_account,
            c.orders,
            c.spent_cents,
            c.first_order_ms,
            c.last_order_ms
     FROM (
-      SELECT lower("email") AS email,
+      SELECT lower(o."email") AS email,
+             (array_agg(${ORDER_NAME} ORDER BY o."created_at" DESC)
+               FILTER (WHERE ${ORDER_NAME} IS NOT NULL))[1] AS name,
+             bool_or(o."user_id" IS NOT NULL) AS has_account,
              count(*)::int AS orders,
-             sum("total_cents")::bigint AS spent_cents,
-             (extract(epoch FROM min("created_at")) * 1000)::float8 AS first_order_ms,
-             (extract(epoch FROM max("created_at")) * 1000)::float8 AS last_order_ms
-      FROM "orders"
-      WHERE "store_id" = ${storeId}::uuid
-        AND "status"::text IN (${Prisma.join([...SETTLED_ORDER_STATUSES])})
-        ${options.email === undefined ? Prisma.empty : Prisma.sql`AND lower("email") = ${options.email}`}
-      GROUP BY lower("email")
+             sum(o."total_cents")::bigint AS spent_cents,
+             (extract(epoch FROM min(o."created_at")) * 1000)::float8 AS first_order_ms,
+             (extract(epoch FROM max(o."created_at")) * 1000)::float8 AS last_order_ms
+      FROM "orders" o
+      WHERE o."store_id" = ${storeId}::uuid
+        AND o."status"::text IN (${Prisma.join([...SETTLED_ORDER_STATUSES])})
+        ${options.email === undefined ? Prisma.empty : Prisma.sql`AND lower(o."email") = ${options.email}`}
+      GROUP BY lower(o."email")
     ) c
-    LEFT JOIN (
-      SELECT DISTINCT ON (lower("email")) lower("email") AS email, "name"
-      FROM "users"
-      ORDER BY lower("email"), "created_at"
-    ) u ON u.email = c.email
     ORDER BY c.spent_cents DESC, c.last_order_ms DESC, c.email
     ${options.limit === undefined ? Prisma.empty : Prisma.sql`LIMIT ${options.limit}`}
   `;

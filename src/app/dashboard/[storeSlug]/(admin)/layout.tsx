@@ -3,6 +3,7 @@ import { StoreShell } from "@/components/admin/store-shell";
 import { StoreStatusBadge } from "@/components/ui/badge";
 import { allStoresUrl, storefrontUrl } from "@/lib/admin/links";
 import { StoreStatus } from "@/lib/db/types";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { listUnseenOrderIds } from "@/lib/orders/queries";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -21,7 +22,10 @@ export default async function StoreAdminChromeLayout({
 }: LayoutProps<"/dashboard/[storeSlug]">) {
   const { storeSlug } = await params;
   const { store, user, membership } = await getStoreContext(storeSlug);
-  const unseenOrderIds = await listUnseenOrderIds(store.id, membership.ordersSeenAt);
+  const [unseenOrderIds, { t }] = await Promise.all([
+    listUnseenOrderIds(store.id, membership.ordersSeenAt),
+    getAdminI18n(),
+  ]);
 
   return (
     <NewOrdersProvider
@@ -31,6 +35,7 @@ export default async function StoreAdminChromeLayout({
         ids: unseenOrderIds,
         seenThroughMs: membership.ordersSeenAt.getTime(),
       }}
+      t={t.liveOrders}
     >
       <StoreShell
         store={{
@@ -44,6 +49,7 @@ export default async function StoreAdminChromeLayout({
         userEmail={user.email}
         statusBadge={<StoreStatusBadge status={store.status} />}
         setupIncomplete={store.status === StoreStatus.PENDING}
+        t={{ shell: t.shell, nav: t.nav }}
       >
         {children}
       </StoreShell>

@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { Field, FormError, Input } from "@/components/ui/field";
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { DeleteStoreState } from "@/lib/stores/actions";
 
 /**
  * The danger zone at the foot of Settings → General. Closed by default, like
- * every delete in the admin, and with the slug to type out — this one takes
- * the store's order history with it.
+ * every delete in the admin, and with the slug to type out and the current
+ * password to give — this one takes the store's order history with it.
  */
 export function DeleteStoreForm({
   action,
@@ -20,7 +23,9 @@ export function DeleteStoreForm({
   ordersHref,
   openCheckouts,
   needsAttention,
+  t,
 }: {
+  t: AdminMessages["settings"]["general"]["delete"];
   action: (state: DeleteStoreState, formData: FormData) => Promise<DeleteStoreState>;
   storeName: string;
   storeSlug: string;
@@ -33,37 +38,22 @@ export function DeleteStoreForm({
   needsAttention: number;
 }) {
   const [state, formAction, pending] = useActionState<DeleteStoreState, FormData>(action, {});
+  const { locale } = useAdminI18n();
   const [typed, setTyped] = useState("");
   const blocked = blockers.length > 0;
 
   return (
     <details className="mt-10 rounded-xl border border-danger/30 bg-danger/5 p-4">
       <summary className="cursor-pointer text-sm font-medium text-danger">
-        Delete this store
+        {t.title}
       </summary>
 
       <div className="mt-3 space-y-3 text-sm text-muted text-pretty">
-        <p>
-          Deletes {storeName} for good: its storefront, products, collections, discounts,
-          shipping settings, images and every order. Buyers&rsquo; order links stop working.
-          This can&rsquo;t be undone.
-        </p>
-        <p>
-          Your Stripe account is yours and stays as it is — payouts, past payments and refunds
-          carry on in your Stripe Dashboard.
-        </p>
-        {openCheckouts > 0 ? (
-          <p>
-            {openCheckouts === 1
-              ? "1 unpaid checkout will be cancelled."
-              : `${openCheckouts} unpaid checkouts will be cancelled.`}
-          </p>
-        ) : null}
+        <p>{format(t.body, { store: storeName })}</p>
+        <p>{t.stripe}</p>
+        {openCheckouts > 0 ? <p>{plural(locale, openCheckouts, t.openCheckouts)}</p> : null}
         {needsAttention > 0 ? (
-          <p className="text-warning">
-            {needsAttention === 1 ? "1 order is" : `${needsAttention} orders are`} flagged for
-            a refund. Make sure it&rsquo;s been handled in Stripe before you go.
-          </p>
+          <p className="text-warning">{plural(locale, needsAttention, t.needsAttention)}</p>
         ) : null}
       </div>
 
@@ -77,14 +67,14 @@ export function DeleteStoreForm({
             </ul>
           </FormError>
           <Link href={ordersHref} className="inline-block text-sm underline underline-offset-4">
-            Go to orders
+            {t.goToOrders}
           </Link>
         </div>
       ) : (
         <form action={formAction} className="mt-4 space-y-3" noValidate>
           <FormError>{state.formError}</FormError>
           <Field
-            label={`Type ${storeSlug} to confirm`}
+            label={format(t.confirm, { slug: storeSlug })}
             htmlFor="delete-store-confirm"
             error={state.fieldErrors?.confirmSlug}
           >
@@ -93,9 +83,24 @@ export function DeleteStoreForm({
               name="confirmSlug"
               autoComplete="off"
               spellCheck={false}
+              dir="ltr"
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
               aria-invalid={Boolean(state.fieldErrors?.confirmSlug)}
+              className="sm:max-w-xs"
+            />
+          </Field>
+          <Field
+            label={t.password}
+            htmlFor="delete-store-password"
+            error={state.fieldErrors?.currentPassword}
+          >
+            <Input
+              id="delete-store-password"
+              name="currentPassword"
+              type="password"
+              autoComplete="current-password"
+              aria-invalid={Boolean(state.fieldErrors?.currentPassword)}
               className="sm:max-w-xs"
             />
           </Field>
@@ -105,7 +110,7 @@ export function DeleteStoreForm({
             size="sm"
             disabled={pending || typed.trim().toLowerCase() !== storeSlug}
           >
-            {pending ? "Deleting…" : "Delete store permanently"}
+            {pending ? t.deleting : t.submit}
           </Button>
         </form>
       )}

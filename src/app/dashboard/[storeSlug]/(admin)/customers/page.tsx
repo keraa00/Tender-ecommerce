@@ -15,9 +15,7 @@ import { storeAdminPath } from "@/lib/admin/links";
 import { cn } from "@/lib/cn";
 import {
   CUSTOMER_FILTERS,
-  CUSTOMER_FILTER_LABELS,
   CUSTOMER_SORTS,
-  CUSTOMER_SORT_LABELS,
   REPEAT_MIN_ORDERS,
   countCustomerFilters,
   customerListSearch,
@@ -34,6 +32,8 @@ import {
 import { listAllStoreCustomers } from "@/lib/customers/queries";
 import { formatDate } from "@/lib/dates";
 import { LAPSED_AFTER_DAYS } from "@/lib/discounts/segments";
+import { format, plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -41,19 +41,13 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/customers">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Customers · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.customers.title} · ${store.name}` };
 }
 
 function firstParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
-
-const SORT_DESCRIPTIONS = {
-  spend: "highest spend first",
-  orders: "most orders first",
-  recent: "most recent order first",
-} as const;
 
 export default async function CustomersPage(
   props: PageProps<"/dashboard/[storeSlug]/customers">,
@@ -61,7 +55,12 @@ export default async function CustomersPage(
   const { storeSlug } = await props.params;
   const searchParams = await props.searchParams;
   // Membership is verified here; `store.id` is the only tenant key used below.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t: messages, locale, intl }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.customers;
+  const number = new Intl.NumberFormat(intl);
 
   const customers = await listAllStoreCustomers(store.id);
   // One clock for the whole page, so a chip's count and the rows under it
@@ -94,42 +93,39 @@ export default async function CustomersPage(
 
   return (
     <AdminPage
-      title="Customers"
+      title={t.title}
       description={
         customers.length === 0
-          ? "Everyone who has bought from this store, with what they have spent."
-          : `${customers.length} ${customers.length === 1 ? "customer" : "customers"}, ${SORT_DESCRIPTIONS[state.sort]}.`
+          ? t.empty
+          : plural(locale, customers.length, t.count, { sort: t.sortDescriptions[state.sort] })
       }
     >
       {customers.length === 0 ? (
-        <EmptyState title="No customers yet">
-          A customer appears here after their first paid order. Guests count too
-          — they are grouped by the email they checked out with.
-        </EmptyState>
+        <EmptyState title={t.emptyTitle}>{t.emptyBody}</EmptyState>
       ) : (
         <div className="space-y-6">
           <StatGrid>
-            <Stat label="Customers" value={String(counts.all)} />
+            <Stat label={t.stats.customers} value={number.format(counts.all)} />
             <Stat
-              label="Repeat customers"
-              value={String(counts.repeat)}
-              hint={`${REPEAT_MIN_ORDERS} or more paid orders`}
+              label={t.stats.repeat}
+              value={number.format(counts.repeat)}
+              hint={format(t.stats.repeatHint, { count: number.format(REPEAT_MIN_ORDERS) })}
             />
             <Stat
-              label="Guests"
-              value={String(counts.guest)}
-              hint="No account with that email"
+              label={t.stats.guests}
+              value={number.format(counts.guest)}
+              hint={t.stats.guestsHint}
             />
             <Stat
-              label="Lapsed"
-              value={String(counts.lapsed)}
-              hint={`No order in ${LAPSED_AFTER_DAYS} days`}
+              label={t.stats.lapsed}
+              value={number.format(counts.lapsed)}
+              hint={format(t.stats.lapsedHint, { days: number.format(LAPSED_AFTER_DAYS) })}
             />
           </StatGrid>
 
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <nav aria-label="Filter customers" className="-mx-1 flex flex-wrap gap-1">
+              <nav aria-label={t.filterLabel} className="-mx-1 flex flex-wrap gap-1">
                 {CUSTOMER_FILTERS.map((key) => (
                   <Link
                     key={key}
@@ -142,8 +138,8 @@ export default async function CustomersPage(
                         : "text-muted hover:bg-surface-hover hover:text-foreground",
                     )}
                   >
-                    {CUSTOMER_FILTER_LABELS[key]}{" "}
-                    <span className="tabular opacity-70">{counts[key]}</span>
+                    {t.filters[key]}{" "}
+                    <span className="tabular opacity-70">{number.format(counts[key])}</span>
                   </Link>
                 ))}
               </nav>
@@ -159,18 +155,18 @@ export default async function CustomersPage(
                   type="search"
                   name="q"
                   defaultValue={state.query}
-                  placeholder="Search name or email"
-                  aria-label="Search customers by name or email"
+                  placeholder={t.searchPlaceholder}
+                  aria-label={t.searchLabel}
                   className="h-8"
                 />
               </form>
             </div>
 
             <nav
-              aria-label="Sort customers"
+              aria-label={t.sortLabel}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
             >
-              <span className="text-muted">Sort by</span>
+              <span className="text-muted">{t.sortBy}</span>
               {CUSTOMER_SORTS.map((key) => (
                 <Link
                   key={key}
@@ -183,7 +179,7 @@ export default async function CustomersPage(
                       : "text-muted hover:text-foreground hover:underline",
                   )}
                 >
-                  {CUSTOMER_SORT_LABELS[key]}
+                  {t.sorts[key]}
                 </Link>
               ))}
             </nav>
@@ -191,9 +187,9 @@ export default async function CustomersPage(
 
           {page.total === 0 ? (
             <p className="rounded-xl border border-dashed border-border-strong px-4 py-10 text-center text-sm text-muted">
-              No customers match.{" "}
+              {t.noMatch}{" "}
               <Link href={basePath} className="underline underline-offset-4">
-                Show all
+                {t.showAll}
               </Link>
             </p>
           ) : (
@@ -220,18 +216,18 @@ export default async function CustomersPage(
                           <span className="truncate">
                             {customer.name ?? customer.email}
                           </span>
-                          {customer.hasAccount ? null : <Badge>Guest</Badge>}
+                          {customer.hasAccount ? null : <Badge>{t.guest}</Badge>}
                         </p>
                         <p className="truncate text-sm text-muted tabular">
                           {customer.name ? `${customer.email} · ` : ""}
-                          {customer.orders}{" "}
-                          {customer.orders === 1 ? "order" : "orders"} · last{" "}
-                          {formatDate(customer.lastOrderAt)}
+                          {plural(locale, customer.orders, t.orderSummary, {
+                            date: formatDate(customer.lastOrderAt, locale),
+                          })}
                         </p>
                       </div>
 
-                      <div className="shrink-0 text-right font-medium tabular">
-                        {formatMoney(customer.spentCents, store.currency)}
+                      <div className="shrink-0 text-end font-medium tabular">
+                        {formatMoney(customer.spentCents, store.currency, intl)}
                       </div>
                     </Link>
                   </li>

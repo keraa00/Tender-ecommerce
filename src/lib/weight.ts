@@ -32,8 +32,13 @@ export function gramsToInputValue(grams: number): string {
   return String(grams / 1000);
 }
 
-/** For display: "350 g", "1.2 kg". */
-export function formatWeight(grams: number): string {
-  if (grams < 1000) return `${grams} g`;
-  return `${Number((grams / 1000).toFixed(2))} kg`;
+/** For display: "350 g", "1.2 kg" — in the seller's language's number style. */
+export function formatWeight(grams: number, locale = "en-US"): string {
+  const kilograms = grams >= 1000;
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit: kilograms ? "kilogram" : "gram",
+    unitDisplay: "short",
+    maximumFractionDigits: kilograms ? 2 : 0,
+  }).format(kilograms ? grams / 1000 : grams);
 }

@@ -25,13 +25,18 @@ const MESSAGES: Record<string, string> = {
 
 export const GENERIC_ACCOUNT_ERROR = "Something went wrong. Please try again.";
 
-/** Friendly copy for a known Supabase Auth error code, or `fallback`. */
+/**
+ * Friendly copy for a known Supabase Auth error code, or `fallback`. Account
+ * settings pass `messages` — the same codes in the seller's admin language —
+ * and the untranslated sign-in pages leave them out for the English above.
+ */
 export function authErrorMessage(
   error: AuthErrorLike,
   fallback: string = GENERIC_ACCOUNT_ERROR,
+  messages: Readonly<Record<keyof typeof MESSAGES, string>> = MESSAGES,
 ): string {
-  if (error.code && error.code in MESSAGES) return MESSAGES[error.code];
-  if (error.status === 429) return MESSAGES.over_request_rate_limit;
+  if (error.code && error.code in MESSAGES) return messages[error.code];
+  if (error.status === 429) return messages.over_request_rate_limit;
   return fallback;
 }
 

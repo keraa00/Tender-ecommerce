@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { uploadThemeImage } from "@/lib/products/images";
+import { getAdminI18n } from "@/lib/i18n/server";
+import { UnrecognisedImageError, uploadThemeImage } from "@/lib/products/images";
 import { canEditTheme, canPublishTheme } from "@/lib/stores/policy";
 import { getStoreContext } from "@/lib/stores/context";
 import { publishThemeDraft, saveThemeDraft, stageThemePreview } from "./drafts";
@@ -17,9 +18,6 @@ import type { ThemeIssue } from "./validate";
  * is handed — the document above all — as untrusted input.
  */
 
-const CONFLICT =
-  "Someone else saved this store's design while you were editing. Reload to see their changes, then make yours again.";
-
 export type SaveThemeDraftResult =
   | { ok: true; version: number }
   | { ok: false; error: string; conflict?: boolean; issues?: ThemeIssue[] };
@@ -29,28 +27,32 @@ export async function saveThemeDraftAction(
   storeSlug: string,
   input: { document: unknown; baseVersion: unknown },
 ): Promise<SaveThemeDraftResult> {
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ store, membership }, { t: messages }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.themeActions;
   if (!canEditTheme(membership)) {
-    return { ok: false, error: "You don't have permission to change this store's design." };
+    return { ok: false, error: t.noPermission };
   }
 
   const baseVersion = versionFrom(input?.baseVersion);
-  if (baseVersion === null) return { ok: false, error: "Reload the editor and try again." };
+  if (baseVersion === null) return { ok: false, error: t.reloadEditor };
 
   let result;
   try {
     result = await saveThemeDraft(store.id, input.document, baseVersion);
   } catch (error) {
     console.error("saveThemeDraftAction failed", error);
-    return { ok: false, error: "Could not save the theme. Please try again." };
+    return { ok: false, error: t.saveFailed };
   }
 
   if (!result.ok) {
     return result.reason === "conflict"
-      ? { ok: false, error: CONFLICT, conflict: true }
+      ? { ok: false, error: t.conflict, conflict: true }
       : {
           ok: false,
-          error: "Some settings need fixing before this can be saved.",
+          error: t.needsFixing,
           issues: result.issues,
         };
   }
@@ -71,16 +73,20 @@ export async function stagePreviewAction(
   storeSlug: string,
   input: { session: unknown; document: unknown },
 ): Promise<StagePreviewResult> {
-  const { store, user, membership } = await getStoreContext(storeSlug);
+  const [{ store, user, membership }, { t: messages }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.themeActions;
   if (!canEditTheme(membership) || !isPreviewSession(input?.session)) {
-    return { ok: false, issues: [{ path: "", message: "Reload the editor and try again." }] };
+    return { ok: false, issues: [{ path: "", message: t.reloadEditor }] };
   }
 
   try {
     return await stageThemePreview(store.id, user.id, input.session, input.document);
   } catch (error) {
     console.error("stagePreviewAction failed", error);
-    return { ok: false, issues: [{ path: "", message: "The preview could not be updated." }] };
+    return { ok: false, issues: [{ path: "", message: t.previewFailed }] };
   }
 }
 
@@ -94,22 +100,29 @@ export async function uploadThemeImageAction(
   storeSlug: string,
   formData: FormData,
 ): Promise<UploadThemeImageResult> {
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ store, membership }, { t: messages }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.themeActions;
   if (!canEditTheme(membership)) {
-    return { ok: false, error: "You don't have permission to change this store's design." };
+    return { ok: false, error: t.noPermission };
   }
 
   const file = formData.get("image");
-  if (!(file instanceof File)) return { ok: false, error: "Choose an image to upload." };
+  if (!(file instanceof File)) return { ok: false, error: t.chooseImage };
 
-  const rejection = themeImageRejectionReason(file);
+  const rejection = themeImageRejectionReason(file, messages.validation.images);
   if (rejection) return { ok: false, error: rejection };
 
   try {
     return { ok: true, url: await uploadThemeImage(store.id, file) };
   } catch (error) {
+    if (error instanceof UnrecognisedImageError) {
+      return { ok: false, error: messages.validation.images.unrecognised };
+    }
     console.error("uploadThemeImageAction failed", error);
-    return { ok: false, error: "Could not upload the image. Please try again." };
+    return { ok: false, error: t.uploadFailed };
   }
 }
 
@@ -124,32 +137,35 @@ export async function publishThemeAction(
   _prev: PublishThemeState,
   formData: FormData,
 ): Promise<PublishThemeState> {
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ store, membership }, { t: messages }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.themeActions;
   if (!canPublishTheme(membership)) {
-    return { formError: "You don't have permission to publish this store's design." };
+    return { formError: t.noPublishPermission };
   }
 
   const baseVersion = parseThemeVersion(formData.get("baseVersion"));
-  if (baseVersion === null) return { formError: "Reload the page and try again." };
+  if (baseVersion === null) return { formError: t.reloadPage };
 
   let result;
   try {
     result = await publishThemeDraft(store.id, baseVersion);
   } catch (error) {
     console.error("publishThemeAction failed", error);
-    return { formError: "Could not publish the theme. Please try again." };
+    return { formError: t.publishFailed };
   }
 
   if (!result.ok) {
     switch (result.reason) {
       case "conflict":
-        return { formError: CONFLICT };
+        return { formError: t.conflict };
       case "nothing-to-publish":
-        return { formError: "There are no saved changes to publish." };
+        return { formError: t.nothingToPublish };
       case "invalid":
         return {
-          formError:
-            "Some of this design's settings are no longer valid. Open the editor, fix them and save, then publish.",
+          formError: t.invalidToPublish,
         };
     }
   }
@@ -160,7 +176,7 @@ export async function publishThemeAction(
   revalidatePath(`/dashboard/${storeSlug}`, "layout");
   revalidatePath("/dashboard");
 
-  return { notice: "Published. Buyers now see this design." };
+  return { notice: t.published };
 }
 
 /** A version number from JSON: a whole number from 0 up, or nothing. */

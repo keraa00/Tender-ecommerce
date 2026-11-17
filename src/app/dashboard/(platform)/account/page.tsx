@@ -9,16 +9,24 @@ import { listOwnedStores } from "@/lib/account/queries";
 import { accountPath } from "@/lib/admin/nav";
 import { getAuthUser, requireUser } from "@/lib/auth/session";
 import { formatDate, formatDateTime } from "@/lib/dates";
+import { format, plural } from "@/lib/i18n/format";
+import { formatRich } from "@/lib/i18n/rich";
+import { getAdminI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Account settings" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.account.profile.title };
+}
 
 export default async function AccountProfilePage(props: PageProps<"/dashboard/account">) {
   const user = await requireUser(accountPath());
-  const [authUser, ownedStores, searchParams] = await Promise.all([
+  const [authUser, ownedStores, searchParams, { t: messages, locale }] = await Promise.all([
     getAuthUser(),
     listOwnedStores(user.id),
     props.searchParams,
+    getAdminI18n(),
   ]);
+  const t = messages.account.profile;
 
   const pendingEmail = authUser?.new_email ?? null;
   // Stores that fall back to the account email for buyers (TND-08): changing
@@ -31,55 +39,55 @@ export default async function AccountProfilePage(props: PageProps<"/dashboard/ac
       {searchParams.email === "confirmed" ? (
         <FormNotice>
           {pendingEmail
-            ? `That's one confirmed. Open the link we sent to the other address to finish moving to ${pendingEmail}.`
-            : `Your email address is now ${user.email}.`}
+            ? format(t.emailConfirmedPending, { email: pendingEmail })
+            : format(t.emailConfirmed, { email: user.email })}
         </FormNotice>
       ) : null}
 
-      <AccountSection title="Profile" description="How you appear across Tender.">
-        <ProfileForm action={updateProfileAction} name={user.name ?? ""} />
+      <AccountSection title={t.profile} description={t.profileHint}>
+        <ProfileForm
+          action={updateProfileAction}
+          name={user.name ?? ""}
+          t={messages.account.forms}
+        />
       </AccountSection>
 
       <AccountSection
-        title="Email address"
-        description={
-          <>
-            You sign in with <span className="font-medium text-foreground">{user.email}</span>.
-            Account emails, like password resets, go there too.
-          </>
-        }
+        title={t.email}
+        description={formatRich(t.emailHint, {
+          email: <span className="font-medium text-foreground">{user.email}</span>,
+        })}
       >
         {pendingEmail ? (
           <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning text-pretty">
-            Waiting for you to confirm <span className="font-medium">{pendingEmail}</span>. Check
-            both inboxes for a link — until it&rsquo;s confirmed, keep signing in with{" "}
-            {user.email}. Asking again below replaces this request.
+            {formatRich(t.pendingEmail, {
+              email: <span className="font-medium">{pendingEmail}</span>,
+              current: user.email,
+            })}
           </p>
         ) : null}
 
         {storesShowingEmail.length > 0 ? (
           <p className="text-sm text-muted text-pretty">
-            {storesShowingEmail.length === 1
-              ? `${storesShowingEmail[0].name} shows`
-              : `${storesShowingEmail.map((store) => store.name).join(", ")} show`}{" "}
-            this address to buyers, because no separate contact email is set in Settings. A new
-            address will show there instead.
+            {plural(locale, storesShowingEmail.length, t.storesShowEmail, {
+              stores: storesShowingEmail.map((store) => store.name).join(", "),
+            })}
           </p>
         ) : null}
 
-        <EmailForm action={changeEmailAction} />
+        <EmailForm action={changeEmailAction} t={messages.account.forms} />
       </AccountSection>
 
-      <AccountSection title="Account">
+      <AccountSection title={t.account}>
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-muted">Member since</dt>
-            <dd className="mt-0.5 tabular">{formatDate(user.createdAt)}</dd>
+            <dt className="text-muted">{t.memberSince}</dt>
+            <dd className="mt-0.5 tabular">{formatDate(user.createdAt, locale)}</dd>
           </div>
           <div>
-            <dt className="text-muted">Last sign-in</dt>
+            <dt className="text-muted">{t.lastSignIn}</dt>
             <dd className="mt-0.5 tabular">
-              {lastSignIn ? `${formatDateTime(lastSignIn)} UTC` : "—"}
+              {lastSignIn ? format(t.utc, { date: formatDateTime(lastSignIn, locale) }) : "—"}
             </dd>
           </div>
         </dl>

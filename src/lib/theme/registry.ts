@@ -1,4 +1,5 @@
 import type { AnySectionDefinition } from "./define";
+import { localizeFields, type FieldCopy } from "./fields";
 import featuredCollections from "./sections/featured-collections";
 import footer from "./sections/footer";
 import header from "./sections/header";
@@ -38,10 +39,49 @@ export function getSectionDefinition(type: string): AnySectionDefinition | undef
 /** What the editor needs to know about a section type: everything but the code. */
 export type SectionManifest = Omit<AnySectionDefinition, "Component">;
 
+/** A section type's words in the seller's language: `t.themeSections[type]`. */
+export type SectionCopy = {
+  name: string;
+  description?: string;
+  settings?: Record<string, FieldCopy>;
+  blocks?: Record<string, { name: string; settings?: Record<string, FieldCopy> }>;
+};
+
 /**
  * The registry as plain data, for the editor — a Client Component, which
  * cannot import the section components or their data access.
+ *
+ * With `copy`, every name, description and setting label is the seller's
+ * language's, laid over the schema's English; a type or setting the copy does
+ * not mention keeps its English.
  */
-export function sectionManifests(): SectionManifest[] {
-  return SECTIONS.map(({ Component: _component, ...manifest }) => manifest);
+export function sectionManifests(
+  copy?: Readonly<Record<string, SectionCopy | undefined>>,
+): SectionManifest[] {
+  return SECTIONS.map(({ Component: _component, ...manifest }) => {
+    const words = copy?.[manifest.type];
+    if (!words) return manifest;
+
+    return {
+      ...manifest,
+      name: words.name,
+      description: words.description ?? manifest.description,
+      settings: localizeFields(manifest.settings, words.settings),
+      blocks: Object.fromEntries(
+        Object.entries(manifest.blocks).map(([type, block]) => {
+          const blockWords = words.blocks?.[type];
+          return [
+            type,
+            blockWords
+              ? {
+                  ...block,
+                  name: blockWords.name,
+                  settings: localizeFields(block.settings, blockWords.settings),
+                }
+              : block,
+          ];
+        }),
+      ),
+    };
+  });
 }

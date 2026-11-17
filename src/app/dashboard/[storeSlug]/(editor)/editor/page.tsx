@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ThemeEditor } from "@/components/theme/editor/theme-editor";
 import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
 import { listCollectionOptions } from "@/lib/collections/queries";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { canEditTheme, canPublishTheme } from "@/lib/stores/policy";
 import { getStoreContext } from "@/lib/stores/context";
 import {
@@ -12,7 +13,9 @@ import {
   stagePreviewAction,
   uploadThemeImageAction,
 } from "@/lib/theme/actions";
+import { THEME_SETTINGS } from "@/lib/theme/document";
 import { getThemeDraft } from "@/lib/theme/drafts";
+import { localizeFields } from "@/lib/theme/fields";
 import { newPreviewSession } from "@/lib/theme/preview";
 import { sectionManifests } from "@/lib/theme/registry";
 import { hasUnpublishedChanges } from "@/lib/theme/status";
@@ -21,8 +24,8 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/editor">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Edit theme · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.themeEditor.title} · ${store.name}` };
 }
 
 /**
@@ -34,7 +37,10 @@ export default async function ThemeEditorPage(
   props: PageProps<"/dashboard/[storeSlug]/editor">,
 ) {
   const { storeSlug } = await props.params;
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ store, membership }, { t }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
   if (!canEditTheme(membership)) notFound();
 
   const [draft, collections] = await Promise.all([
@@ -52,7 +58,9 @@ export default async function ThemeEditorPage(
       initialDocument={draft.document}
       initialVersion={draft.version}
       initialUnpublished={hasUnpublishedChanges(draft.status)}
-      manifests={sectionManifests()}
+      manifests={sectionManifests(t.themeSections)}
+      themeSettings={localizeFields(THEME_SETTINGS, t.themeSettings)}
+      t={t.themeEditor}
       collections={collections}
       session={session}
       urls={{

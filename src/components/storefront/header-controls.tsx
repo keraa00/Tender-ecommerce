@@ -2,18 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 
+import { LanguageSwitcher as SharedLanguageSwitcher } from "@/components/language-switcher";
 import { setLocaleAction } from "@/lib/i18n/actions";
-import { LOCALE_NAMES, LOCALES, type Locale } from "@/lib/i18n/locales";
+import type { Locale } from "@/lib/i18n/locales";
 import { cn } from "@/lib/cn";
-import {
-  BagIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  GlobeIcon,
-  MenuIcon,
-} from "./icons";
+import { BagIcon, MenuIcon } from "./icons";
 import { Sheet, SheetHeader, usePanel } from "./storefront-ui";
 import type { NavItem } from "./types";
 
@@ -124,11 +118,7 @@ export function MobileMenu({
   );
 }
 
-/**
- * Each option is a submit button named `locale`. The menu closes once the
- * action has stored the choice and the page has re-rendered in the new
- * language, rather than on click — so it never flashes shut over old copy.
- */
+/** The buyer's language, kept in the storefront's own cookie. */
 export function LanguageSwitcher({
   locale,
   label,
@@ -136,72 +126,7 @@ export function LanguageSwitcher({
   locale: Locale;
   label: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label={`${label}: ${LOCALE_NAMES[locale]}`}
-        className="flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-surface-hover hover:text-foreground"
-      >
-        <GlobeIcon className="h-[18px] w-[18px]" />
-        <span className="uppercase">{locale}</span>
-        <ChevronDownIcon className="h-3.5 w-3.5 text-muted" />
-      </button>
-
-      {open ? (
-        <form
-          action={async (formData) => {
-            await setLocaleAction(formData);
-            setOpen(false);
-          }}
-          className="absolute end-0 z-50 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-lg"
-        >
-          <p className="px-2.5 pt-1.5 pb-1 text-xs text-muted">{label}</p>
-          {LOCALES.map((option) => (
-            <button
-              key={option}
-              type="submit"
-              name="locale"
-              value={option}
-              lang={option}
-              aria-current={option === locale ? "true" : undefined}
-              className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-start text-sm transition-colors hover:bg-surface-hover"
-            >
-              <span className="w-6 text-xs font-medium text-muted uppercase">
-                {option}
-              </span>
-              <span className="flex-1">{LOCALE_NAMES[option]}</span>
-              {option === locale ? <CheckIcon className="h-4 w-4" /> : null}
-            </button>
-          ))}
-        </form>
-      ) : null}
-    </div>
-  );
+  return <SharedLanguageSwitcher locale={locale} label={label} action={setLocaleAction} />;
 }
 
 /**

@@ -1,12 +1,19 @@
+"use client";
+
 import type { ReactNode } from "react";
+
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { cn } from "@/lib/cn";
-import {
-  DISCOUNT_STATE_LABELS,
-  type DiscountState,
-} from "@/lib/discounts/format";
+import type { DiscountState } from "@/lib/discounts/format";
 // Types only: the values re-export the Prisma client, and this module is also
 // rendered inside Client Components (the discount form's status preview).
 import type { OrderStatus, PaymentMethod, ProductStatus, StoreStatus } from "@/lib/db/types";
+
+/*
+ * The status badges are Client Components so the discount form's live preview
+ * can draw one too; their labels come from the admin's language context, which
+ * the dashboard layout provides to server-rendered pages and forms alike.
+ */
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -43,14 +50,9 @@ const storeStatusTone: Record<StoreStatus, Tone> = {
   SUSPENDED: "danger",
 };
 
-const storeStatusLabel: Record<StoreStatus, string> = {
-  PENDING: "Setup incomplete",
-  ACTIVE: "Live",
-  SUSPENDED: "Suspended",
-};
-
 export function StoreStatusBadge({ status }: { status: StoreStatus }) {
-  return <Badge tone={storeStatusTone[status]}>{storeStatusLabel[status]}</Badge>;
+  const { badges } = useAdminI18n();
+  return <Badge tone={storeStatusTone[status]}>{badges.store[status]}</Badge>;
 }
 
 const productStatusTone: Record<ProductStatus, Tone> = {
@@ -59,16 +61,9 @@ const productStatusTone: Record<ProductStatus, Tone> = {
   ARCHIVED: "warning",
 };
 
-const productStatusLabel: Record<ProductStatus, string> = {
-  DRAFT: "Draft",
-  ACTIVE: "Published",
-  ARCHIVED: "Archived",
-};
-
 export function ProductStatusBadge({ status }: { status: ProductStatus }) {
-  return (
-    <Badge tone={productStatusTone[status]}>{productStatusLabel[status]}</Badge>
-  );
+  const { badges } = useAdminI18n();
+  return <Badge tone={productStatusTone[status]}>{badges.product[status]}</Badge>;
 }
 
 const orderStatusTone: Record<OrderStatus, Tone> = {
@@ -76,13 +71,6 @@ const orderStatusTone: Record<OrderStatus, Tone> = {
   PAID: "success",
   FULFILLED: "success",
   CANCELLED: "danger",
-};
-
-const orderStatusLabel: Record<OrderStatus, string> = {
-  PENDING: "Awaiting payment",
-  PAID: "Paid",
-  FULFILLED: "Fulfilled",
-  CANCELLED: "Cancelled",
 };
 
 /**
@@ -96,10 +84,11 @@ export function OrderStatusBadge({
   status: OrderStatus;
   paymentMethod?: PaymentMethod;
 }) {
+  const { badges } = useAdminI18n();
   if (status === "PENDING" && paymentMethod === "CASH_ON_DELIVERY") {
-    return <Badge tone="warning">Payment on delivery</Badge>;
+    return <Badge tone="warning">{badges.paymentOnDelivery}</Badge>;
   }
-  return <Badge tone={orderStatusTone[status]}>{orderStatusLabel[status]}</Badge>;
+  return <Badge tone={orderStatusTone[status]}>{badges.order[status]}</Badge>;
 }
 
 /**
@@ -116,9 +105,6 @@ const discountStateTone: Record<DiscountState, Tone> = {
 };
 
 export function DiscountStateBadge({ state }: { state: DiscountState }) {
-  return (
-    <Badge tone={discountStateTone[state]}>
-      {DISCOUNT_STATE_LABELS[state]}
-    </Badge>
-  );
+  const { badges } = useAdminI18n();
+  return <Badge tone={discountStateTone[state]}>{badges.discount[state]}</Badge>;
 }

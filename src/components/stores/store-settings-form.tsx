@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { SaveBar, useDiscard, useResyncAfterReset } from "@/components/admin/save-bar";
 import { KEEP_LOGO, LogoField, type LogoChoice } from "@/components/stores/logo-field";
 import { Field, FormError, Input, Select } from "@/components/ui/field";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { StoreSettingsState } from "@/lib/stores/actions";
 
 type StoreSettingsFormProps = {
@@ -20,8 +21,12 @@ type StoreSettingsFormProps = {
   currencies: { code: string; label: string }[];
   /** Set once the store has taken an order; says why the currency is fixed. */
   currencyLocked: boolean;
-  /** Shown as the contact email's fallback. */
-  ownerEmail: string;
+  t: {
+    general: AdminMessages["settings"]["general"];
+    logo: AdminMessages["stores"]["logo"];
+    images: AdminMessages["validation"]["images"];
+    saveChanges: string;
+  };
 };
 
 export function StoreSettingsForm(props: StoreSettingsFormProps) {
@@ -34,9 +39,10 @@ function StoreSettingsFormBody({
   store,
   currencies,
   currencyLocked,
-  ownerEmail,
+  t: copy,
   onDiscard,
 }: StoreSettingsFormProps & { onDiscard: () => void }) {
+  const t = copy.general;
   const [state, formAction, pending] = useActionState<StoreSettingsState, FormData>(
     action,
     {},
@@ -60,7 +66,7 @@ function StoreSettingsFormBody({
   return (
     <form action={formAction} className="space-y-8" noValidate {...resync}>
       <SaveBar
-        label="Save changes"
+        label={copy.saveChanges}
         pending={pending}
         onDiscard={onDiscard}
         savedKey={state.notice ? state : undefined}
@@ -79,11 +85,8 @@ function StoreSettingsFormBody({
 
       <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <div>
-          <h2 className="text-sm font-medium tracking-tight">Store mark</h2>
-          <p className="mt-0.5 text-sm text-muted text-pretty">
-            How your store is marked in your store list and across this admin. Buyers
-            see it at the top of checkout.
-          </p>
+          <h2 className="text-sm font-medium tracking-tight">{t.storeMark}</h2>
+          <p className="mt-0.5 text-sm text-muted text-pretty">{t.storeMarkHint}</p>
         </div>
         <LogoField
           storeName={store.name}
@@ -92,21 +95,18 @@ function StoreSettingsFormBody({
           value={logo}
           onChange={setLogo}
           error={errors.logo}
+          t={{ logo: copy.logo, images: copy.images }}
         />
       </section>
 
       <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-medium tracking-tight">Store details</h2>
+        <h2 className="text-sm font-medium tracking-tight">{t.storeDetails}</h2>
 
         <Field
-          label="Currency"
+          label={t.currency}
           htmlFor="settings-currency"
           error={errors.currency}
-          hint={
-            currencyLocked
-              ? "Fixed now that your store has taken orders, so every total in your history adds up in one currency."
-              : "Every price, shipping rate and discount amount is in this currency. Prices are not converted when it changes — 24.99 stays 24.99."
-          }
+          hint={currencyLocked ? t.currencyLocked : t.currencyHint}
         >
           {/* A disabled select posts nothing, so the current value rides
               along in a hidden field and the server sees no change. */}
@@ -129,10 +129,10 @@ function StoreSettingsFormBody({
         </Field>
 
         <Field
-          label="Customer contact email"
+          label={t.contactEmail}
           htmlFor="settings-contact-email"
           error={errors.contactEmail}
-          hint={`Shown to buyers at checkout and on your contact page. Leave it empty to use ${ownerEmail}.`}
+          hint={t.contactEmailHint}
         >
           <Input
             id="settings-contact-email"
@@ -142,7 +142,8 @@ function StoreSettingsFormBody({
             maxLength={254}
             value={contactEmail}
             onChange={(event) => setContactEmail(event.target.value)}
-            placeholder={ownerEmail}
+            placeholder={t.contactEmailPlaceholder}
+            dir="ltr"
             aria-invalid={Boolean(errors.contactEmail)}
             className="sm:max-w-sm"
           />

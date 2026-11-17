@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
-  describeStoreDeletionBlocker,
-  parseDeleteStoreForm,
+  describeStoreDeletionBlocker as describeIn,
+  parseDeleteStoreForm as parseIn,
   storeDeletionBlockers,
+  type StoreDeletionBlocker,
 } from "@/lib/stores/deletion";
+
+const describeStoreDeletionBlocker = (blocker: StoreDeletionBlocker) =>
+  describeIn(blocker, "en", en.stores.deletionBlockers);
+const parseDeleteStoreForm = (formData: FormData, slug: string) =>
+  parseIn(formData, slug, en.stores.errors);
 
 const clear = { paidUnfulfilled: 0, pendingCod: 0, paymentsInFlight: 0 };
 
@@ -40,21 +47,36 @@ describe("storeDeletionBlockers", () => {
 });
 
 describe("parseDeleteStoreForm", () => {
-  const form = (confirmSlug?: string) => {
+  const form = (confirmSlug?: string, currentPassword?: string) => {
     const data = new FormData();
     if (confirmSlug !== undefined) data.set("confirmSlug", confirmSlug);
+    if (currentPassword !== undefined) data.set("currentPassword", currentPassword);
     return data;
   };
 
-  it("accepts the slug, typed with stray case or spaces", () => {
-    expect(parseDeleteStoreForm(form(" Acme-Goods "), "acme-goods")).toEqual({ ok: true });
+  it("accepts the slug, typed with stray case or spaces, with a password", () => {
+    expect(parseDeleteStoreForm(form(" Acme-Goods ", "hunter2"), "acme-goods")).toEqual({
+      ok: true,
+      currentPassword: "hunter2",
+    });
   });
 
   it("refuses anything else, the store's name included", () => {
-    expect(parseDeleteStoreForm(form("Acme Goods"), "acme-goods").ok).toBe(false);
-    expect(parseDeleteStoreForm(form(), "acme-goods")).toEqual({
+    expect(parseDeleteStoreForm(form("Acme Goods", "hunter2"), "acme-goods").ok).toBe(false);
+    expect(parseDeleteStoreForm(form(undefined, "hunter2"), "acme-goods")).toEqual({
       ok: false,
       fieldErrors: { confirmSlug: "Type acme-goods to confirm." },
+    });
+  });
+
+  it("wants the current password, and keeps it as typed", () => {
+    expect(parseDeleteStoreForm(form("acme-goods"), "acme-goods")).toEqual({
+      ok: false,
+      fieldErrors: { currentPassword: "Enter your current password." },
+    });
+    expect(parseDeleteStoreForm(form("acme-goods", " spaced "), "acme-goods")).toEqual({
+      ok: true,
+      currentPassword: " spaced ",
     });
   });
 });

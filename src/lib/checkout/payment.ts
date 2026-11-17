@@ -58,6 +58,26 @@ export async function supersedePlacedOrder(storeId: string): Promise<SupersedeRe
   });
   if (!order) return "none";
 
+  return resolveUnpaidOrder(order);
+}
+
+export type UnpaidCardOrder = Pick<
+  Order,
+  "id" | "storeId" | "stripePaymentIntentId" | "stripeAccountId"
+>;
+
+/**
+ * Brings one PENDING card order to an end: paid, if its money turns out to be
+ * in; left alone while a payment is on its way; otherwise cancelled —
+ * PaymentIntent first and order second, never an order cancelled under a
+ * payment that can still succeed — with its discount uses given back.
+ *
+ * Shared by a buyer placing the order again (`supersedePlacedOrder`) and the
+ * daily sweep of checkouts abandoned at the payment step.
+ */
+export async function resolveUnpaidOrder(
+  order: UnpaidCardOrder,
+): Promise<Exclude<SupersedeResult, "none">> {
   if (order.stripePaymentIntentId && order.stripeAccountId) {
     let intent = await retrievePaymentIntent(order.stripePaymentIntentId, order.stripeAccountId);
     if (supersedeAction(intent.status) === "cancel") {

@@ -10,7 +10,11 @@ import {
   previewSource,
   readPreviewMessage,
 } from "@/lib/theme/preview";
-import { themeImageRejectionReason, MAX_THEME_IMAGE_BYTES } from "@/lib/theme/uploads";
+import { en } from "@/lib/i18n/admin/en";
+import { themeImageRejectionReason as rejectIn, MAX_THEME_IMAGE_BYTES } from "@/lib/theme/uploads";
+
+const themeImageRejectionReason = (file: { type: string; size: number }) =>
+  rejectIn(file, en.validation.images);
 
 describe("previewSource", () => {
   const staged = { session: "abc12345" };

@@ -201,6 +201,8 @@ export const tr: Messages = {
     payNow: "Şimdi öde",
     paying: "Ödeme işleniyor…",
     backToCart: "Sepete dön",
+    demoNotice:
+      "Bu bir demo mağazadır. Ödemeler Stripe test modunda çalışır — 4242 4242 4242 4242 kartıyla ödeyin — ve hiçbir şey gönderilmez. Lütfen gerçek bir adres girmeyin.",
     unavailable: "Bu mağaza şu anda sipariş almıyor.",
     questions: "Sorunuz mu var?",
     blocked: {

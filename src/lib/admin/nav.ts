@@ -7,7 +7,12 @@
  * item that way rather than by comparing pathnames keeps it correct on the
  * admin subdomain, where the URL in the address bar (`/acme/orders`) is not the
  * internal route (`/dashboard/acme/orders`).
+ *
+ * Labels are keys into the admin messages rather than English, so the drawer
+ * and the tabs read in the seller's language.
  */
+
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 export type AdminIcon =
   | "home"
@@ -27,10 +32,13 @@ export type AdminIcon =
   | "security"
   | "privacy";
 
+/** A label in the seller's language: a key of the admin messages' `nav`. */
+export type NavLabel = keyof AdminMessages["nav"];
+
 export type AdminSection = {
   /** Path segment under the store, or null for the store's home page. */
   segment: string | null;
-  label: string;
+  label: NavLabel;
   icon: AdminIcon;
   /** Also offers a shortcut that opens the live storefront in a new tab. */
   opensStorefront?: boolean;
@@ -39,36 +47,36 @@ export type AdminSection = {
 /** A run of sections, set apart from the one before it by a divider. */
 export type AdminNavGroup = {
   /** Shown above the group. The first group has none. */
-  label?: string;
+  label?: NavLabel;
   sections: readonly AdminSection[];
 };
 
 export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     sections: [
-      { segment: null, label: "Home", icon: "home" },
-      { segment: "orders", label: "Orders", icon: "orders" },
-      { segment: "products", label: "Products", icon: "products" },
-      { segment: "collections", label: "Collections", icon: "collections" },
-      { segment: "customers", label: "Customers", icon: "customers" },
-      { segment: "discounts", label: "Discounts", icon: "discounts" },
-      { segment: "analytics", label: "Analytics", icon: "analytics" },
+      { segment: null, label: "home", icon: "home" },
+      { segment: "orders", label: "orders", icon: "orders" },
+      { segment: "products", label: "products", icon: "products" },
+      { segment: "collections", label: "collections", icon: "collections" },
+      { segment: "customers", label: "customers", icon: "customers" },
+      { segment: "discounts", label: "discounts", icon: "discounts" },
+      { segment: "analytics", label: "analytics", icon: "analytics" },
     ],
   },
   {
     // Where the store is sold. One channel today; the label is what makes room
     // for the next without moving anything.
-    label: "Sales channel",
+    label: "salesChannel",
     sections: [
       {
         segment: "online-store",
-        label: "Online store",
+        label: "onlineStore",
         icon: "online-store",
         opensStorefront: true,
       },
     ],
   },
-  { sections: [{ segment: "settings", label: "Settings", icon: "settings" }] },
+  { sections: [{ segment: "settings", label: "settings", icon: "settings" }] },
 ];
 
 /**
@@ -79,15 +87,15 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
  */
 export type SettingsSection = {
   segment: string | null;
-  label: string;
+  label: NavLabel;
   icon: AdminIcon;
 };
 
 export const SETTINGS_NAV: readonly SettingsSection[] = [
-  { segment: null, label: "General", icon: "general" },
-  { segment: "payments", label: "Payments", icon: "payments" },
-  { segment: "shipping", label: "Shipping and delivery", icon: "shipping" },
-  { segment: "checkout", label: "Checkout", icon: "checkout" },
+  { segment: null, label: "general", icon: "general" },
+  { segment: "payments", label: "payments", icon: "payments" },
+  { segment: "shipping", label: "shipping", icon: "shipping" },
+  { segment: "checkout", label: "checkout", icon: "checkout" },
 ];
 
 /** The path of a settings page under the store, for `storeAdminPath`. */
@@ -102,9 +110,9 @@ export function settingsPath(segment: string | null): string {
  * these are plain root-host paths — see `PLATFORM_DASHBOARD_SEGMENTS`.
  */
 export const ACCOUNT_NAV: readonly SettingsSection[] = [
-  { segment: null, label: "Profile", icon: "profile" },
-  { segment: "security", label: "Security", icon: "security" },
-  { segment: "privacy", label: "Data & privacy", icon: "privacy" },
+  { segment: null, label: "profile", icon: "profile" },
+  { segment: "security", label: "security", icon: "security" },
+  { segment: "privacy", label: "privacy", icon: "privacy" },
 ];
 
 /** The path of an account settings page, on the root host. */

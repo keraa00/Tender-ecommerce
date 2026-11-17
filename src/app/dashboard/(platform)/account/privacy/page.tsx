@@ -13,19 +13,27 @@ import { listOwnedStores } from "@/lib/account/queries";
 import { storeAdminUrl } from "@/lib/admin/links";
 import { accountPath } from "@/lib/admin/nav";
 import { requireUser } from "@/lib/auth/session";
+import { getAdminI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Data & privacy" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.account.privacy.title };
+}
 
 export default async function AccountPrivacyPage() {
   const user = await requireUser(accountPath("privacy"));
-  const ownedStores = await listOwnedStores(user.id);
+  const [ownedStores, { t: messages }] = await Promise.all([
+    listOwnedStores(user.id),
+    getAdminI18n(),
+  ]);
+  const t = messages.account.privacy;
   const blockers = accountDeletionBlockers({ ownedStores, platformRole: user.platformRole });
 
   return (
     <div className="space-y-6">
       <AccountSection
-        title="Download your data"
-        description="A JSON file with your account details, the stores you're a member of, and the orders you've placed while signed in. Your stores' catalogues and sales stay in each store's admin."
+        title={t.download}
+        description={t.downloadHint}
       >
         {/* A plain anchor: the export is a file download, not a page. */}
         <a
@@ -33,21 +41,21 @@ export default async function AccountPrivacyPage() {
           download
           className={buttonClasses("secondary", "sm")}
         >
-          Download my data
+          {t.downloadButton}
         </a>
       </AccountSection>
 
       <AccountSection
-        title="Delete account"
+        title={t.delete}
         tone="danger"
-        description="Deletes your sign-in and profile for good, and signs you out everywhere. Orders you placed stay with the sellers you bought from — they're the stores' records of a sale — but are no longer linked to an account. This can't be undone."
+        description={t.deleteHint}
       >
         {blockers.length > 0 ? (
           <div className="space-y-3">
             <FormError>
               <ul className="list-disc space-y-1 ps-4">
                 {blockers.map((blocker) => (
-                  <li key={blocker.kind}>{describeAccountDeletionBlocker(blocker)}</li>
+                  <li key={blocker.kind}>{describeAccountDeletionBlocker(blocker, t)}</li>
                 ))}
               </ul>
             </FormError>
@@ -57,14 +65,16 @@ export default async function AccountPrivacyPage() {
                   <li key={store.id} className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{store.name}</p>
-                      <p className="truncate text-sm text-muted">/s/{store.slug}</p>
+                      <p className="truncate text-sm text-muted">
+                        <span dir="ltr">/s/{store.slug}</span>
+                      </p>
                     </div>
                     {/* The danger zone is at the foot of Settings → General. */}
                     <a
                       href={storeAdminUrl(store.slug, "settings")}
                       className={buttonClasses("secondary", "sm")}
                     >
-                      Delete store
+                      {t.deleteStore}
                     </a>
                   </li>
                 ))}
@@ -72,7 +82,11 @@ export default async function AccountPrivacyPage() {
             ) : null}
           </div>
         ) : (
-          <DeleteAccountForm action={deleteAccountAction} email={user.email} />
+          <DeleteAccountForm
+            action={deleteAccountAction}
+            email={user.email}
+            t={messages.account.forms}
+          />
         )}
       </AccountSection>
     </div>

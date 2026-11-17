@@ -1,3 +1,5 @@
+import { getAdminI18n } from "@/lib/i18n/server";
+
 /**
  * Shown in place of any store admin page while it renders on the server.
  *
@@ -7,11 +9,13 @@
  * same width, heading, stat grid and rows — so the real page lands without the
  * layout jumping.
  */
-export default function StoreAdminLoading() {
+export default async function StoreAdminLoading() {
+  const { t } = await getAdminI18n();
+
   return (
     <div
       role="status"
-      aria-label="Loading"
+      aria-label={t.common.loading}
       className="mx-auto w-full max-w-5xl animate-pulse px-4 py-8 sm:px-6 lg:px-8"
     >
       <div className="h-6 w-40 rounded-md bg-surface-hover" />
@@ -35,7 +39,7 @@ export default function StoreAdminLoading() {
         ))}
       </div>
 
-      <span className="sr-only">Loading…</span>
+      <span className="sr-only">{t.common.loadingEllipsis}</span>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { useActionState, useState, type ReactNode } from "react";
 import { SaveBar, useDiscard, useResyncAfterReset } from "@/components/admin/save-bar";
 import { Field, FormError, Input } from "@/components/ui/field";
 import { cn } from "@/lib/cn";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type { RateFormState } from "@/lib/shipping/actions";
 import { MAX_DELIVERY_DAYS, MAX_RATE_NAME, type RateCondition } from "@/lib/shipping/form";
 
@@ -39,13 +41,10 @@ type RateFormProps = {
   /** The store currency's symbol, for the price fields. */
   currencySymbol: string;
   submitLabel: string;
+  t: AdminMessages["settings"]["shipping"]["rateForm"];
 };
 
-const CONDITIONS: { value: RateCondition; label: string; hint: string }[] = [
-  { value: "none", label: "None", hint: "Offered on every order in the zone" },
-  { value: "subtotal", label: "Order price", hint: "Subtotal after item discounts" },
-  { value: "weight", label: "Order weight", hint: "Total weight of what ships" },
-];
+const CONDITIONS: readonly RateCondition[] = ["none", "subtotal", "weight"];
 
 export function RateForm(props: RateFormProps) {
   const { key, discard } = useDiscard();
@@ -57,6 +56,7 @@ function RateFormBody({
   initialValues,
   currencySymbol,
   submitLabel,
+  t,
   onDiscard,
 }: RateFormProps & { onDiscard: () => void }) {
   const [state, formAction, pending] = useActionState<RateFormState, FormData>(action, {});
@@ -91,10 +91,10 @@ function RateFormBody({
 
       <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <Field
-          label="Rate name"
+          label={t.name}
           htmlFor="rate-name"
           error={errors.name}
-          hint="What buyers choose at checkout."
+          hint={t.nameHint}
         >
           <Input
             id="rate-name"
@@ -102,13 +102,13 @@ function RateFormBody({
             maxLength={MAX_RATE_NAME}
             value={values.name}
             onChange={(event) => set("name")(event.target.value)}
-            placeholder="Standard"
+            placeholder={t.namePlaceholder}
             aria-invalid={Boolean(errors.name)}
             className="sm:max-w-sm"
           />
         </Field>
 
-        <Field label="Price" htmlFor="rate-price" error={errors.price} hint="0 means free.">
+        <Field label={t.price} htmlFor="rate-price" error={errors.price} hint={t.priceHint}>
           <Affixed prefix={currencySymbol} className="max-w-40">
             <input
               id="rate-price"
@@ -124,61 +124,58 @@ function RateFormBody({
         </Field>
 
         <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium">Delivery estimate (optional)</legend>
+          <legend className="text-sm font-medium">{t.delivery}</legend>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <DaysInput
               name="minDays"
-              label="Shortest"
+              label={format(t.daysLabel, { label: t.shortest })}
               value={values.minDays}
               onChange={set("minDays")}
               invalid={Boolean(errors.delivery)}
             />
-            <span className="text-muted">to</span>
+            <span className="text-muted">{t.to}</span>
             <DaysInput
               name="maxDays"
-              label="Longest"
+              label={format(t.daysLabel, { label: t.longest })}
               value={values.maxDays}
               onChange={set("maxDays")}
               invalid={Boolean(errors.delivery)}
             />
-            <span className="text-muted">business days</span>
+            <span className="text-muted">{t.businessDays}</span>
           </div>
           {errors.delivery ? (
             <p role="alert" className="text-sm text-danger">
               {errors.delivery}
             </p>
           ) : (
-            <p className="text-sm text-muted">Shown beside the rate at checkout.</p>
+            <p className="text-sm text-muted">{t.deliveryHint}</p>
           )}
         </fieldset>
       </section>
 
       <section className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <div>
-          <h2 className="text-sm font-medium tracking-tight">Condition</h2>
-          <p className="mt-0.5 text-sm text-muted text-pretty">
-            Offer this rate only to orders in a range. Both ends are included, so write
-            tiers as 0–49.99 and 50 and up.
-          </p>
+          <h2 className="text-sm font-medium tracking-tight">{t.condition}</h2>
+          <p className="mt-0.5 text-sm text-muted text-pretty">{t.conditionHint}</p>
         </div>
 
-        <div role="radiogroup" aria-label="Condition" className="grid gap-2 sm:grid-cols-3">
+        <div role="radiogroup" aria-label={t.condition} className="grid gap-2 sm:grid-cols-3">
           {CONDITIONS.map((option) => (
             <label
-              key={option.value}
+              key={option}
               className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border-strong bg-surface px-3 py-2.5 has-checked:border-foreground has-checked:bg-surface-hover"
             >
               <input
                 type="radio"
                 name="condition"
-                value={option.value}
-                checked={condition === option.value}
-                onChange={() => setValues((current) => ({ ...current, condition: option.value }))}
+                value={option}
+                checked={condition === option}
+                onChange={() => setValues((current) => ({ ...current, condition: option }))}
                 className="mt-0.5"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-medium">{option.label}</span>
-                <span className="block text-xs text-muted">{option.hint}</span>
+                <span className="block text-sm font-medium">{t.conditions[option].label}</span>
+                <span className="block text-xs text-muted">{t.conditions[option].hint}</span>
               </span>
             </label>
           ))}
@@ -194,6 +191,7 @@ function RateFormBody({
             onChange={[set("minSubtotal"), set("maxSubtotal")]}
             placeholder="0.00"
             invalid={Boolean(errors.condition)}
+            t={t}
           />
         </div>
         <div className={cn(condition !== "weight" && "hidden")}>
@@ -204,6 +202,7 @@ function RateFormBody({
             onChange={[set("minWeight"), set("maxWeight")]}
             placeholder="0"
             invalid={Boolean(errors.condition)}
+            t={t}
           />
         </div>
         {errors.condition ? (
@@ -232,7 +231,7 @@ function DaysInput({
   return (
     <input
       name={name}
-      aria-label={`${label} delivery, in business days`}
+      aria-label={label}
       inputMode="numeric"
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -251,7 +250,9 @@ function Range({
   onChange,
   placeholder,
   invalid,
+  t,
 }: {
+  t: AdminMessages["settings"]["shipping"]["rateForm"];
   prefix?: string;
   suffix?: string;
   names: [string, string];
@@ -262,7 +263,7 @@ function Range({
 }) {
   return (
     <div className="grid max-w-md grid-cols-2 gap-3">
-      {(["Minimum", "Maximum"] as const).map((label, index) => (
+      {[t.minimum, t.maximum].map((label, index) => (
         <div key={label} className="space-y-1.5">
           <label htmlFor={names[index]} className="block text-sm font-medium">
             {label}
@@ -274,7 +275,7 @@ function Range({
               inputMode="decimal"
               value={values[index]}
               onChange={(event) => onChange[index](event.target.value)}
-              placeholder={index === 0 ? placeholder : "No limit"}
+              placeholder={index === 0 ? placeholder : t.noLimit}
               aria-invalid={invalid}
               className="h-10 w-full min-w-0 bg-transparent px-2 text-sm outline-none"
             />
@@ -303,9 +304,9 @@ function Affixed({
         className,
       )}
     >
-      {prefix ? <span className="pl-3 text-sm text-muted select-none">{prefix}</span> : null}
+      {prefix ? <span className="ps-3 text-sm text-muted select-none">{prefix}</span> : null}
       {children}
-      {suffix ? <span className="pr-3 text-sm text-muted select-none">{suffix}</span> : null}
+      {suffix ? <span className="pe-3 text-sm text-muted select-none">{suffix}</span> : null}
     </div>
   );
 }

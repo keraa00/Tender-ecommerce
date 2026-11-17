@@ -31,14 +31,22 @@ function match(table: readonly [RegExp, string][], ua: string): string | null {
   return null;
 }
 
-export function describeUserAgent(ua: string | null | undefined): string {
-  if (!ua) return "Unknown device";
+/** The two phrases that are words rather than names, in the seller's language. */
+export type UserAgentCopy = { unknownDevice: string; browserOn: string };
+
+const ENGLISH: UserAgentCopy = { unknownDevice: "Unknown device", browserOn: "{browser} on {system}" };
+
+export function describeUserAgent(
+  ua: string | null | undefined,
+  t: UserAgentCopy = ENGLISH,
+): string {
+  if (!ua) return t.unknownDevice;
 
   const browser = match(BROWSERS, ua);
   const system = match(SYSTEMS, ua);
 
-  if (browser && system) return `${browser} on ${system}`;
+  if (browser && system) return t.browserOn.replace("{browser}", browser).replace("{system}", system);
   if (browser) return browser;
   if (system) return system;
-  return "Unknown device";
+  return t.unknownDevice;
 }

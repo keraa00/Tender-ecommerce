@@ -1,5 +1,8 @@
 import * as z from "zod";
 
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+
 /**
  * The kinds of setting a theme section can declare, each of which is both a
  * zod schema (what a stored value may be) and a description the editor can
@@ -151,17 +154,17 @@ export type ThemeLink =
 
 export const MAX_URL_LENGTH = 2_048;
 
-const httpUrl = z
-  .url({ protocol: /^https?$/, message: "Use a web address starting with https://." })
-  .max(MAX_URL_LENGTH);
+function linkSchema(t?: FieldMessages) {
+  const httpUrl = z.url({ protocol: /^https?$/, message: t?.url }).max(MAX_URL_LENGTH);
 
-const linkSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("home") }),
-  z.object({ kind: z.literal("catalog") }),
-  z.object({ kind: z.literal("contact") }),
-  z.object({ kind: z.literal("collection"), collectionId: z.uuid() }),
-  z.object({ kind: z.literal("url"), url: httpUrl }),
-]);
+  return z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("home") }),
+    z.object({ kind: z.literal("catalog") }),
+    z.object({ kind: z.literal("contact") }),
+    z.object({ kind: z.literal("collection"), collectionId: z.uuid() }),
+    z.object({ kind: z.literal("url"), url: httpUrl }),
+  ]);
+}
 
 // ---------------------------------------------------------------------------
 // Builders
@@ -236,50 +239,108 @@ export const field = {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-/** What a stored value for this field may be. */
-export function fieldSchema(field: Field): z.ZodType<unknown> {
+/** How a rejected value is explained, in the seller's language. */
+export type FieldMessages = AdminMessages["themeValidation"]["field"];
+
+/**
+ * What a stored value for this field may be. `t` words the refusals; the
+ * lenient read of a stored theme, which only keeps or drops a value, leaves
+ * it out.
+ */
+export function fieldSchema(field: Field, t?: FieldMessages): z.ZodType<unknown> {
+  const say = (template: string | undefined, values: Record<string, number> = {}) =>
+    template === undefined ? undefined : format(template, values);
+
   switch (field.kind) {
     case "text":
     case "textarea":
       return z
         .string()
         .trim()
-        .max(field.maxLength, `Keep it under ${field.maxLength} characters.`);
+        .max(field.maxLength, say(t?.tooLong, { max: field.maxLength }));
     case "select": {
       const values = field.options.map((option) => option.value);
-      return z.string().refine((value) => values.includes(value), "Choose one of the options.");
+      return z.string().refine((value) => values.includes(value), say(t?.option));
     }
     case "checkbox":
       return z.boolean();
     case "range":
       return z
-        .number({ error: "Enter a number." })
-        .min(field.min, `Use at least ${field.min}.`)
-        .max(field.max, `Use at most ${field.max}.`)
+        .number({ error: say(t?.number) })
+        .min(field.min, say(t?.min, { min: field.min }))
+        .max(field.max, say(t?.max, { max: field.max }))
         .multipleOf(field.step);
     case "color":
       return z
         .string()
-        .regex(HEX_COLOR, "Use a colour like #1a2b3c.")
+        .regex(HEX_COLOR, say(t?.color))
         .transform((value) => value.toLowerCase())
         .nullable();
     case "image":
       return z
-        .url({ protocol: /^https$/, message: "Images must be uploaded." })
+        .url({ protocol: /^https$/, message: say(t?.imageUploaded) })
         .max(MAX_URL_LENGTH)
         .nullable();
     case "collection":
-      return z.uuid("Choose a collection.").nullable();
+      return z.uuid(say(t?.collection)).nullable();
     case "collection_list":
       return z
-        .array(z.uuid("Choose a collection."))
+        .array(z.uuid(say(t?.collection)))
         // The same collection twice is a slip, not a request to show it twice,
         // so it is dropped before the count is checked.
         .transform((ids) => [...new Set(ids)])
-        .pipe(z.array(z.string()).max(field.max, `Choose at most ${field.max}.`));
+        .pipe(z.array(z.string()).max(field.max, say(t?.tooMany, { max: field.max })));
     case "link":
-      return linkSchema;
+      return linkSchema(t);
   }
+}
+
+/**
+ * A field's words in the seller's language — what `localizeFields` lays over
+ * a schema. Option labels are keyed by the option's value.
+ */
+export type FieldCopy = {
+  label: string;
+  help?: string;
+  placeholder?: string;
+  nullLabel?: string;
+  unit?: string;
+  options?: Record<string, string>;
+};
+
+/**
+ * The fields with their label, help, placeholder and option labels replaced
+ * by `copy`, key by key. A field `copy` does not mention keeps its schema
+ * English, so a setting added without a translation still shows a label.
+ */
+export function localizeFields<F extends Fields>(
+  fields: F,
+  copy: Readonly<Record<string, FieldCopy>> | undefined,
+): F {
+  if (!copy) return fields;
+
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, field]) => {
+      const words = copy[key];
+      if (!words) return [key, field];
+
+      const next: Field = { ...field, label: words.label };
+      if (words.help !== undefined) next.help = words.help;
+      if (words.placeholder !== undefined && (next.kind === "text" || next.kind === "textarea")) {
+        next.placeholder = words.placeholder;
+      }
+      if (words.nullLabel !== undefined && next.kind === "color") next.nullLabel = words.nullLabel;
+      if (words.unit !== undefined && next.kind === "range") next.unit = words.unit;
+      if (words.options && next.kind === "select") {
+        const labels = words.options;
+        next.options = next.options.map((option) => ({
+          ...option,
+          label: labels[option.value] ?? option.label,
+        }));
+      }
+      return [key, next];
+    }),
+  ) as F;
 }
 
 /** A fresh copy of the field's default, safe to mutate. */

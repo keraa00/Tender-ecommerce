@@ -8,13 +8,14 @@ import { FormError } from "@/components/ui/field";
 import { storeAdminPath } from "@/lib/admin/links";
 import { deleteDiscountAction, updateDiscountAction } from "@/lib/discounts/actions";
 import { savedDiscountFormValues } from "@/lib/discounts/form-values";
-import { discountTypeLabel } from "@/lib/discounts/constants";
-import { discountFormOptions } from "@/lib/discounts/options";
+import { discountFormCopy, discountFormOptions } from "@/lib/discounts/options";
 import {
   discountPerformance,
   discountTargets,
   getStoreDiscount,
 } from "@/lib/discounts/queries";
+import { plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
 import { formatMoney } from "@/lib/money";
 import { getStoreContext } from "@/lib/stores/context";
@@ -29,8 +30,13 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/discounts/[discountId]">,
 ): Promise<Metadata> {
   const { storeSlug, discountId } = await props.params;
-  const { discount } = await loadDiscount(storeSlug, discountId);
-  return { title: discount ? `${discount.title} · Discounts` : "Discount" };
+  const [{ discount }, { t }] = await Promise.all([
+    loadDiscount(storeSlug, discountId),
+    getAdminI18n(),
+  ]);
+  return {
+    title: discount ? `${discount.title} · ${t.discounts.title}` : t.discounts.edit.fallbackTitle,
+  };
 }
 
 export default async function EditDiscountPage(
@@ -40,11 +46,17 @@ export default async function EditDiscountPage(
   const { error, created } = await props.searchParams;
 
   // `storeId` is part of the lookup, so another tenant's discount id 404s.
-  const { store, discount } = await loadDiscount(storeSlug, discountId);
+  const [{ store, discount }, i18n] = await Promise.all([
+    loadDiscount(storeSlug, discountId),
+    getAdminI18n(),
+  ]);
   if (!discount) notFound();
+  const { t: messages, locale, intl } = i18n;
+  const t = messages.discounts.edit;
+  const number = new Intl.NumberFormat(intl);
 
   const [options, performance] = await Promise.all([
-    discountFormOptions(store.id),
+    discountFormOptions(store.id, i18n),
     discountPerformance(store.id, discount.id),
   ]);
 
@@ -55,42 +67,45 @@ export default async function EditDiscountPage(
   return (
     <AdminPage
       title={discount.title}
-      back={{ href: storeAdminPath(storeSlug, "discounts"), label: "Discounts" }}
+      back={{ href: storeAdminPath(storeSlug, "discounts"), label: messages.discounts.title }}
       description={
         <>
           {discount.code ? (
-            <code className="mr-2 rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-xs font-medium ring-1 ring-border ring-inset">
+            <code className="me-2 rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-xs font-medium ring-1 ring-border ring-inset">
               {discount.code}
             </code>
           ) : (
-            "Automatic · "
+            t.automaticPrefix
           )}
-          {discountTypeLabel(discount.type)}
+          {messages.discounts.types[discount.type].label}
         </>
       }
     >
       {error === "delete-failed" ? (
         <div className="mb-6">
-          <FormError>Could not delete the discount. Please try again.</FormError>
+          <FormError>{t.deleteFailed}</FormError>
         </div>
       ) : null}
 
       <div className="mb-6">
         <StatGrid>
           <Stat
-            label="Uses"
+            label={t.uses}
             value={
               discount.usageLimit === null
-                ? String(discount.usageCount)
-                : `${discount.usageCount} / ${discount.usageLimit}`
+                ? number.format(discount.usageCount)
+                : `${number.format(discount.usageCount)} / ${number.format(discount.usageLimit)}`
             }
           />
-          <Stat label="Paid orders" value={String(performance.paidOrders)} />
-          <Stat label="Discount given" value={formatMoney(performance.discountCents, store.currency)} />
+          <Stat label={t.paidOrders} value={number.format(performance.paidOrders)} />
           <Stat
-            label="Sales"
-            value={formatMoney(performance.salesCents, store.currency)}
-            hint="Paid orders that used it"
+            label={t.discountGiven}
+            value={formatMoney(performance.discountCents, store.currency, intl)}
+          />
+          <Stat
+            label={t.sales}
+            value={formatMoney(performance.salesCents, store.currency, intl)}
+            hint={t.salesHint}
           />
         </StatGrid>
       </div>
@@ -102,25 +117,26 @@ export default async function EditDiscountPage(
           customerEmails: discount.customers.map((customer) => customer.email),
         })}
         options={options}
-        submitLabel="Save changes"
+        submitLabel={messages.common.saveChanges}
+        t={discountFormCopy(messages)}
         usageCount={discount.usageCount}
         now={now.toISOString()}
-        initialNotice={created ? "Discount created." : undefined}
+        initialNotice={created ? t.created : undefined}
         currency={store.currency}
       />
 
       <details className="mt-10 rounded-xl border border-danger/30 bg-danger/5 p-4">
         <summary className="cursor-pointer text-sm font-medium text-danger">
-          Delete this discount
+          {t.deleteTitle}
         </summary>
         <p className="mt-2 text-sm text-muted text-pretty">
           {discount.usageCount > 0
-            ? `It has been used ${discount.usageCount} ${discount.usageCount === 1 ? "time" : "times"}. Past orders keep what they were charged, but the record of who used it goes — so a one-per-customer code could be used again if you recreate it. To stop it and keep that history, switch it off instead.`
-            : "It has not been used yet, so nothing else changes."}
+            ? plural(locale, discount.usageCount, t.deleteUsed)
+            : t.deleteUnused}
         </p>
         <form action={destroy} className="mt-3">
           <Button type="submit" variant="danger" size="sm">
-            Delete discount
+            {t.deleteButton}
           </Button>
         </form>
       </details>

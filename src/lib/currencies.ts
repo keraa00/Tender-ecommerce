@@ -44,8 +44,8 @@ export function isSupportedCurrency(value: unknown): value is Currency {
   return typeof value === "string" && (SUPPORTED_CURRENCIES as readonly string[]).includes(value);
 }
 
-/** "EUR — Euro", in English, for the admin's select. */
-export function currencyLabel(code: string): string {
-  const name = new Intl.DisplayNames(["en"], { type: "currency", fallback: "code" }).of(code);
+/** "EUR — Euro", in the seller's admin language, for the admin's selects. */
+export function currencyLabel(code: string, locale = "en"): string {
+  const name = new Intl.DisplayNames([locale], { type: "currency", fallback: "code" }).of(code);
   return name && name !== code ? `${code} — ${name}` : code;
 }

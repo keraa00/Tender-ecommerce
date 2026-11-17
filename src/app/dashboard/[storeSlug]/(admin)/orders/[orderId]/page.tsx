@@ -4,17 +4,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache, type ReactNode } from "react";
 
-import { AdminPage } from "@/components/admin/page-shell";
+import { AdminPage, Arrow } from "@/components/admin/page-shell";
 import { CodOrderActions } from "@/components/orders/cod-order-actions";
+import { FulfillOrderButton } from "@/components/orders/fulfill-order-button";
 import { Badge, OrderStatusBadge } from "@/components/ui/badge";
 import type { PostalAddress } from "@/lib/address/types";
 import { formatAddressLines, readAddress } from "@/lib/address/validate";
 import { storeAdminPath } from "@/lib/admin/links";
 import { customerPathSegment } from "@/lib/customers/filters";
 import { formatDate } from "@/lib/dates";
-import { PaymentMethod, type OrderIssue } from "@/lib/db/types";
+import { PaymentMethod } from "@/lib/db/types";
+import { format, plural } from "@/lib/i18n/format";
+import { formatRich } from "@/lib/i18n/rich";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
-import { cancelCodOrderAction, markCodOrderPaidAction } from "@/lib/orders/actions";
+import {
+  cancelCodOrderAction,
+  fulfillOrderAction,
+  markCodOrderPaidAction,
+} from "@/lib/orders/actions";
 import { getStoreOrder } from "@/lib/orders/queries";
 import { formatEstimate } from "@/lib/shipping/format";
 import { getStoreContext } from "@/lib/stores/context";
@@ -31,8 +39,15 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/orders/[orderId]">,
 ): Promise<Metadata> {
   const { storeSlug, orderId } = await props.params;
-  const { store, order } = await loadOrder(storeSlug, orderId);
-  return { title: order ? `Order #${order.orderNumber} · ${store.name}` : "Order" };
+  const [{ store, order }, { t }] = await Promise.all([
+    loadOrder(storeSlug, orderId),
+    getAdminI18n(),
+  ]);
+  return {
+    title: order
+      ? `${format(t.orders.detail.title, { number: order.orderNumber })} · ${store.name}`
+      : t.orders.detail.fallbackTitle,
+  };
 }
 
 type DiscountSnapshot = {
@@ -62,50 +77,38 @@ function discountSnapshot(value: unknown): DiscountSnapshot[] {
   });
 }
 
-/** What each issue means for the seller, and what to do about it. */
-const ISSUE_COPY: Record<OrderIssue, { title: string; body: string }> = {
-  OVERSOLD: {
-    title: "Oversold",
-    body:
-      "When this order was paid, fewer units were left than it asked for — another " +
-      "order had taken the last ones. The stock count is now 0. Restock and ship, or " +
-      "refund the missing items.",
-  },
-  PAID_AFTER_CANCEL: {
-    title: "Paid after it was cancelled",
-    body:
-      "The payment went through after this order had been cancelled, so the buyer was " +
-      "charged for an order that won't be fulfilled. Refund it.",
-  },
-};
-
 /**
  * One order, as it was placed. Everything here reads the order's own
  * snapshots — lines, discounts, addresses, the rate — so editing a product, a
  * discount or a shipping zone afterwards changes nothing on this page.
  *
- * No fulfilment or refund actions yet. Payments are direct charges on the
- * seller's own Stripe account, so refunds and disputes are handled in their
- * Stripe Dashboard, which this page links to. A cash-on-delivery order is the
- * exception: nothing tells Tender the cash came in, so the seller says so
+ * A paid order is marked fulfilled here once it is sent. Payments are direct
+ * charges on the seller's own Stripe account, so refunds and disputes are
+ * handled in their Stripe Dashboard, which this page links to; the webhooks
+ * bring the outcome back, and the order shows it. A cash-on-delivery order is
+ * the exception: nothing tells Tender the cash came in, so the seller says so
  * here — or cancels it, and its stock goes back.
  */
 export default async function OrderPage(
   props: PageProps<"/dashboard/[storeSlug]/orders/[orderId]">,
 ) {
   const { storeSlug, orderId } = await props.params;
-  const { store, order } = await loadOrder(storeSlug, orderId);
+  const [{ store, order }, { t: messages, locale, intl }] = await Promise.all([
+    loadOrder(storeSlug, orderId),
+    getAdminI18n(),
+  ]);
   if (!order) notFound();
+  const t = messages.orders.detail;
 
-  const money = (cents: number) => formatMoney(cents, order.currency);
+  const money = (cents: number) => formatMoney(cents, order.currency, intl);
   const discounts = discountSnapshot(order.appliedDiscounts);
   const shippingAddress = readAddress(order.shippingAddress);
   const billingAddress = readAddress(order.billingAddress);
   const shippingDiscount = discounts.reduce((sum, entry) => sum + entry.shippingCents, 0);
-  const estimate = formatEstimate({
-    minDeliveryDays: order.shippingMinDays,
-    maxDeliveryDays: order.shippingMaxDays,
-  });
+  const estimate = formatEstimate(
+    { minDeliveryDays: order.shippingMinDays, maxDeliveryDays: order.shippingMaxDays },
+    { locale, intl, t: messages.shippingFormat },
+  );
   const itemCount = order.lines.reduce((sum, line) => sum + line.quantity, 0);
   const paymentUrl = order.stripePaymentIntentId
     ? `https://dashboard.stripe.com/${isStripeTestMode() ? "test/" : ""}payments/${order.stripePaymentIntentId}`
@@ -115,11 +118,11 @@ export default async function OrderPage(
 
   return (
     <AdminPage
-      title={`Order #${order.orderNumber}`}
-      back={{ href: storeAdminPath(store.slug, "orders"), label: "Orders" }}
+      title={format(t.title, { number: order.orderNumber })}
+      back={{ href: storeAdminPath(store.slug, "orders"), label: messages.orders.title }}
       description={
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span>Placed {formatDate(order.createdAt)}</span>
+          <span>{format(t.placed, { date: formatDate(order.createdAt, locale) })}</span>
           <OrderStatusBadge status={order.status} paymentMethod={order.paymentMethod} />
         </span>
       }
@@ -132,9 +135,9 @@ export default async function OrderPage(
               role="alert"
               className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-pretty"
             >
-              <p className="font-medium text-warning">{ISSUE_COPY[issue].title}</p>
+              <p className="font-medium text-warning">{t.issues[issue].title}</p>
               <p className="mt-1">
-                {ISSUE_COPY[issue].body}{" "}
+                {t.issues[issue].body}{" "}
                 {paymentUrl ? (
                   <a
                     href={paymentUrl}
@@ -142,7 +145,7 @@ export default async function OrderPage(
                     rel="noopener noreferrer"
                     className="font-medium underline underline-offset-4"
                   >
-                    Open the payment in Stripe ↗
+                    {t.openInStripe} <Arrow>↗</Arrow>
                   </a>
                 ) : null}
               </p>
@@ -153,7 +156,7 @@ export default async function OrderPage(
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          <Panel title={`${itemCount} ${itemCount === 1 ? "item" : "items"}`}>
+          <Panel title={plural(locale, itemCount, messages.orders.items)}>
             <ul className="divide-y divide-border">
               {order.lines.map((line) => {
                 const lineTotal = line.unitPriceCents * line.quantity;
@@ -175,9 +178,9 @@ export default async function OrderPage(
                           .join(" · ") || " "}
                       </span>
                     </span>
-                    <span className="shrink-0 text-right tabular">
+                    <span className="shrink-0 text-end tabular">
                       <span className="block text-muted">
-                        {money(line.unitPriceCents)} × {line.quantity}
+                        {money(line.unitPriceCents)} × {new Intl.NumberFormat(intl).format(line.quantity)}
                       </span>
                       {line.discountCents > 0 ? (
                         <>
@@ -194,9 +197,9 @@ export default async function OrderPage(
             </ul>
           </Panel>
 
-          <Panel title="Payment">
+          <Panel title={t.payment}>
             <dl className="space-y-2 text-sm">
-              <Sum label="Subtotal" value={money(order.subtotalCents)} />
+              <Sum label={t.subtotal} value={money(order.subtotalCents)} />
               {discounts.map((entry) => (
                 <Sum
                   key={entry.discountId}
@@ -213,47 +216,59 @@ export default async function OrderPage(
                   value={
                     entry.amountCents + entry.shippingCents > 0
                       ? money(-(entry.amountCents + entry.shippingCents))
-                      : "Free shipping"
+                      : t.freeShipping
                   }
                   valueClassName="text-success"
                 />
               ))}
               {shippingAddress ? (
                 <Sum
-                  label={order.shippingRateName ? `Shipping · ${order.shippingRateName}` : "Shipping"}
-                  value={order.shippingCents === 0 ? "Free" : money(order.shippingCents)}
+                  label={
+                    order.shippingRateName
+                      ? format(t.shippingWithRate, { rate: order.shippingRateName })
+                      : t.shipping
+                  }
+                  value={order.shippingCents === 0 ? t.free : money(order.shippingCents)}
                 />
               ) : null}
               {order.paymentFeeCents > 0 ? (
-                <Sum label="Cash on delivery fee" value={money(order.paymentFeeCents)} />
+                <Sum label={t.codFee} value={money(order.paymentFeeCents)} />
               ) : null}
               <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3">
-                <dt className="font-medium">Total</dt>
+                <dt className="font-medium">{t.total}</dt>
                 <dd className="text-lg font-semibold tabular">{money(order.totalCents)}</dd>
               </div>
               <Sum
-                label={cashOnDelivery ? "Tender commission (billed separately)" : "Tender commission"}
+                label={cashOnDelivery ? t.commissionBilledSeparately : t.commission}
                 value={money(-order.platformFeeCents)}
                 muted
               />
-              <Sum label="Your earnings" value={money(order.sellerNetCents)} muted />
+              <Sum label={t.earnings} value={money(order.sellerNetCents)} muted />
+              {order.refundedCents > 0 ? (
+                <Sum
+                  label={
+                    order.refundedAt
+                      ? format(t.refundedOn, { date: formatDate(order.refundedAt, locale) })
+                      : t.refunded
+                  }
+                  value={money(-order.refundedCents)}
+                  valueClassName="text-warning"
+                />
+              ) : null}
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Paid by {cashOnDelivery ? "cash on delivery" : "card or wallet through Stripe"}.
+              {cashOnDelivery ? t.paidByCod : t.paidByStripe}
             </p>
             {shippingDiscount > 0 ? (
               <p className="mt-3 text-xs text-muted">
-                Shipping is shown at the rate&apos;s price; the free-shipping discount above takes{" "}
-                {money(shippingDiscount)} off it.
+                {format(t.shippingDiscountNote, { amount: money(shippingDiscount) })}
               </p>
             ) : null}
             {order.status === "PENDING" && cashOnDelivery ? (
               <div className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
-                <p>
-                  Payment on delivery. The order is confirmed and its stock is set aside: ship
-                  it, and the courier collects {money(order.totalCents)} in cash from the buyer.
-                </p>
+                <p>{format(t.codPending, { total: money(order.totalCents) })}</p>
                 <CodOrderActions
+                  t={messages.orders.actions}
                   total={money(order.totalCents)}
                   markPaid={markCodOrderPaidAction.bind(null, store.slug, order.id)}
                   cancel={cancelCodOrderAction.bind(null, store.slug, order.id)}
@@ -261,40 +276,60 @@ export default async function OrderPage(
               </div>
             ) : order.status === "PENDING" ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
-                Awaiting payment. The buyer reached the payment step but the payment hasn&apos;t
-                gone through yet. Don&apos;t ship it: it turns Paid by itself once Stripe confirms
-                the money.
+                {t.awaitingPayment}
               </p>
             ) : order.status === "CANCELLED" && cashOnDelivery && !order.paidAt ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
-                Cancelled before the cash came in. Its items went back into stock, and any
-                discount uses were given back.
+                {t.cancelledCod}
               </p>
             ) : order.status === "CANCELLED" && !order.paidAt && !paidAfterCancel ? (
               <p className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted text-pretty">
-                Cancelled before payment — the buyer started again or the payment was abandoned.
-                Nothing was charged, and any discount uses were given back.
+                {t.cancelledUnpaid}
               </p>
             ) : null}
             {order.stripePaymentIntentId && paymentUrl ? (
               <p className="mt-3 text-xs text-muted">
-                Stripe payment{" "}
-                <a
-                  href={paymentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono underline-offset-4 hover:underline"
-                >
-                  {order.stripePaymentIntentId}
-                </a>{" "}
-                — refunds and disputes are handled in your Stripe Dashboard.
+                {formatRich(t.stripePayment, {
+                  id: (
+                    <a
+                      href={paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono underline-offset-4 hover:underline"
+                    >
+                      {order.stripePaymentIntentId}
+                    </a>
+                  ),
+                })}
               </p>
             ) : null}
           </Panel>
         </div>
 
         <aside className="min-w-0 space-y-6">
-          <Panel title="Customer">
+          {order.status === "PAID" || order.status === "FULFILLED" ? (
+            <Panel title={t.fulfilment}>
+              {order.status === "FULFILLED" ? (
+                <p className="text-sm text-muted">
+                  {order.fulfilledAt
+                    ? format(t.fulfilledOn, { date: formatDate(order.fulfilledAt, locale) })
+                    : t.fulfilled}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted text-pretty">
+                    {shippingAddress ? t.notSent : t.nothingToShip}
+                  </p>
+                  <FulfillOrderButton
+                    t={messages.orders.actions}
+                    fulfill={fulfillOrderAction.bind(null, store.slug, order.id)}
+                  />
+                </div>
+              )}
+            </Panel>
+          ) : null}
+
+          <Panel title={t.customer}>
             <Link
               href={storeAdminPath(store.slug, `customers/${customerPathSegment(order.email)}`)}
               className="block break-all text-sm underline-offset-4 hover:underline"
@@ -302,22 +337,24 @@ export default async function OrderPage(
               {order.email}
             </Link>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge>{order.user ? "Signed in" : "Guest"}</Badge>
-              {order.marketingConsent ? <Badge tone="success">Accepts marketing</Badge> : null}
+              <Badge>{order.user ? t.signedIn : t.guest}</Badge>
+              {order.marketingConsent ? <Badge tone="success">{t.acceptsMarketing}</Badge> : null}
             </div>
             {shippingAddress?.phone ?? billingAddress?.phone ? (
-              <p className="mt-2 text-sm">{shippingAddress?.phone ?? billingAddress?.phone}</p>
+              <p className="mt-2 text-sm" dir="ltr">
+                {shippingAddress?.phone ?? billingAddress?.phone}
+              </p>
             ) : null}
           </Panel>
 
           {shippingAddress ? (
-            <Panel title="Shipping address">
-              <AddressBlock address={shippingAddress} />
+            <Panel title={t.shippingAddress}>
+              <AddressBlock address={shippingAddress} locale={intl} />
               {order.shippingRateName ? (
                 <div className="mt-3 border-t border-border pt-3 text-sm">
                   <p className="font-medium">{order.shippingRateName}</p>
                   <p className="text-muted">
-                    {[order.shippingZoneName ? `Zone: ${order.shippingZoneName}` : null, estimate]
+                    {[order.shippingZoneName ? format(t.zone, { zone: order.shippingZoneName }) : null, estimate]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
@@ -325,21 +362,21 @@ export default async function OrderPage(
               ) : null}
             </Panel>
           ) : (
-            <Panel title="Shipping">
-              <p className="text-sm text-muted">Nothing to ship — digital products or services only.</p>
+            <Panel title={t.shipping}>
+              <p className="text-sm text-muted">{t.digitalOnly}</p>
             </Panel>
           )}
 
-          <Panel title="Billing address">
+          <Panel title={t.billingAddress}>
             {billingAddress ? (
-              <AddressBlock address={billingAddress} />
+              <AddressBlock address={billingAddress} locale={intl} />
             ) : (
-              <p className="text-sm text-muted">Not recorded on this order.</p>
+              <p className="text-sm text-muted">{t.notRecorded}</p>
             )}
           </Panel>
 
           {order.note ? (
-            <Panel title="Note from the customer">
+            <Panel title={t.note}>
               <p className="whitespace-pre-line break-words text-sm">{order.note}</p>
             </Panel>
           ) : null}
@@ -377,10 +414,10 @@ function Sum({
   );
 }
 
-function AddressBlock({ address }: { address: PostalAddress }) {
+function AddressBlock({ address, locale }: { address: PostalAddress; locale: string }) {
   return (
     <address className="text-sm not-italic">
-      {formatAddressLines(address, "en").map((line, index) => (
+      {formatAddressLines(address, locale).map((line, index) => (
         <span key={index} className="block break-words">
           {line}
         </span>

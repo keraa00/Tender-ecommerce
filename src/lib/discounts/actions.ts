@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
 import { getStoreContext } from "@/lib/stores/context";
 import { parseDiscountForm, type DiscountDraft, type DiscountFieldErrors } from "./form";
@@ -16,8 +17,6 @@ export type DiscountFormState = {
   fieldErrors?: DiscountFieldErrors;
 };
 
-const CODE_TAKEN = "You already have a discount with that code.";
-const SAVE_FAILED = "Could not save the discount. Please try again.";
 
 /**
  * Narrows every product and collection id in the draft to ones this store
@@ -28,6 +27,7 @@ const SAVE_FAILED = "Could not save the discount. Please try again.";
 async function ownTargets(
   storeId: string,
   draft: DiscountDraft,
+  gone: string,
 ): Promise<{ draft: DiscountDraft } | { fieldErrors: DiscountFieldErrors }> {
   const productIds = [...new Set([...draft.productIds, ...draft.buyProductIds])];
   const collectionIds = [...new Set([...draft.collectionIds, ...draft.buyCollectionIds])];
@@ -59,7 +59,6 @@ async function ownTargets(
   };
 
   const fieldErrors: DiscountFieldErrors = {};
-  const gone = "Those items are no longer in your store. Choose again.";
 
   if (
     (owned.appliesTo === "PRODUCT" && owned.productIds.length === 0) ||
@@ -141,12 +140,12 @@ export async function createDiscountAction(
   formData: FormData,
 ): Promise<DiscountFormState> {
   // The tenant comes from the URL plus the session, never from the form body.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseDiscountForm(formData);
+  const parsed = parseDiscountForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
-  const checked = await ownTargets(store.id, parsed.draft);
+  const checked = await ownTargets(store.id, parsed.draft, t.discounts.errors.targetsGone);
   if ("fieldErrors" in checked) return { fieldErrors: checked.fieldErrors };
 
   const { draft } = checked;
@@ -166,9 +165,9 @@ export async function createDiscountAction(
     });
     discountId = discount.id;
   } catch (error) {
-    if (isCodeTaken(error)) return { fieldErrors: { code: CODE_TAKEN } };
+    if (isCodeTaken(error)) return { fieldErrors: { code: t.discounts.errors.codeTaken } };
     console.error("createDiscountAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: t.discounts.errors.saveFailed };
   }
 
   revalidateDiscountPages(storeSlug);
@@ -182,7 +181,7 @@ export async function updateDiscountAction(
   _prev: DiscountFormState,
   formData: FormData,
 ): Promise<DiscountFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
   if (!isUuid(discountId)) notFound();
 
   const existing = await rootDb.discount.findFirst({
@@ -191,10 +190,10 @@ export async function updateDiscountAction(
   });
   if (!existing) notFound();
 
-  const parsed = parseDiscountForm(formData);
+  const parsed = parseDiscountForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
-  const checked = await ownTargets(store.id, parsed.draft);
+  const checked = await ownTargets(store.id, parsed.draft, t.discounts.errors.targetsGone);
   if ("fieldErrors" in checked) return { fieldErrors: checked.fieldErrors };
 
   const { draft } = checked;
@@ -230,13 +229,13 @@ export async function updateDiscountAction(
       }
     });
   } catch (error) {
-    if (isCodeTaken(error)) return { fieldErrors: { code: CODE_TAKEN } };
+    if (isCodeTaken(error)) return { fieldErrors: { code: t.discounts.errors.codeTaken } };
     console.error("updateDiscountAction failed", error);
-    return { formError: SAVE_FAILED };
+    return { formError: t.discounts.errors.saveFailed };
   }
 
   revalidateDiscountPages(storeSlug, existing.id);
-  return { notice: "Saved." };
+  return { notice: t.discounts.saved };
 }
 
 /**

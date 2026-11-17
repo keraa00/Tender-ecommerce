@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AdminPage } from "@/components/admin/page-shell";
+import { AdminPage, Arrow } from "@/components/admin/page-shell";
 import { ProductForm } from "@/components/products/product-form";
 import { ProductStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/field";
 import { storeAdminPath, storefrontUrl } from "@/lib/admin/links";
 import { listCollectionOptions } from "@/lib/collections/queries";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { deleteProductAction, updateProductAction } from "@/lib/products/actions";
 import { getStoreProduct } from "@/lib/products/queries";
 import { getStoreContext } from "@/lib/stores/context";
@@ -17,10 +18,10 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/products/[productId]">,
 ): Promise<Metadata> {
   const { storeSlug, productId } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
   const product = await getStoreProduct(store.id, productId);
 
-  return { title: product ? `${product.title} · Products` : "Product" };
+  return { title: product ? `${product.title} · ${t.products.title}` : t.products.edit.fallbackTitle };
 }
 
 export default async function EditProductPage(
@@ -28,7 +29,7 @@ export default async function EditProductPage(
 ) {
   const { storeSlug, productId } = await props.params;
   const { error } = await props.searchParams;
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
   // `storeId` is part of the lookup, so another tenant's product id 404s here
   // rather than resolving and then being rejected later.
@@ -46,7 +47,7 @@ export default async function EditProductPage(
       title={product.title}
       back={{
         href: storeAdminPath(storeSlug, "products"),
-        label: "Products",
+        label: t.products.title,
       }}
       description={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -58,7 +59,7 @@ export default async function EditProductPage(
               rel="noopener noreferrer"
               className="text-muted underline-offset-4 hover:underline tabular"
             >
-              /s/{storeSlug}/p/{product.slug} ↗
+              <span dir="ltr">/s/{storeSlug}/p/{product.slug}</span> <Arrow>↗</Arrow>
             </Link>
           ) : null}
         </span>
@@ -66,13 +67,14 @@ export default async function EditProductPage(
     >
       {error === "delete-failed" ? (
         <div className="mb-6">
-          <FormError>Could not delete the product. Please try again.</FormError>
+          <FormError>{t.products.edit.deleteFailed}</FormError>
         </div>
       ) : null}
 
       <ProductForm
         action={action}
-        submitLabel="Save changes"
+        submitLabel={t.common.saveChanges}
+        t={{ form: t.products.form, status: t.products.status, images: t.validation.images }}
         collections={collections}
         product={{
           title: product.title,
@@ -105,15 +107,12 @@ export default async function EditProductPage(
       */}
       <details className="mt-10 rounded-xl border border-danger/30 bg-danger/5 p-4">
         <summary className="cursor-pointer text-sm font-medium text-danger">
-          Delete this product
+          {t.products.edit.deleteTitle}
         </summary>
-        <p className="mt-2 text-sm text-muted text-pretty">
-          Its options and photos go with it. Past orders keep their own copy of
-          the title, price and image, so order history stays readable.
-        </p>
+        <p className="mt-2 text-sm text-muted text-pretty">{t.products.edit.deleteBody}</p>
         <form action={destroy} className="mt-3">
           <Button type="submit" variant="danger" size="sm">
-            Delete permanently
+            {t.products.edit.deletePermanently}
           </Button>
         </form>
       </details>

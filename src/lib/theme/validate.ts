@@ -1,3 +1,6 @@
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { en } from "@/lib/i18n/admin/en";
 import { storagePathFromPublicUrl } from "@/lib/products/constants";
 import type { AnySectionDefinition } from "./define";
 import { defaultTheme } from "./default-theme";
@@ -45,7 +48,19 @@ export type ParsedTheme =
 export type ThemeWriteOptions = {
   /** Whether an image URL may be stored. Without one, any https URL passes. */
   isAllowedImageUrl?: (url: string) => boolean;
+  /**
+   * The admin's copy, to word the issues in the seller's language. English
+   * when left out. Writes only ever happen on the server, so English is never
+   * sent to a browser that did not need it.
+   */
+  t?: AdminMessages;
 };
+
+/** A section type's name as the seller's admin language calls it. */
+function sectionName(t: AdminMessages, definition: AnySectionDefinition): string {
+  const copy = (t.themeSections as Record<string, { name: string } | undefined>)[definition.type];
+  return copy?.name ?? definition.name;
+}
 
 /**
  * Images must be this store's own uploads. `next/image` will only fetch from
@@ -70,15 +85,14 @@ export function parseThemeForWrite(
   input: unknown,
   options: ThemeWriteOptions = {},
 ): ParsedTheme {
+  const t = options.t ?? en;
+  const say = t.themeValidation;
   const size = byteLength(input);
   if (size === null) {
-    return { ok: false, issues: [{ path: "", message: "The theme is not valid JSON." }] };
+    return { ok: false, issues: [{ path: "", message: say.invalidJson }] };
   }
   if (size > MAX_THEME_BYTES) {
-    return {
-      ok: false,
-      issues: [{ path: "", message: "The theme is too large to save. Remove some sections." }],
-    };
+    return { ok: false, issues: [{ path: "", message: say.tooLarge }] };
   }
 
   const envelope = themeEnvelopeSchema.safeParse(input);
@@ -97,7 +111,7 @@ export function parseThemeForWrite(
   const { data } = envelope;
 
   const claimId = (id: string, path: string) => {
-    if (ids.has(id)) issues.push({ path: `${path}.id`, message: `The id "${id}" is used twice.` });
+    if (ids.has(id)) issues.push({ path: `${path}.id`, message: format(say.duplicateId, { id }) });
     ids.add(id);
   };
 
@@ -110,7 +124,7 @@ export function parseThemeForWrite(
 
     const definition = getSectionDefinition(raw.type);
     if (!definition) {
-      issues.push({ path: `${path}.type`, message: `There is no "${raw.type}" section.` });
+      issues.push({ path: `${path}.type`, message: format(say.unknownSection, { type: raw.type }) });
       return null;
     }
     if ((definition.pinned ?? "page") !== slot) {
@@ -118,8 +132,10 @@ export function parseThemeForWrite(
         path: `${path}.type`,
         message:
           slot === "page"
-            ? `The ${definition.name.toLowerCase()} cannot be placed on a page.`
-            : `Only a ${slot} section can go here.`,
+            ? format(say.notOnPage, { section: sectionName(t, definition) })
+            : slot === "header"
+              ? say.onlyHeader
+              : say.onlyFooter,
       });
       return null;
     }
@@ -133,7 +149,10 @@ export function parseThemeForWrite(
       if (!blockDefinition) {
         issues.push({
           path: `${blockPath}.type`,
-          message: `A ${definition.name.toLowerCase()} cannot hold a "${block.type}" block.`,
+          message: format(say.unknownBlock, {
+            section: sectionName(t, definition),
+            block: block.type,
+          }),
         });
         return;
       }
@@ -147,6 +166,7 @@ export function parseThemeForWrite(
           `${blockPath}.settings`,
           issues,
           options,
+          t,
         ),
       });
     });
@@ -154,7 +174,10 @@ export function parseThemeForWrite(
     if (raw.blocks.length > definition.maxBlocks) {
       issues.push({
         path: `${path}.blocks`,
-        message: `A ${definition.name.toLowerCase()} holds at most ${definition.maxBlocks} blocks.`,
+        message: format(say.blocksFull, {
+          section: sectionName(t, definition),
+          max: definition.maxBlocks,
+        }),
       });
     }
 
@@ -162,12 +185,19 @@ export function parseThemeForWrite(
       id: raw.id,
       type: raw.type,
       hidden: raw.hidden,
-      settings: writeSettings(definition.settings, raw.settings, `${path}.settings`, issues, options),
+      settings: writeSettings(
+        definition.settings,
+        raw.settings,
+        `${path}.settings`,
+        issues,
+        options,
+        t,
+      ),
       blocks,
     };
   };
 
-  const settings = writeSettings(THEME_SETTINGS, data.settings, "settings", issues, options);
+  const settings = writeSettings(THEME_SETTINGS, data.settings, "settings", issues, options, t);
   const header = writeSection(data.layout.header, "layout.header", "header");
   const footer = writeSection(data.layout.footer, "layout.footer", "footer");
 
@@ -183,7 +213,10 @@ export function parseThemeForWrite(
     if (count === definition.maxPerPage + 1) {
       issues.push({
         path,
-        message: `A page holds at most ${definition.maxPerPage} of “${definition.name}”.`,
+        message: format(say.tooManyOfType, {
+          max: definition.maxPerPage,
+          section: sectionName(t, definition),
+        }),
       });
     }
     return [section];
@@ -212,6 +245,7 @@ function writeSettings(
   path: string,
   issues: ThemeIssue[],
   options: ThemeWriteOptions,
+  t: AdminMessages,
 ): Record<string, unknown> {
   const settings: Record<string, unknown> = {};
 
@@ -221,11 +255,11 @@ function writeSettings(
       continue;
     }
 
-    const parsed = fieldSchema(field).safeParse(raw[key]);
+    const parsed = fieldSchema(field, t.themeValidation.field).safeParse(raw[key]);
     if (!parsed.success) {
       issues.push({
         path: `${path}.${key}`,
-        message: parsed.error.issues[0]?.message ?? "Invalid value.",
+        message: parsed.error.issues[0]?.message ?? t.themeValidation.invalid,
       });
       continue;
     }
@@ -236,7 +270,7 @@ function writeSettings(
       options.isAllowedImageUrl &&
       !options.isAllowedImageUrl(parsed.data)
     ) {
-      issues.push({ path: `${path}.${key}`, message: "Upload the image to use it here." });
+      issues.push({ path: `${path}.${key}`, message: t.themeValidation.uploadImage });
       continue;
     }
 

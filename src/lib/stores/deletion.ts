@@ -1,3 +1,7 @@
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { Locale } from "@/lib/i18n/locales";
+
 /**
  * What has to be settled before a store can be deleted, as pure rules shared by
  * the Settings page (which shows them) and `deleteStoreAction` (which enforces
@@ -39,36 +43,48 @@ export function storeDeletionBlockers(counts: StoreDeletionCounts): StoreDeletio
   return blockers;
 }
 
-function orders(count: number): string {
-  return count === 1 ? "1 order" : `${count} orders`;
-}
-
-export function describeStoreDeletionBlocker(blocker: StoreDeletionBlocker): string {
+/** What stands in the way, in the seller's language. */
+export function describeStoreDeletionBlocker(
+  blocker: StoreDeletionBlocker,
+  locale: Locale,
+  t: AdminMessages["stores"]["deletionBlockers"],
+): string {
   switch (blocker.kind) {
     case "paid-unfulfilled":
-      return `${orders(blocker.count)} ${blocker.count === 1 ? "is" : "are"} paid for but not yet fulfilled. Fulfil or refund ${blocker.count === 1 ? "it" : "them"} first.`;
+      return plural(locale, blocker.count, t.paidUnfulfilled);
     case "pending-cod":
-      return `${orders(blocker.count)} ${blocker.count === 1 ? "is" : "are"} waiting for cash on delivery. Mark ${blocker.count === 1 ? "it" : "them"} paid or cancel ${blocker.count === 1 ? "it" : "them"} first.`;
+      return plural(locale, blocker.count, t.pendingCod);
     case "payment-in-flight":
-      return blocker.count === 1
-        ? "A payment is still going through. Try again in a few minutes."
-        : `${blocker.count} payments are still going through. Try again in a few minutes.`;
+      return plural(locale, blocker.count, t.paymentInFlight);
   }
 }
 
-export type DeleteStoreField = "confirmSlug";
+export type DeleteStoreField = "confirmSlug" | "currentPassword";
 
 /**
  * Typing the slug is the "are you sure": unmistakably this store, and not
- * something a misclick produces.
+ * something a misclick produces. The current password is the "is it you", as
+ * for deleting the account — a session left open on someone else's laptop
+ * must not be enough to wipe a store. The caller checks it against Supabase.
  */
 export function parseDeleteStoreForm(
   formData: FormData,
   storeSlug: string,
-): { ok: true } | { ok: false; fieldErrors: { confirmSlug: string } } {
+  t: AdminMessages["stores"]["errors"],
+):
+  | { ok: true; currentPassword: string }
+  | { ok: false; fieldErrors: Partial<Record<DeleteStoreField, string>> } {
   const typed = formData.get("confirmSlug");
-  if (typeof typed === "string" && typed.trim().toLowerCase() === storeSlug) {
-    return { ok: true };
+  const password = formData.get("currentPassword");
+
+  const fieldErrors: Partial<Record<DeleteStoreField, string>> = {};
+  if (typeof typed !== "string" || typed.trim().toLowerCase() !== storeSlug) {
+    fieldErrors.confirmSlug = format(t.confirmSlug, { slug: storeSlug });
   }
-  return { ok: false, fieldErrors: { confirmSlug: `Type ${storeSlug} to confirm.` } };
+  if (typeof password !== "string" || password.length === 0) {
+    fieldErrors.currentPassword = t.passwordRequired;
+  }
+
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  return { ok: true, currentPassword: password as string };
 }

@@ -6,12 +6,15 @@ import { revalidatePath } from "next/cache";
 import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
 import { getStoreContext } from "@/lib/stores/context";
 import { requireSupabaseConfig } from "@/lib/supabase/config";
 import { imageRejectionReason, MAX_IMAGES_PER_UPLOAD } from "./constants";
 import { parseProductForm, type ProductFieldErrors } from "./form";
-import { deleteProductImageObjects, uploadProductImage } from "./images";
+import { UnrecognisedImageError, deleteProductImageObjects, uploadProductImage } from "./images";
 import { getStoreProduct } from "./queries";
 
 export type ProductFormState = {
@@ -96,13 +99,14 @@ async function nextCollectionPositions(
 async function uploadAll(
   storeId: string,
   files: File[],
+  t: AdminMessages["validation"]["images"],
 ): Promise<{ urls: string[] } | { error: string }> {
   if (files.length > MAX_IMAGES_PER_UPLOAD) {
-    return { error: `Add at most ${MAX_IMAGES_PER_UPLOAD} images at a time.` };
+    return { error: format(t.tooMany, { count: MAX_IMAGES_PER_UPLOAD }) };
   }
 
   for (const file of files) {
-    const reason = imageRejectionReason(file);
+    const reason = imageRejectionReason(file, t);
     if (reason) return { error: reason };
   }
 
@@ -113,11 +117,13 @@ async function uploadAll(
       urls.push(await uploadProductImage(storeId, file));
     }
   } catch (error) {
-    console.error("Product image upload failed", error);
+    if (!(error instanceof UnrecognisedImageError)) console.error("Product image upload failed", error);
     if (urls.length > 0) {
       await deleteProductImageObjects(urls, requireSupabaseConfig().url);
     }
-    return { error: "Could not upload those images. Please try again." };
+    return {
+      error: error instanceof UnrecognisedImageError ? t.unrecognised : t.uploadFailed,
+    };
   }
 
   return { urls };
@@ -130,14 +136,14 @@ export async function createProductAction(
 ): Promise<ProductFormState> {
   // Resolves the tenant from the URL slug plus the session — never from the
   // form body — and 404s a non-member before any work is done.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseProductForm(formData);
+  const parsed = parseProductForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const { draft } = parsed;
 
-  const uploaded = await uploadAll(store.id, fileColumn(formData, "imageFile"));
+  const uploaded = await uploadAll(store.id, fileColumn(formData, "imageFile"), t.validation.images);
   if ("error" in uploaded) {
     return { fieldErrors: { images: uploaded.error } };
   }
@@ -196,15 +202,15 @@ export async function createProductAction(
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const field = uniqueConstraintField(error);
       if (field === "slug") {
-        return { fieldErrors: { slug: "You already have a product at that address." } };
+        return { fieldErrors: { slug: t.products.errors.slugTaken } };
       }
       if (field === "sku") {
-        return { fieldErrors: { variants: "One of those SKUs is already used in this store." } };
+        return { fieldErrors: { variants: t.products.errors.skuTaken } };
       }
     }
 
     console.error("createProductAction failed", error);
-    return { formError: "Could not save the product. Please try again." };
+    return { formError: t.products.errors.saveFailed };
   }
 
   // `revalidatePath` names an internal route and keeps the `/dashboard` prefix;
@@ -222,12 +228,12 @@ export async function updateProductAction(
   _prev: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
   const existing = await getStoreProduct(store.id, productId);
   if (!existing) notFound();
 
-  const parsed = parseProductForm(formData);
+  const parsed = parseProductForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const { draft } = parsed;
@@ -253,11 +259,11 @@ export async function updateProductAction(
     // Not fatal, but a live product with no photo sells badly — say so rather
     // than silently publishing an empty card.
     return {
-      fieldErrors: { images: "Keep or add at least one image to stay published." },
+      fieldErrors: { images: t.products.errors.keepImage },
     };
   }
 
-  const uploaded = await uploadAll(store.id, fileColumn(formData, "imageFile"));
+  const uploaded = await uploadAll(store.id, fileColumn(formData, "imageFile"), t.validation.images);
   if ("error" in uploaded) {
     return { fieldErrors: { images: uploaded.error } };
   }
@@ -405,15 +411,15 @@ export async function updateProductAction(
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const field = uniqueConstraintField(error);
       if (field === "slug") {
-        return { fieldErrors: { slug: "You already have a product at that address." } };
+        return { fieldErrors: { slug: t.products.errors.slugTaken } };
       }
       if (field === "sku") {
-        return { fieldErrors: { variants: "One of those SKUs is already used in this store." } };
+        return { fieldErrors: { variants: t.products.errors.skuTaken } };
       }
     }
 
     console.error("updateProductAction failed", error);
-    return { formError: "Could not save the product. Please try again." };
+    return { formError: t.products.errors.saveFailed };
   }
 
   // Only once the transaction has committed — an object removed before a failed
@@ -425,7 +431,7 @@ export async function updateProductAction(
   revalidatePath(`/dashboard/${storeSlug}/collections`);
   revalidatePath(`/s/${storeSlug}`, "layout");
 
-  return { notice: "Saved." };
+  return { notice: t.products.saved };
 }
 
 export async function deleteProductAction(

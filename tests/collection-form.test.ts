@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_COLLECTION_PRODUCTS,
-  parseCollectionForm,
+  parseCollectionForm as parseWith,
 } from "@/lib/collections/form";
+import { en } from "@/lib/i18n/admin/en";
+
+const parseCollectionForm = (formData: FormData) => parseWith(formData, en);
 
 function form(
   fields: Partial<{ title: string; slug: string; description: string }>,

@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StoreMark } from "@/components/store-mark";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/products/constants";
 import { LOGO_PIXELS, logoRejectionReason } from "@/lib/stores/logo";
 
@@ -35,9 +36,11 @@ export function LogoField({
   value,
   onChange,
   error,
+  t,
 }: {
   storeName: string;
   accentColor: string | null;
+  t: { logo: AdminMessages["stores"]["logo"]; images: AdminMessages["validation"]["images"] };
   /** The saved logo, or null for none. */
   current: string | null;
   value: LogoChoice;
@@ -95,7 +98,7 @@ export function LogoField({
     }
     if (ticket !== latest.current) return;
 
-    const reason = logoRejectionReason(file);
+    const reason = logoRejectionReason(file, t.images);
     if (reason) {
       setProblem(reason);
       syncInput(input, valueRef.current);
@@ -115,10 +118,10 @@ export function LogoField({
 
   return (
     <Field
-      label="Logo"
+      label={t.logo.label}
       htmlFor="logo"
       error={problem ?? error}
-      hint="Cropped to a square — PNG, JPEG, WebP or AVIF. Without a logo, your store's initials are shown instead."
+      hint={t.logo.hint}
     >
       <div className="flex items-center gap-4">
         <StoreMark name={storeName} logoUrl={shown} accentColor={accentColor} size="lg" />
@@ -144,11 +147,11 @@ export function LogoField({
               "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
             )}
           >
-            {shown ? "Replace" : "Upload logo"}
+            {shown ? t.logo.replace : t.logo.upload}
           </label>
           {shown ? (
             <Button type="button" variant="ghost" size="sm" onClick={remove}>
-              Remove
+              {t.logo.remove}
             </Button>
           ) : null}
         </div>

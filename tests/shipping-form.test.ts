@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRateForm, parseZoneForm } from "@/lib/shipping/form";
+import { en } from "@/lib/i18n/admin/en";
+import { parseRateForm as parseRateIn, parseZoneForm as parseZoneIn } from "@/lib/shipping/form";
+
+const EN = { t: en, intl: "en-US" };
+const parseZoneForm = (formData: FormData, options: { restOfWorld: boolean }) =>
+  parseZoneIn(formData, options, EN);
+const parseRateForm = (formData: FormData) => parseRateIn(formData, en);
 
 function data(entries: [string, string][]): FormData {
   const form = new FormData();
@@ -39,7 +45,7 @@ describe("parseZoneForm", () => {
 
   it("refuses a code that is not an ISO country", () => {
     const result = parseZoneForm(data([["name", "Z"], ["country", "XX"]]), { restOfWorld: false });
-    expect(!result.ok && result.fieldErrors.countries).toBe('"XX" is not a country code.');
+    expect(!result.ok && result.fieldErrors.countries).toBe("“XX” is not a country code.");
   });
 
   it("narrows a country to the regions chosen, in the list's order, dropping unknown ones", () => {
@@ -175,7 +181,7 @@ describe("parseRateForm", () => {
       data([...base, ["condition", "subtotal"], ["minSubtotal", "100"], ["maxSubtotal", "50"]]),
     );
     expect(!reversed.ok && reversed.fieldErrors.condition).toBe(
-      "The minimum can't be more than the maximum.",
+      "The minimum can’t be more than the maximum.",
     );
   });
 });

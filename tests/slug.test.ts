@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { RESERVED_STORE_SLUGS, slugify, storeSlugSchema } from "@/lib/slug";
+import { en } from "@/lib/i18n/admin/en";
+import { RESERVED_STORE_SLUGS, slugify, storeSlugSchema as schemaIn } from "@/lib/slug";
+
+const storeSlugSchema = schemaIn(en.validation.slug);
 
 describe("slugify", () => {
   it("lowercases and hyphenates", () => {

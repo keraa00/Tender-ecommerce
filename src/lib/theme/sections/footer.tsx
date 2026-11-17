@@ -6,7 +6,7 @@ import { field } from "../fields";
 export default defineSection({
   type: "footer",
   name: "Footer",
-  description: "Links and your store's name.",
+  description: "Links and your store’s name.",
   layout: "full-bleed",
   pinned: "footer",
   settings: {

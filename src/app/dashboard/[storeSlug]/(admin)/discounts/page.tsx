@@ -9,22 +9,24 @@ import { storeAdminPath } from "@/lib/admin/links";
 import { cn } from "@/lib/cn";
 import { setDiscountActiveAction } from "@/lib/discounts/actions";
 import {
-  DISCOUNT_STATE_LABELS,
   describeDiscount,
   describeWindow,
   discountState,
   formatDiscountValue,
+  type DiscountFormat,
   type DiscountState,
 } from "@/lib/discounts/format";
 import { listStoreDiscounts, toDiscountSummary } from "@/lib/discounts/queries";
+import { format, plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { getStoreContext } from "@/lib/stores/context";
 
 export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/discounts">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Discounts · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.discounts.title} · ${store.name}` };
 }
 
 const FILTERS: readonly ("all" | DiscountState)[] = [
@@ -46,7 +48,18 @@ export default async function DiscountsPage(
   const { storeSlug } = await props.params;
   const searchParams = await props.searchParams;
   // Membership is verified here; `store.id` is the only tenant key used below.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t: messages, locale, intl }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.discounts;
+  const describe: DiscountFormat = {
+    locale,
+    intl,
+    t: messages.discountFormat,
+    segments: messages.segments,
+  };
+  const number = new Intl.NumberFormat(intl);
 
   const discounts = await listStoreDiscounts(store.id);
   // One clock for the whole page, so two rows cannot disagree about "now".
@@ -88,36 +101,33 @@ export default async function DiscountsPage(
 
   return (
     <AdminPage
-      title="Discounts"
+      title={t.title}
       description={
-        discounts.length === 0
-          ? "Codes buyers enter at checkout, and automatic offers that apply on their own."
-          : `${discounts.length} ${discounts.length === 1 ? "discount" : "discounts"} on this store.`
+        discounts.length === 0 ? t.empty : plural(locale, discounts.length, t.count)
       }
       action={
         discounts.length > 0 ? (
           <ButtonLink href={newHref} size="sm">
-            Create discount
+            {t.createDiscount}
           </ButtonLink>
         ) : null
       }
     >
       {discounts.length === 0 ? (
         <EmptyState
-          title="No discounts yet"
+          title={t.emptyTitle}
           action={
             <ButtonLink href={newHref} size="lg">
-              Create a discount
+              {t.createFirst}
             </ButtonLink>
           }
         >
-          Percentages, fixed amounts, buy-X-get-Y and free shipping — as a code
-          buyers enter, or applied automatically when an order qualifies.
+          {t.emptyBody}
         </EmptyState>
       ) : (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <nav aria-label="Filter by status" className="-mx-1 flex flex-wrap gap-1">
+            <nav aria-label={t.filterLabel} className="-mx-1 flex flex-wrap gap-1">
               {FILTERS.filter((key) => key === "all" || counts.has(key)).map((key) => (
                 <Link
                   key={key}
@@ -130,8 +140,8 @@ export default async function DiscountsPage(
                       : "text-muted hover:bg-surface-hover hover:text-foreground",
                   )}
                 >
-                  {key === "all" ? "All" : DISCOUNT_STATE_LABELS[key]}{" "}
-                  <span className="tabular opacity-70">{counts.get(key) ?? 0}</span>
+                  {key === "all" ? t.all : messages.badges.discount[key]}{" "}
+                  <span className="tabular opacity-70">{number.format(counts.get(key) ?? 0)}</span>
                 </Link>
               ))}
             </nav>
@@ -142,8 +152,8 @@ export default async function DiscountsPage(
                 type="search"
                 name="q"
                 defaultValue={query}
-                placeholder="Search title or code"
-                aria-label="Search discounts by title or code"
+                placeholder={t.searchPlaceholder}
+                aria-label={t.searchLabel}
                 className="h-8"
               />
             </form>
@@ -151,16 +161,16 @@ export default async function DiscountsPage(
 
           {visible.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border-strong px-4 py-10 text-center text-sm text-muted">
-              No discounts match.{" "}
+              {t.noMatch}{" "}
               <Link href={basePath} className="underline underline-offset-4">
-                Show all
+                {t.showAll}
               </Link>
             </p>
           ) : (
             <Rows>
               {visible.map(({ discount, state }) => {
                 const summary = toDiscountSummary(discount);
-                const window = describeWindow(discount.startsAt, discount.endsAt);
+                const window = describeWindow(discount.startsAt, discount.endsAt, describe);
                 const toggle = setDiscountActiveAction.bind(null, storeSlug, discount.id);
 
                 return (
@@ -179,32 +189,34 @@ export default async function DiscountsPage(
                             {discount.code}
                           </code>
                         ) : (
-                          <span className="text-xs text-muted">Automatic</span>
+                          <span className="text-xs text-muted">{t.automatic}</span>
                         )}
                       </p>
                       <p className="truncate text-sm text-muted tabular">
                         {discount.type === "PERCENTAGE" || discount.type === "FIXED_AMOUNT"
-                          ? describeDiscount(summary, store.currency)[0]
-                          : formatDiscountValue(discount, store.currency)}
+                          ? describeDiscount(summary, store.currency, describe)[0]
+                          : formatDiscountValue(discount, store.currency, describe)}
                         {window ? ` · ${window}` : ""}
                       </p>
                     </Link>
 
-                    <div className="shrink-0 text-right text-sm text-muted tabular">
-                      {discount.usageCount}
+                    <div className="shrink-0 text-end text-sm text-muted tabular">
                       {discount.usageLimit === null
-                        ? " used"
-                        : ` / ${discount.usageLimit} used`}
+                        ? format(t.used, { count: number.format(discount.usageCount) })
+                        : format(t.usedOf, {
+                            count: number.format(discount.usageCount),
+                            limit: number.format(discount.usageLimit),
+                          })}
                     </div>
 
-                    <div className="w-24 shrink-0 text-right">
+                    <div className="w-24 shrink-0 text-end">
                       <DiscountStateBadge state={state} />
                     </div>
 
                     <form action={toggle} className="shrink-0">
                       <input type="hidden" name="active" value={String(!discount.active)} />
                       <Button type="submit" variant="ghost" size="sm" className="w-20">
-                        {discount.active ? "Turn off" : "Turn on"}
+                        {discount.active ? t.turnOff : t.turnOn}
                       </Button>
                     </form>
                   </li>

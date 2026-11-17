@@ -65,7 +65,7 @@ describe("parseThemeForWrite", () => {
     );
     expect(found).toContainEqual({
       path: "pages.home.sections.3.type",
-      message: 'There is no "carousel" section.',
+      message: "There is no “carousel” section.",
     });
   });
 
@@ -145,7 +145,7 @@ describe("parseThemeForWrite", () => {
       ),
     );
     expect(found).toEqual([
-      { path: "pages.home.sections.0.blocks", message: "A image banner holds at most 2 blocks." },
+      { path: "pages.home.sections.0.blocks", message: "“Image banner” holds at most 2 blocks." },
     ]);
   });
 

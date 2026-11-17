@@ -17,7 +17,8 @@ import { storeAdminPath } from "@/lib/admin/links";
 import { customerEmailFromParam, customerSegments } from "@/lib/customers/filters";
 import { getStoreCustomer } from "@/lib/customers/queries";
 import { formatDate } from "@/lib/dates";
-import { segmentLabel } from "@/lib/discounts/segments";
+import { format, plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
 import { getStoreContext } from "@/lib/stores/context";
 
@@ -33,11 +34,14 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/customers/[email]">,
 ): Promise<Metadata> {
   const { storeSlug, email } = await props.params;
-  const { detail } = await loadCustomer(storeSlug, customerEmailFromParam(email));
+  const [{ detail }, { t }] = await Promise.all([
+    loadCustomer(storeSlug, customerEmailFromParam(email)),
+    getAdminI18n(),
+  ]);
   return {
     title: detail
-      ? `${detail.customer.name ?? detail.customer.email} · Customers`
-      : "Customer",
+      ? `${detail.customer.name ?? detail.customer.email} · ${t.customers.title}`
+      : t.customers.detail.fallbackTitle,
   };
 }
 
@@ -48,8 +52,13 @@ export default async function CustomerPage(
 
   // `storeId` is part of every lookup, so an address that has only ever paid
   // another store 404s here — as does one that has only abandoned checkouts.
-  const { store, detail } = await loadCustomer(storeSlug, customerEmailFromParam(email));
+  const [{ store, detail }, { t: messages, locale, intl }] = await Promise.all([
+    loadCustomer(storeSlug, customerEmailFromParam(email)),
+    getAdminI18n(),
+  ]);
   if (!detail) notFound();
+  const t = messages.customers.detail;
+  const money = (cents: number, currency = store.currency) => formatMoney(cents, currency, intl);
 
   const { customer, orders, redemptions, lastAddress } = detail;
   const segments = customerSegments(customer, new Date());
@@ -58,51 +67,48 @@ export default async function CustomerPage(
   return (
     <AdminPage
       title={customer.name ?? customer.email}
-      back={{ href: storeAdminPath(store.slug, "customers"), label: "Customers" }}
+      back={{ href: storeAdminPath(store.slug, "customers"), label: messages.customers.title }}
       description={
         <span className="inline-flex flex-wrap items-center gap-2">
           {customer.name ? <span>{customer.email}</span> : null}
-          <Badge>{customer.hasAccount ? "Signed in" : "Guest"}</Badge>
+          <Badge>{customer.hasAccount ? messages.customers.signedIn : messages.customers.guest}</Badge>
         </span>
       }
     >
       <StatGrid>
         <Stat
-          label="Total spent"
-          value={formatMoney(customer.spentCents, store.currency)}
-          hint="Paid and fulfilled orders"
+          label={t.totalSpent}
+          value={money(customer.spentCents)}
+          hint={t.totalSpentHint}
         />
         <Stat
-          label="Orders"
-          value={String(customer.orders)}
+          label={t.orders}
+          value={new Intl.NumberFormat(intl).format(customer.orders)}
           hint={
             unsettled > 0
-              ? `Plus ${unsettled} unpaid or cancelled`
+              ? format(t.unsettled, { count: new Intl.NumberFormat(intl).format(unsettled) })
               : undefined
           }
         />
         <Stat
-          label="Average order"
-          value={formatMoney(Math.round(customer.spentCents / customer.orders), store.currency)}
+          label={t.averageOrder}
+          value={money(Math.round(customer.spentCents / customer.orders))}
         />
         <Stat
-          label="Last order"
-          value={formatDate(customer.lastOrderAt)}
+          label={t.lastOrder}
+          value={formatDate(customer.lastOrderAt, locale)}
           hint={
             customer.orders === 1
-              ? "Their only order"
-              : `First on ${formatDate(customer.firstOrderAt)}`
+              ? t.onlyOrder
+              : format(t.firstOn, { date: formatDate(customer.firstOrderAt, locale) })
           }
         />
       </StatGrid>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-3">
         <section className="min-w-0 lg:col-span-2">
-          <h2 className="text-lg font-medium tracking-tight">Orders</h2>
-          <p className="mt-1 text-sm text-muted text-pretty">
-            Everything placed with this email, in any status. Only paid and
-            fulfilled orders count towards the totals above.
-          </p>
+          <h2 className="text-lg font-medium tracking-tight">{t.orders}</h2>
+          <p className="mt-1 text-sm text-muted text-pretty">{t.ordersBody}</p>
 
           <Rows className="mt-4">
             {orders.map((order) => (
@@ -116,14 +122,14 @@ export default async function CustomerPage(
                     href={storeAdminPath(store.slug, `orders/${order.id}`)}
                     className="block truncate text-sm text-muted tabular hover:text-foreground"
                   >
-                    {formatDate(order.createdAt)} · {order.itemCount}{" "}
-                    {order.itemCount === 1 ? "item" : "items"}
+                    {formatDate(order.createdAt, locale)} ·{" "}
+                    {plural(locale, order.itemCount, messages.orders.items)}
                     {order.shippingRateName ? ` · ${order.shippingRateName}` : ""}
                   </Link>
                 </div>
 
-                <div className="shrink-0 text-right font-medium tabular">
-                  {formatMoney(order.totalCents, order.currency)}
+                <div className="shrink-0 text-end font-medium tabular">
+                  {money(order.totalCents, order.currency)}
                 </div>
 
                 <div className="shrink-0">
@@ -135,49 +141,48 @@ export default async function CustomerPage(
         </section>
 
         <aside className="space-y-4">
-          <Panel title="Segments">
+          <Panel title={t.segments}>
             {segments.length === 0 ? (
-              <p className="text-sm text-muted">In no discount segment.</p>
+              <p className="text-sm text-muted">{t.noSegment}</p>
             ) : (
               <ul className="flex flex-wrap gap-1.5">
                 {segments.map((segment) => (
                   <li key={segment}>
-                    <Badge>{segmentLabel(segment)}</Badge>
+                    <Badge>{messages.segments[segment].label}</Badge>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="mt-2 text-xs text-muted text-pretty">
-              As the discount form defines them, judged on their paid orders
-              today.
-            </p>
+            <p className="mt-2 text-xs text-muted text-pretty">{t.segmentsNote}</p>
           </Panel>
 
-          <Panel title="Shipping address">
+          <Panel title={t.shippingAddress}>
             {lastAddress ? (
               <>
                 <address className="text-sm not-italic">
-                  {formatAddressLines(lastAddress.address, "en").map((line, index) => (
+                  {formatAddressLines(lastAddress.address, intl).map((line, index) => (
                     <span key={index} className="block">
                       {line}
                     </span>
                   ))}
                   {lastAddress.address.phone ? (
-                    <span className="mt-1 block text-muted">{lastAddress.address.phone}</span>
+                    <span className="mt-1 block text-muted" dir="ltr">
+                      {lastAddress.address.phone}
+                    </span>
                   ) : null}
                 </address>
                 <p className="mt-2 text-xs text-muted">
-                  From order #{lastAddress.orderNumber}, their most recent delivery.
+                  {format(t.fromOrder, { number: lastAddress.orderNumber })}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted">No address on file.</p>
+              <p className="text-sm text-muted">{t.noAddress}</p>
             )}
           </Panel>
 
-          <Panel title="Discounts used">
+          <Panel title={t.discountsUsed}>
             {redemptions.length === 0 ? (
-              <p className="text-sm text-muted">None yet.</p>
+              <p className="text-sm text-muted">{t.noneYet}</p>
             ) : (
               <ul className="space-y-2">
                 {redemptions.map((redemption) => (
@@ -188,13 +193,15 @@ export default async function CustomerPage(
                           {redemption.code}
                         </code>
                       ) : (
-                        <span className="text-xs text-muted">Automatic</span>
+                        <span className="text-xs text-muted">{t.automatic}</span>
                       )}
                       <span className="truncate">{redemption.title}</span>
                     </p>
                     <p className="text-xs text-muted tabular">
-                      Order #{redemption.orderNumber} ·{" "}
-                      {formatDate(redemption.createdAt)}
+                      {format(t.orderOn, {
+                        number: redemption.orderNumber,
+                        date: formatDate(redemption.createdAt, locale),
+                      })}
                     </p>
                   </li>
                 ))}

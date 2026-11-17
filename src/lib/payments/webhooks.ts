@@ -5,16 +5,29 @@ import type Stripe from "stripe";
 import { rootDb } from "@/lib/db/root";
 import { isStripeTestMode } from "@/lib/stripe/server";
 import { disconnectAccount, retrieveAccount, syncStoreFromAccount } from "./accounts";
-import { accountReadiness, eventSignalsCardActive, ORDER_METADATA_KEY } from "./rules";
-import { cancelUnpaidOrder, findOrderForIntent, markOrderPaid } from "./settle";
+import {
+  accountReadiness,
+  disputeStillOpen,
+  eventSignalsCardActive,
+  ORDER_METADATA_KEY,
+} from "./rules";
+import {
+  cancelUnpaidOrder,
+  findOrderForIntent,
+  findOrderForPaymentIntentId,
+  markOrderPaid,
+  recordRefund,
+  setOrderDisputed,
+} from "./settle";
 
 /**
  * Events from connected accounts — the only ones Tender acts on, since charges
  * are direct and every PaymentIntent lives on a seller's account.
  *
  * Every handler is safe to run twice: account syncs overwrite with Stripe's
- * current state, and order moves are conditional on the order still being
- * PENDING (see `settle.ts`). The `WebhookEvent` row is a record of what was
+ * current state, order moves are conditional on the order still being
+ * PENDING (see `settle.ts`), and refunds and disputes are conditional on what
+ * the order already records. The `WebhookEvent` row is a record of what was
  * handled and a cheap early exit for redeliveries — not the lock. It is
  * written after the handler succeeds, so an event that failed halfway is
  * retried by Stripe in full rather than skipped.
@@ -100,9 +113,44 @@ async function dispatch(event: Stripe.Event, accountId: string | null): Promise<
       return false;
     }
 
+    case "charge.refunded": {
+      // Refunds are made in the seller's Stripe Dashboard. The charge carries
+      // its refunded total so far, which is all `recordRefund` needs — events
+      // for two partial refunds can arrive in either order.
+      const charge = event.data.object;
+      const order = await orderForCharge(charge.payment_intent, accountId);
+      if (!order) return false;
+      await rootDb.$transaction((tx) => recordRefund(tx, order, charge.amount_refunded));
+      return true;
+    }
+
+    case "charge.dispute.created":
+    case "charge.dispute.closed": {
+      const dispute = event.data.object;
+      const order = await orderForCharge(dispute.payment_intent, accountId);
+      if (!order) return false;
+      const disputed =
+        event.type === "charge.dispute.created" || disputeStillOpen(dispute.status);
+      await rootDb.$transaction((tx) => setOrderDisputed(tx, order, disputed));
+      return true;
+    }
+
     default:
       return false;
   }
+}
+
+/**
+ * The Tender order behind a charge or dispute on a connected account, by the
+ * PaymentIntent it names. Payments the seller took elsewhere match none.
+ */
+async function orderForCharge(
+  paymentIntent: string | Stripe.PaymentIntent | null,
+  accountId: string | null,
+) {
+  const id = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  if (!id || !accountId) return null;
+  return findOrderForPaymentIntentId(id, accountId);
 }
 
 /**

@@ -1,5 +1,7 @@
 import * as z from "zod";
 
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { resourceSlugSchema, slugify } from "@/lib/slug";
 
 /**
@@ -31,31 +33,35 @@ export type ParsedCollectionForm =
   | { ok: true; draft: CollectionDraft }
   | { ok: false; fieldErrors: CollectionFieldErrors };
 
-const collectionSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Give the collection a title.")
-    .max(MAX_TITLE, `Keep the title under ${MAX_TITLE} characters.`),
-  slug: resourceSlugSchema,
-  description: z
-    .string()
-    .trim()
-    .max(MAX_DESCRIPTION, `Keep the description under ${MAX_DESCRIPTION} characters.`)
-    .optional(),
-});
+function collectionSchema(t: AdminMessages) {
+  const errors = t.collections.errors;
+  return z.object({
+    title: z
+      .string()
+      .trim()
+      .min(1, errors.titleRequired)
+      .max(MAX_TITLE, format(errors.titleTooLong, { max: MAX_TITLE })),
+    slug: resourceSlugSchema(t.validation.slug),
+    description: z
+      .string()
+      .trim()
+      .max(MAX_DESCRIPTION, format(errors.descriptionTooLong, { max: MAX_DESCRIPTION }))
+      .optional(),
+  });
+}
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === "string" ? value : "";
 }
 
-export function parseCollectionForm(formData: FormData): ParsedCollectionForm {
+/** `t` is the admin's copy in the seller's language, which the errors are said in. */
+export function parseCollectionForm(formData: FormData, t: AdminMessages): ParsedCollectionForm {
   const rawTitle = field(formData, "title");
   const rawSlug = field(formData, "slug");
   const rawDescription = field(formData, "description");
 
-  const parsed = collectionSchema.safeParse({
+  const parsed = collectionSchema(t).safeParse({
     title: rawTitle,
     slug: rawSlug.trim() === "" ? slugify(rawTitle) : rawSlug,
     description: rawDescription.trim() === "" ? undefined : rawDescription,
@@ -85,7 +91,9 @@ export function parseCollectionForm(formData: FormData): ParsedCollectionForm {
   }
 
   if (productIds.length > MAX_COLLECTION_PRODUCTS) {
-    fieldErrors.products = `A collection can hold at most ${MAX_COLLECTION_PRODUCTS} products.`;
+    fieldErrors.products = format(t.collections.errors.tooManyProducts, {
+      max: MAX_COLLECTION_PRODUCTS,
+    });
   }
 
   if (!parsed.success || fieldErrors.products) {

@@ -1,34 +1,47 @@
+import { INTL_LOCALES, type Locale } from "@/lib/i18n/locales";
+
 /**
- * Dates are formatted only at the edge, like money. Fixed locale and an
- * explicit UTC timezone so a server render and a later client render of the
+ * Dates are formatted only at the edge, like money, in the seller's admin
+ * language. Always in UTC, so a server render and a later client render of the
  * same row cannot disagree — a hydration mismatch on a date column is the kind
  * of bug that only shows up for users west of the server.
+ *
+ * English keeps the day-first "26 Sep 2026" the admin has always shown rather
+ * than `en-US`'s "Sep 26, 2026"; every other language writes dates its own way.
  */
+const DATE_LOCALES: Record<Locale, string> = { ...INTL_LOCALES, en: "en-GB" };
 
-const DEFAULT_LOCALE = "en-GB";
-
-const dayFormat = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+const DAY: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
   year: "numeric",
   timeZone: "UTC",
-});
+};
 
-const dayTimeFormat = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
+const DAY_TIME: Intl.DateTimeFormatOptions = {
+  ...DAY,
   hour: "2-digit",
   minute: "2-digit",
-  timeZone: "UTC",
-});
+};
 
-export function formatDate(date: Date): string {
-  return dayFormat.format(date);
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatter(locale: Locale, kind: "day" | "dayTime"): Intl.DateTimeFormat {
+  const key = `${locale}:${kind}`;
+  let cached = formatters.get(key);
+  if (!cached) {
+    cached = new Intl.DateTimeFormat(DATE_LOCALES[locale], kind === "day" ? DAY : DAY_TIME);
+    formatters.set(key, cached);
+  }
+  return cached;
 }
 
-export function formatDateTime(date: Date): string {
-  return dayTimeFormat.format(date);
+export function formatDate(date: Date, locale: Locale): string {
+  return formatter(locale, "day").format(date);
+}
+
+export function formatDateTime(date: Date, locale: Locale): string {
+  return formatter(locale, "dayTime").format(date);
 }
 
 /**

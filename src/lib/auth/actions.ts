@@ -83,11 +83,23 @@ export async function signUpAction(
     },
   });
 
-  if (error) return { values, formError: error.message };
+  // An address that already has an account gets the same answer as a new
+  // one — which is what Supabase itself does while email confirmation is on.
+  // Saying "already registered" would tell anyone which emails sign in here.
+  const alreadyRegistered =
+    error?.code === "user_already_exists" || error?.code === "email_exists";
+
+  if (error && !alreadyRegistered) {
+    if (!isExpectedAuthError(error)) console.error("signUpAction failed", error);
+    return {
+      values,
+      formError: authErrorMessage(error, "We couldn't create your account. Please try again."),
+    };
+  }
 
   // With email confirmation enabled (Supabase's default) there is no session
   // yet — the user has to click the link first.
-  if (!data.session) {
+  if (alreadyRegistered || !data.session) {
     return {
       values,
       notice:
@@ -185,11 +197,10 @@ export async function requestPasswordResetAction(
     redirectTo: confirmRedirectUrl("/reset-password"),
   });
 
-  if (error) {
-    // Running out of emails is not about this address, so it is safe to say.
-    if (error.code === "over_email_send_rate_limit" || error.status === 429) {
-      return { values, formError: authErrorMessage(error) };
-    }
+  // Every outcome gets the notice below. Supabase also throttles repeat
+  // requests per address, and only for addresses that have an account — so
+  // answering a 429 differently would tell a stranger which ones do.
+  if (error && !isExpectedAuthError(error)) {
     console.error("requestPasswordResetAction failed", error);
   }
 
@@ -197,7 +208,8 @@ export async function requestPasswordResetAction(
     notice:
       `If there's an account for ${parsed.data.email}, we've sent it a link to ` +
       "choose a new password. Open it on any device — it signs you in for 15 " +
-      "minutes to set one.",
+      "minutes to set one. Nothing after a few minutes? Check your spam " +
+      "folder, or try again later.",
   };
 }
 

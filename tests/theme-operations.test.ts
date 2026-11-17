@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { defaultTheme, newSection } from "@/lib/theme/default-theme";
 import { MAX_SECTIONS_PER_PAGE, THEME_ID_PATTERN, type ThemeDocument } from "@/lib/theme/document";
+import { en } from "@/lib/i18n/admin/en";
 import {
-  addBlock,
-  addBlockBlockedReason,
-  addSection,
-  addSectionBlockedReason,
+  addBlock as addBlockIn,
+  addBlockBlockedReason as blockBlockedIn,
+  addSection as addSectionIn,
+  addSectionBlockedReason as sectionBlockedIn,
   findSection,
   moveBlock,
   moveBlockTo,
@@ -21,12 +22,28 @@ import {
   themeIds,
   uniqueId,
   updateSetting,
+  type BlockedCopy,
+  type ManifestLike,
 } from "@/lib/theme/operations";
 import { sectionManifests } from "@/lib/theme/registry";
 import { parseThemeForWrite } from "@/lib/theme/validate";
 
 const manifests = new Map(sectionManifests().map((manifest) => [manifest.type, manifest]));
 const manifest = (type: string) => manifests.get(type)!;
+
+const EN: BlockedCopy = { locale: "en", t: en.themeEditor.operations };
+const addSection = (document: ThemeDocument, m: ManifestLike, index?: number) =>
+  addSectionIn(document, m, EN, index);
+const addSectionBlockedReason = (document: ThemeDocument, m: ManifestLike) =>
+  sectionBlockedIn(document, m, EN);
+const addBlock = (document: ThemeDocument, sectionId: string, m: ManifestLike, type: string) =>
+  addBlockIn(document, sectionId, m, type, EN);
+const addBlockBlockedReason = (
+  document: ThemeDocument,
+  sectionId: string,
+  m: ManifestLike,
+  type: string,
+) => blockBlockedIn(document, sectionId, m, type, EN);
 
 const ids = (document: ThemeDocument) => document.pages.home.sections.map((section) => section.id);
 
@@ -114,7 +131,7 @@ describe("addSection", () => {
     const { document } = fixture();
     expect(addSection(document, manifest("header"))).toEqual({
       ok: false,
-      reason: "The header is always on the page.",
+      reason: "“Header” is always on the page.",
     });
 
     let full = document;
@@ -294,7 +311,7 @@ describe("blocks", () => {
   it("refuses a type the section does not take, and one past its limit", () => {
     const { document } = fixture();
     expect(addBlockBlockedReason(document, "hero", manifest("hero"), "heading")).toBe(
-      "A image banner cannot hold that.",
+      "“Image banner” cannot hold that.",
     );
     expect(addBlockBlockedReason(document, "gone", manifest("hero"), "button")).toBe(
       "That section is no longer on the page.",
@@ -304,7 +321,7 @@ describe("blocks", () => {
     if (!second.ok) throw new Error("expected a second button");
     expect(addBlock(second.document, "hero", manifest("hero"), "button")).toEqual({
       ok: false,
-      reason: "A image banner holds at most 2 blocks.",
+      reason: "“Image banner” holds at most 2 blocks.",
     });
   });
 

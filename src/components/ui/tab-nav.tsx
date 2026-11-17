@@ -38,7 +38,7 @@ export function TabNav({
         {items.map((item) => {
           const active = item.segment === segment;
           return (
-            <li key={item.label}>
+            <li key={item.segment ?? ""}>
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}

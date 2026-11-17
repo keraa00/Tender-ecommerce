@@ -1,6 +1,8 @@
 import * as z from "zod";
 
 import { ProductStatus } from "@/lib/db/types";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { parseMoneyToCents } from "@/lib/money";
 import { resourceSlugSchema, slugify } from "@/lib/slug";
 import { MAX_WEIGHT_GRAMS, parseWeightToGrams } from "@/lib/weight";
@@ -62,24 +64,27 @@ export type ParsedProductForm =
   | { ok: true; draft: ProductDraft }
   | { ok: false; fieldErrors: ProductFieldErrors };
 
-const productSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Give the product a title.")
-    .max(MAX_TITLE, `Keep the title under ${MAX_TITLE} characters.`),
-  slug: resourceSlugSchema,
-  description: z
-    .string()
-    .trim()
-    .max(MAX_DESCRIPTION, `Keep the description under ${MAX_DESCRIPTION} characters.`)
-    .optional(),
-  status: z.enum([
-    ProductStatus.DRAFT,
-    ProductStatus.ACTIVE,
-    ProductStatus.ARCHIVED,
-  ]),
-});
+function productSchema(t: AdminMessages) {
+  const errors = t.products.errors;
+  return z.object({
+    title: z
+      .string()
+      .trim()
+      .min(1, errors.titleRequired)
+      .max(MAX_TITLE, format(errors.titleTooLong, { max: MAX_TITLE })),
+    slug: resourceSlugSchema(t.validation.slug),
+    description: z
+      .string()
+      .trim()
+      .max(MAX_DESCRIPTION, format(errors.descriptionTooLong, { max: MAX_DESCRIPTION }))
+      .optional(),
+    status: z.enum([
+      ProductStatus.DRAFT,
+      ProductStatus.ACTIVE,
+      ProductStatus.ARCHIVED,
+    ]),
+  });
+}
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -104,12 +109,14 @@ function parseInventory(raw: string): number | null {
   return value > MAX_INVENTORY ? null : value;
 }
 
-export function parseProductForm(formData: FormData): ParsedProductForm {
+/** `t` is the admin's copy in the seller's language, which the errors are said in. */
+export function parseProductForm(formData: FormData, t: AdminMessages): ParsedProductForm {
+  const errors = t.products.errors;
   const rawTitle = field(formData, "title");
   const rawSlug = field(formData, "slug");
   const rawDescription = field(formData, "description");
 
-  const parsed = productSchema.safeParse({
+  const parsed = productSchema(t).safeParse({
     title: rawTitle,
     // A blank address means "derive it from the title", which is what the form
     // does client-side anyway; this is the no-JavaScript fallback.
@@ -155,25 +162,25 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
     if (isBlankRow([title, sku, price, compareAt, stock])) continue;
 
     if (title.trim() === "") {
-      variantRows[row] = "Name this option.";
+      variantRows[row] = errors.optionNameRequired;
       continue;
     }
     if (title.trim().length > MAX_VARIANT_TITLE) {
-      variantRows[row] = `Keep the name under ${MAX_VARIANT_TITLE} characters.`;
+      variantRows[row] = format(errors.optionNameTooLong, { max: MAX_VARIANT_TITLE });
       continue;
     }
     if (sku.trim().length > MAX_SKU) {
-      variantRows[row] = `Keep the SKU under ${MAX_SKU} characters.`;
+      variantRows[row] = format(errors.skuTooLong, { max: MAX_SKU });
       continue;
     }
 
     const priceCents = parseMoneyToCents(price);
     if (priceCents === null) {
-      variantRows[row] = "Enter a price like 24.99.";
+      variantRows[row] = errors.price;
       continue;
     }
     if (priceCents > MAX_PRICE_CENTS) {
-      variantRows[row] = "That price is too large.";
+      variantRows[row] = errors.priceTooLarge;
       continue;
     }
 
@@ -181,27 +188,27 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
     if (compareAt.trim() !== "") {
       compareAtPriceCents = parseMoneyToCents(compareAt);
       if (compareAtPriceCents === null || compareAtPriceCents > MAX_PRICE_CENTS) {
-        variantRows[row] = "Enter a compare-at price like 29.99.";
+        variantRows[row] = errors.compareAt;
         continue;
       }
       // A compare-at below the price would render as a discount to a higher
       // number, which reads as an error to the buyer.
       if (compareAtPriceCents <= priceCents) {
-        variantRows[row] = "Compare-at must be higher than the price.";
+        variantRows[row] = errors.compareAtTooLow;
         continue;
       }
     }
 
     const inventoryQty = parseInventory(stock);
     if (inventoryQty === null) {
-      variantRows[row] = "Stock must be a whole number, 0 or more.";
+      variantRows[row] = errors.stock;
       continue;
     }
 
     const weight = (weights[row] ?? "").trim();
     const weightGrams = weight === "" ? 0 : parseWeightToGrams(weight);
     if (weightGrams === null || weightGrams > MAX_WEIGHT_GRAMS) {
-      variantRows[row] = "Enter the weight in kilograms, like 0.35.";
+      variantRows[row] = errors.weight;
       continue;
     }
 
@@ -225,16 +232,16 @@ export function parseProductForm(formData: FormData): ParsedProductForm {
   if (variants.length === 0 && Object.keys(variantRows).length === 0) {
     // Without a variant there is no price, and nothing for a buyer to add to a
     // cart — so a product with none is not a saveable state.
-    fieldErrors.variants = "Add at least one option with a price.";
+    fieldErrors.variants = errors.noOptions;
   }
 
   if (variants.length > MAX_VARIANTS) {
-    fieldErrors.variants = `A product can have at most ${MAX_VARIANTS} options.`;
+    fieldErrors.variants = format(errors.tooManyOptions, { max: MAX_VARIANTS });
   }
 
   const duplicateSku = findDuplicateSku(variants);
   if (duplicateSku) {
-    fieldErrors.variants = `SKU "${duplicateSku}" is used on more than one option.`;
+    fieldErrors.variants = format(errors.duplicateSku, { sku: duplicateSku });
   }
 
   if (Object.values(fieldErrors).some((value) => value !== undefined)) {

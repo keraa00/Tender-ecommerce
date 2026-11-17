@@ -7,6 +7,7 @@ import { RateForm, type RateFormValues } from "@/components/shipping/rate-form";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/field";
 import { storeAdminPath } from "@/lib/admin/links";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { centsToInputValue, currencySymbol } from "@/lib/money";
 import { deleteRateAction, updateRateAction } from "@/lib/shipping/actions";
 import { getShippingRate } from "@/lib/shipping/queries";
@@ -23,8 +24,15 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/settings/shipping/zones/[zoneId]/rates/[rateId]">,
 ): Promise<Metadata> {
   const { storeSlug, zoneId, rateId } = await props.params;
-  const { store, rate } = await loadRate(storeSlug, zoneId, rateId);
-  return { title: rate ? `${rate.name} · ${rate.zone.name} · ${store.name}` : "Shipping rate" };
+  const [{ store, rate }, { t }] = await Promise.all([
+    loadRate(storeSlug, zoneId, rateId),
+    getAdminI18n(),
+  ]);
+  return {
+    title: rate
+      ? `${rate.name} · ${rate.zone.name} · ${store.name}`
+      : t.settings.shipping.rate.fallbackTitle,
+  };
 }
 
 const money = (cents: number | null) => (cents === null ? "" : centsToInputValue(cents));
@@ -36,8 +44,12 @@ export default async function RatePage(
 ) {
   const { storeSlug, zoneId, rateId } = await props.params;
   const { error } = await props.searchParams;
-  const { store, rate } = await loadRate(storeSlug, zoneId, rateId);
+  const [{ store, rate }, { t: messages, intl }] = await Promise.all([
+    loadRate(storeSlug, zoneId, rateId),
+    getAdminI18n(),
+  ]);
   if (!rate) notFound();
+  const t = messages.settings.shipping;
 
   const values: RateFormValues = {
     name: rate.name,
@@ -66,28 +78,26 @@ export default async function RatePage(
     >
       {error === "delete-failed" ? (
         <div className="mb-6">
-          <FormError>Could not delete the rate. Please try again.</FormError>
+          <FormError>{t.rate.deleteFailed}</FormError>
         </div>
       ) : null}
 
       <RateForm
         action={updateRateAction.bind(null, storeSlug, rate.zone.id, rate.id)}
         initialValues={values}
-        currencySymbol={currencySymbol(store.currency)}
-        submitLabel="Save changes"
+        currencySymbol={currencySymbol(store.currency, intl)}
+        submitLabel={messages.common.saveChanges}
+        t={t.rateForm}
       />
 
       <details className="mt-10 rounded-xl border border-danger/30 bg-danger/5 p-4">
         <summary className="cursor-pointer text-sm font-medium text-danger">
-          Delete this rate
+          {t.rate.deleteTitle}
         </summary>
-        <p className="mt-2 text-sm text-muted text-pretty">
-          Buyers who had picked it are moved to the cheapest rate left. Past orders keep
-          what they were charged.
-        </p>
+        <p className="mt-2 text-sm text-muted text-pretty">{t.rate.deleteBody}</p>
         <form action={deleteRateAction.bind(null, storeSlug, rate.zone.id, rate.id)} className="mt-3">
           <Button type="submit" variant="danger" size="sm">
-            Delete rate
+            {t.rate.deleteButton}
           </Button>
         </form>
       </details>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
   describeNewOrders,
   formatNewOrderCount,
@@ -101,9 +102,9 @@ describe("labels", () => {
   });
 
   it("describes the count in words", () => {
-    expect(describeNewOrders(1)).toBe("1 new order");
-    expect(describeNewOrders(3)).toBe("3 new orders");
-    expect(describeNewOrders(100)).toBe("99+ new orders");
+    expect(describeNewOrders(1, "en", en.liveOrders)).toBe("1 new order");
+    expect(describeNewOrders(3, "en", en.liveOrders)).toBe("3 new orders");
+    expect(describeNewOrders(100, "en", en.liveOrders)).toBe("99+ new orders");
   });
 });
 

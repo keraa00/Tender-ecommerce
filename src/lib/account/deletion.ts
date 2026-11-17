@@ -1,3 +1,5 @@
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { PlatformRole } from "@/lib/db/types";
 
 /**
@@ -36,13 +38,31 @@ export function accountDeletionBlockers({
   return blockers;
 }
 
-export function describeAccountDeletionBlocker(blocker: AccountDeletionBlocker): string {
+/** The refusal's wording, in the seller's language: `t.account.privacy`. */
+export type AccountDeletionCopy = Pick<
+  AdminMessages["account"]["privacy"],
+  "ownsStore" | "ownsStores" | "platformAdmin"
+>;
+
+const ENGLISH: AccountDeletionCopy = {
+  ownsStore: "You still own {store}. Delete it from its Settings first.",
+  ownsStores: "You still own {count} stores. Delete each one from its Settings first.",
+  platformAdmin:
+    "Platform admin accounts can't be deleted here. Have your platform role removed first.",
+};
+
+export function describeAccountDeletionBlocker(
+  blocker: AccountDeletionBlocker,
+  t: AccountDeletionCopy = ENGLISH,
+): string {
   switch (blocker.kind) {
     case "owns-stores":
+      // One or several — there is no plural form to pick between, since the
+      // one-store sentence names the store rather than counting it.
       return blocker.stores.length === 1
-        ? `You still own ${blocker.stores[0].name}. Delete it from its Settings first.`
-        : `You still own ${blocker.stores.length} stores. Delete each one from its Settings first.`;
+        ? format(t.ownsStore, { store: blocker.stores[0].name })
+        : format(t.ownsStores, { count: blocker.stores.length });
     case "platform-admin":
-      return "Platform admin accounts can't be deleted here. Have your platform role removed first.";
+      return t.platformAdmin;
   }
 }

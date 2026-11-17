@@ -1,4 +1,4 @@
-import { ACCEPTED_IMAGE_TYPES } from "@/lib/products/constants";
+import { ACCEPTED_IMAGE_TYPES, type ImageMessages } from "@/lib/products/constants";
 
 /**
  * Limits for images uploaded from the theme editor. Dependency-free: the
@@ -20,11 +20,14 @@ export const MAX_THEME_IMAGE_BYTES = 950_000;
 export const THEME_IMAGE_MAX_EDGE = 2_400;
 
 /** Human-readable reason an image cannot be used, or null when it can. */
-export function themeImageRejectionReason(file: { size: number; type: string }): string | null {
+export function themeImageRejectionReason(
+  file: { size: number; type: string },
+  t: ImageMessages,
+): string | null {
   if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    return "Use a JPEG, PNG, WebP or AVIF image.";
+    return t.wrongType;
   }
-  if (file.size === 0) return "That file is empty.";
-  if (file.size > MAX_THEME_IMAGE_BYTES) return "That image is too large. Try a smaller one.";
+  if (file.size === 0) return t.empty;
+  if (file.size > MAX_THEME_IMAGE_BYTES) return t.tooLarge;
   return null;
 }

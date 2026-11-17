@@ -6,13 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Field, FormError, FormNotice, Input } from "@/components/ui/field";
 import type { ProfileState } from "@/lib/account/actions";
 import { NAME_MAX_LENGTH } from "@/lib/auth/schemas";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 export function ProfileForm({
   action,
   name: initialName,
+  t,
 }: {
   action: (state: ProfileState, formData: FormData) => Promise<ProfileState>;
   name: string;
+  t: AdminMessages["account"]["forms"];
 }) {
   const [state, formAction, pending] = useActionState<ProfileState, FormData>(action, {});
   // Controlled: React resets a form after its action runs, which would put a
@@ -25,10 +28,10 @@ export function ProfileForm({
       <FormNotice>{state.notice}</FormNotice>
 
       <Field
-        label="Name"
+        label={t.name}
         htmlFor="account-name"
         error={state.fieldErrors?.name}
-        hint="Shown in the header and to anyone you work alongside in a store."
+        hint={t.nameHint}
       >
         <Input
           id="account-name"
@@ -43,7 +46,7 @@ export function ProfileForm({
       </Field>
 
       <Button type="submit" size="sm" disabled={pending || name.trim() === initialName}>
-        {pending ? "Saving…" : "Save name"}
+        {pending ? t.saving : t.saveName}
       </Button>
     </form>
   );

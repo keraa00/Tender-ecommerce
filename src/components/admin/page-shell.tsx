@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 
 import { ButtonLink } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { format } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 
 /**
  * Shared furniture for the admin sections. The store layout renders only
@@ -31,7 +33,7 @@ export function AdminPage({
           href={back.href}
           className="mb-4 inline-block text-sm text-muted underline-offset-4 hover:underline"
         >
-          ← {back.label}
+          <Arrow>←</Arrow> {back.label}
         </Link>
       ) : null}
 
@@ -147,7 +149,7 @@ export function Row({
  * "51–100 of 173" with Previous and Next, under a list split into pages. The
  * caller builds the links, so each list keeps its own filters in them.
  */
-export function Pager({
+export async function Pager({
   from,
   to,
   total,
@@ -162,20 +164,36 @@ export function Pager({
   /** Null on the last page. */
   nextHref: string | null;
 }) {
+  const { t, intl } = await getAdminI18n();
+  const number = new Intl.NumberFormat(intl);
+
   return (
-    <nav aria-label="Pages" className="flex items-center justify-between gap-4 text-sm">
+    <nav aria-label={t.common.pages} className="flex items-center justify-between gap-4 text-sm">
       <p className="text-muted tabular">
-        {from}–{to} of {total}
+        {format(t.common.pageRange, {
+          from: number.format(from),
+          to: number.format(to),
+          total: number.format(total),
+        })}
       </p>
       <div className="flex gap-2">
         <PageLink href={prevHref} rel="prev">
-          ← Previous
+          <Arrow>←</Arrow> {t.common.previous}
         </PageLink>
         <PageLink href={nextHref} rel="next">
-          Next →
+          {t.common.next} <Arrow>→</Arrow>
         </PageLink>
       </div>
     </nav>
+  );
+}
+
+/** A typed arrow that points the other way when the admin reads right to left. */
+export function Arrow({ children }: { children: ReactNode }) {
+  return (
+    <span aria-hidden className="inline-block rtl:-scale-x-100">
+      {children}
+    </span>
   );
 }
 

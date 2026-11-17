@@ -1,4 +1,13 @@
 import { formatDateTime } from "@/lib/dates";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { Locale } from "@/lib/i18n/locales";
+
+/** The Online store page's words for each state, in the seller's language. */
+export type ThemeStatusCopy = {
+  locale: Locale;
+  t: Pick<AdminMessages["onlineStore"], "badge" | "summary">;
+};
 
 /**
  * Where a store's design stands, for the Online store page. Pure, so the
@@ -51,33 +60,41 @@ export function parseThemeVersion(value: unknown): number | null {
 }
 
 /** The badge beside the theme's name. */
-export function themeStatusBadge(status: ThemeStatus): {
+export function themeStatusBadge(
+  status: ThemeStatus,
+  { t }: ThemeStatusCopy,
+): {
   label: string;
   tone: "success" | "warning";
 } {
   switch (status.kind) {
     case "default":
     case "published":
-      return { label: "Live", tone: "success" };
+      return { label: t.badge.live, tone: "success" };
     case "unpublished":
-      return { label: "Not published", tone: "warning" };
+      return { label: t.badge.notPublished, tone: "warning" };
     case "changes":
-      return { label: "Unpublished changes", tone: "warning" };
+      return { label: t.badge.changes, tone: "warning" };
   }
 }
 
 /** One sentence on what buyers see and what is waiting. */
-export function themeStatusSummary(status: ThemeStatus): string {
-  const at = (date: Date | null) => (date ? ` ${formatDateTime(date)}` : "");
+export function themeStatusSummary(status: ThemeStatus, { locale, t }: ThemeStatusCopy): string {
+  // " 5 Oct 2026, 12:30", or nothing for a row saved before times were kept.
+  const at = (date: Date | null) =>
+    date ? format(t.summary.at, { date: formatDateTime(date, locale) }) : "";
 
   switch (status.kind) {
     case "default":
-      return "Buyers see Tender's default design. Customize it to make it yours.";
+      return t.summary.default;
     case "unpublished":
-      return `Draft saved${at(status.savedAt)}. Buyers see the default design until you publish.`;
+      return format(t.summary.unpublished, { at: at(status.savedAt) });
     case "changes":
-      return `Published${at(status.publishedAt)}. Changes saved${at(status.savedAt)} aren't live yet.`;
+      return format(t.summary.changes, {
+        publishedAt: at(status.publishedAt),
+        savedAt: at(status.savedAt),
+      });
     case "published":
-      return `Published${at(status.publishedAt)}. Buyers see your latest changes.`;
+      return format(t.summary.published, { at: at(status.publishedAt) });
   }
 }

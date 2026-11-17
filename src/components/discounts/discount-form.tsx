@@ -2,6 +2,7 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { ItemPicker, type PickerOption } from "@/components/discounts/item-picker";
 import { DiscountStateBadge } from "@/components/ui/badge";
 import { SaveBar, useDiscard } from "@/components/admin/save-bar";
@@ -10,23 +11,25 @@ import { cn } from "@/lib/cn";
 import { parseDateTimeInput } from "@/lib/dates";
 import type { DiscountFormState } from "@/lib/discounts/actions";
 import {
-  APPLIES_TO_OPTIONS,
-  BUYS_FROM_OPTIONS,
   DISCOUNT_CODE_MAX_LENGTH,
-  DISCOUNT_TYPE_OPTIONS,
-  ELIGIBILITY_OPTIONS,
+  DISCOUNT_ELIGIBILITIES,
+  DISCOUNT_MINIMUMS,
+  DISCOUNT_SCOPES,
+  DISCOUNT_TYPES,
   FULL_DISCOUNT_BPS,
-  MINIMUM_OPTIONS,
 } from "@/lib/discounts/constants";
 import {
   describeDiscount,
   discountState,
   formatDiscountValue,
   parsePercentToBps,
+  type DiscountFormat,
   type DiscountSummary,
 } from "@/lib/discounts/format";
 import type { DiscountFormValues } from "@/lib/discounts/form-values";
-import { CUSTOMER_SEGMENT_OPTIONS } from "@/lib/discounts/segments";
+import { CUSTOMER_SEGMENTS, segmentHint } from "@/lib/discounts/segments";
+import { format, plural } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { currencySymbol, parseMoneyToCents } from "@/lib/money";
 
 /**
@@ -43,6 +46,17 @@ type Options = {
   products: readonly PickerOption[];
   collections: readonly PickerOption[];
   customers: readonly PickerOption[];
+};
+
+type DiscountMessages = AdminMessages["discounts"];
+
+/** The form's copy in the seller's language: what the browser needs, no more. */
+export type DiscountFormCopy = Pick<
+  DiscountMessages,
+  "form" | "types" | "scopes" | "buysFrom" | "minimums" | "eligibilities" | "picker"
+> & {
+  format: AdminMessages["discountFormat"];
+  segments: AdminMessages["segments"];
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,6 +129,7 @@ type DiscountFormProps = {
   initialNotice?: string;
   /** The store's, ISO 4217: amounts are typed and summarised in it. */
   currency: string;
+  t: DiscountFormCopy;
 };
 
 export function DiscountForm(props: DiscountFormProps) {
@@ -139,9 +154,13 @@ function DiscountFormBody({
   now,
   initialNotice,
   currency,
+  t: copy,
   onDiscard,
 }: DiscountFormProps & { onDiscard: () => void }) {
-  const symbol = currencySymbol(currency);
+  const { locale, intl } = useAdminI18n();
+  const t = copy.form;
+  const describe: DiscountFormat = { locale, intl, t: copy.format, segments: copy.segments };
+  const symbol = currencySymbol(currency, intl);
   const [state, formAction, pending] = useActionState<DiscountFormState, FormData>(
     action,
     initialNotice ? { notice: initialNotice } : {},
@@ -183,7 +202,7 @@ function DiscountFormBody({
       <div className="min-w-0 space-y-6">
         <FormError>
           {state.formError ??
-            (hasFieldErrors ? "Some fields need attention — they are marked below." : null)}
+            (hasFieldErrors ? t.needsAttention : null)}
         </FormError>
 
         {state.notice ? (
@@ -196,39 +215,32 @@ function DiscountFormBody({
         ) : null}
 
         {/* --- Method ------------------------------------------------------ */}
-        <Card title="Method">
+        <Card title={t.method}>
           <RadioCards
             name="method"
             value={values.method}
             onChange={(method) => set("method", method)}
             options={[
-              {
-                value: "code",
-                label: "Discount code",
-                hint: "Buyers type a code at checkout.",
-              },
-              {
-                value: "automatic",
-                label: "Automatic discount",
-                hint: "Applies on its own when the conditions are met.",
-              },
+              { value: "code", ...t.codeMethod },
+              { value: "automatic", ...t.automaticMethod },
             ]}
             columns="sm:grid-cols-2"
           />
 
           {values.method === "code" ? (
             <Field
-              label="Discount code"
+              label={t.code}
               htmlFor="code"
               error={errors.code}
-              hint="The code you give customers — they enter exactly this at checkout, in upper or lower case. Letters, numbers, hyphens and underscores."
+              hint={t.codeHint}
             >
               <Input
                 id="code"
                 name="code"
                 value={values.code}
                 onChange={(event) => set("code", event.target.value.toUpperCase())}
-                placeholder="e.g. SUMMER20"
+                placeholder={t.codePlaceholder}
+                dir="ltr"
                 autoComplete="off"
                 spellCheck={false}
                 maxLength={DISCOUNT_CODE_MAX_LENGTH}
@@ -239,14 +251,10 @@ function DiscountFormBody({
           ) : null}
 
           <Field
-            label="Title"
+            label={t.title}
             htmlFor="title"
             error={errors.title}
-            hint={
-              values.method === "code"
-                ? "Optional. Your name for it in this list — the code is used if left blank."
-                : "Buyers see this in their cart and at checkout."
-            }
+            hint={values.method === "code" ? t.titleHintCode : t.titleHintAutomatic}
           >
             <Input
               id="title"
@@ -254,7 +262,7 @@ function DiscountFormBody({
               value={values.title}
               onChange={(event) => set("title", event.target.value)}
               placeholder={
-                values.method === "code" ? "Summer newsletter offer" : "Autumn sale — 15% off"
+                values.method === "code" ? t.titlePlaceholderCode : t.titlePlaceholderAutomatic
               }
               autoComplete="off"
               aria-invalid={Boolean(errors.title)}
@@ -263,17 +271,17 @@ function DiscountFormBody({
         </Card>
 
         {/* --- Type and value ---------------------------------------------- */}
-        <Card title="Discount type" error={errors.type}>
+        <Card title={t.type} error={errors.type}>
           <RadioCards
             name="type"
             value={values.type}
             onChange={(type) => set("type", type)}
-            options={DISCOUNT_TYPE_OPTIONS}
+            options={DISCOUNT_TYPES.map((value) => ({ value, ...copy.types[value] }))}
             columns="sm:grid-cols-2"
           />
 
           {values.type === "PERCENTAGE" ? (
-            <Field label="Percentage off" htmlFor="percentValue" error={errors.value}>
+            <Field label={t.percentageOff} htmlFor="percentValue" error={errors.value}>
               <Affixed suffix="%" className="max-w-40">
                 <Input
                   id="percentValue"
@@ -291,10 +299,10 @@ function DiscountFormBody({
 
           {values.type === "FIXED_AMOUNT" ? (
             <Field
-              label="Amount off"
+              label={t.amountOff}
               htmlFor="amountValue"
               error={errors.value}
-              hint="Taken once per order, never more than the matching items cost."
+              hint={t.amountOffHint}
             >
               <Affixed prefix={symbol} className="max-w-40">
                 <Input
@@ -304,7 +312,7 @@ function DiscountFormBody({
                   value={values.amountValue}
                   onChange={(event) => set("amountValue", event.target.value)}
                   placeholder="10.00"
-                  className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+                  className="border-0 bg-transparent ps-1 focus-visible:outline-none"
                   aria-invalid={Boolean(errors.value)}
                 />
               </Affixed>
@@ -313,8 +321,7 @@ function DiscountFormBody({
 
           {values.type === "FREE_SHIPPING" ? (
             <p className="text-sm text-muted text-pretty">
-              Takes the whole shipping charge off the order. Pair it with a minimum
-              purchase below to make it “free shipping over {symbol}X”.
+              {format(t.freeShippingNote, { symbol })}
             </p>
           ) : null}
         </Card>
@@ -322,20 +329,21 @@ function DiscountFormBody({
         {/* --- Buy X get Y -------------------------------------------------- */}
         {isBxgy ? (
           <>
-            <Card title="Customer buys" error={errors.buysFrom}>
+            <Card title={t.customerBuys} error={errors.buysFrom}>
               <QuantityField
                 id="buyQuantity"
-                label="Quantity"
+                label={t.quantity}
                 value={values.buyQuantity}
                 onChange={(value) => set("buyQuantity", value)}
                 error={errors.buyQuantity}
               />
               <ScopeChooser
                 name="buysFrom"
-                legend="From"
+                legend={t.from}
                 value={values.buysFrom}
                 onChange={(scope) => set("buysFrom", scope)}
-                scopeOptions={BUYS_FROM_OPTIONS}
+                scopeOptions={DISCOUNT_SCOPES.map((value) => ({ value, label: copy.buysFrom[value] }))}
+                t={copy}
                 productName="buyProductId"
                 collectionName="buyCollectionId"
                 productIds={values.buyProductIds}
@@ -347,24 +355,22 @@ function DiscountFormBody({
               />
             </Card>
 
-            <Card title="Customer gets" error={errors.appliesTo}>
-              <p className="text-sm text-muted text-pretty">
-                The buyer must add these to their cart. The cheapest matching items
-                are the ones discounted.
-              </p>
+            <Card title={t.customerGets} error={errors.appliesTo}>
+              <p className="text-sm text-muted text-pretty">{t.getsNote}</p>
               <QuantityField
                 id="getQuantity"
-                label="Quantity"
+                label={t.quantity}
                 value={values.getQuantity}
                 onChange={(value) => set("getQuantity", value)}
                 error={errors.getQuantity}
               />
               <ScopeChooser
                 name="appliesTo"
-                legend="From"
+                legend={t.from}
                 value={values.appliesTo}
                 onChange={(scope) => set("appliesTo", scope)}
-                scopeOptions={BUYS_FROM_OPTIONS}
+                scopeOptions={DISCOUNT_SCOPES.map((value) => ({ value, label: copy.buysFrom[value] }))}
+                t={copy}
                 productName="productId"
                 collectionName="collectionId"
                 productIds={values.productIds}
@@ -376,14 +382,14 @@ function DiscountFormBody({
               />
 
               <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">At a discount of</legend>
+                <legend className="text-sm font-medium">{t.atDiscountOf}</legend>
                 <RadioRow
                   name="getDiscount"
                   value="free"
                   checked={values.getDiscount === "free"}
                   onChange={() => set("getDiscount", "free")}
                 >
-                  Free
+                  {t.free}
                 </RadioRow>
                 <RadioRow
                   name="getDiscount"
@@ -391,14 +397,14 @@ function DiscountFormBody({
                   checked={values.getDiscount === "percentage"}
                   onChange={() => set("getDiscount", "percentage")}
                 >
-                  Percentage off
+                  {t.percentageOff}
                 </RadioRow>
                 {values.getDiscount === "percentage" ? (
-                  <div className="pl-6">
+                  <div className="ps-6">
                     <Affixed suffix="%" className="max-w-32">
                       <Input
                         name="getPercent"
-                        aria-label="Percentage off each item"
+                        aria-label={t.percentageOffEach}
                         inputMode="decimal"
                         value={values.getPercent}
                         onChange={(event) => set("getPercent", event.target.value)}
@@ -413,11 +419,11 @@ function DiscountFormBody({
 
               <LimitToggle
                 name="limitUsesPerOrder"
-                label="Limit how many times it applies per order"
+                label={t.limitPerOrder}
                 checked={values.limitUsesPerOrder}
                 onCheckedChange={(checked) => set("limitUsesPerOrder", checked)}
                 inputName="maxUsesPerOrder"
-                inputLabel="Times per order"
+                inputLabel={t.timesPerOrder}
                 value={values.maxUsesPerOrder}
                 onValueChange={(value) => set("maxUsesPerOrder", value)}
                 error={errors.maxUsesPerOrder}
@@ -428,12 +434,13 @@ function DiscountFormBody({
 
         {/* --- Applies to --------------------------------------------------- */}
         {values.type === "PERCENTAGE" || values.type === "FIXED_AMOUNT" ? (
-          <Card title="Applies to" error={errors.appliesTo}>
+          <Card title={t.appliesTo} error={errors.appliesTo}>
             <ScopeChooser
               name="appliesTo"
               value={values.appliesTo}
               onChange={(scope) => set("appliesTo", scope)}
-              scopeOptions={APPLIES_TO_OPTIONS}
+              scopeOptions={DISCOUNT_SCOPES.map((value) => ({ value, label: copy.scopes[value] }))}
+              t={copy}
               productName="productId"
               collectionName="collectionId"
               productIds={values.productIds}
@@ -448,42 +455,42 @@ function DiscountFormBody({
 
         {/* --- Minimum ------------------------------------------------------ */}
         {!isBxgy ? (
-          <Card title="Minimum purchase requirements" error={errors.minimum}>
+          <Card title={t.minimum} error={errors.minimum}>
             <fieldset className="space-y-2">
-              <legend className="sr-only">Minimum requirement</legend>
-              {MINIMUM_OPTIONS.map((option) => (
-                <div key={option.value} className="space-y-2">
+              <legend className="sr-only">{t.minimumLegend}</legend>
+              {DISCOUNT_MINIMUMS.map((minimum) => (
+                <div key={minimum} className="space-y-2">
                   <RadioRow
                     name="minimum"
-                    value={option.value}
-                    checked={values.minimum === option.value}
-                    onChange={() => set("minimum", option.value)}
+                    value={minimum}
+                    checked={values.minimum === minimum}
+                    onChange={() => set("minimum", minimum)}
                   >
-                    {option.label}
+                    {copy.minimums[minimum]}
                   </RadioRow>
 
-                  {option.value === "SUBTOTAL" && values.minimum === "SUBTOTAL" ? (
-                    <div className="pl-6">
+                  {minimum === "SUBTOTAL" && values.minimum === "SUBTOTAL" ? (
+                    <div className="ps-6">
                       <Affixed prefix={symbol} className="max-w-40">
                         <Input
                           name="minSubtotal"
-                          aria-label="Minimum purchase amount"
+                          aria-label={copy.minimums.SUBTOTAL}
                           inputMode="decimal"
                           value={values.minSubtotal}
                           onChange={(event) => set("minSubtotal", event.target.value)}
                           placeholder="50.00"
-                          className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+                          className="border-0 bg-transparent ps-1 focus-visible:outline-none"
                           aria-invalid={Boolean(errors.minimum)}
                         />
                       </Affixed>
                     </div>
                   ) : null}
 
-                  {option.value === "QUANTITY" && values.minimum === "QUANTITY" ? (
-                    <div className="pl-6">
+                  {minimum === "QUANTITY" && values.minimum === "QUANTITY" ? (
+                    <div className="ps-6">
                       <Input
                         name="minQuantity"
-                        aria-label="Minimum quantity of items"
+                        aria-label={copy.minimums.QUANTITY}
                         inputMode="numeric"
                         value={values.minQuantity}
                         onChange={(event) => set("minQuantity", event.target.value)}
@@ -497,56 +504,56 @@ function DiscountFormBody({
               ))}
             </fieldset>
             {values.minimum !== "NONE" && values.type !== "FREE_SHIPPING" && values.appliesTo !== "ALL" ? (
-              <p className="text-sm text-muted">
-                Counted over the items the discount applies to, at their full price.
-              </p>
+              <p className="text-sm text-muted">{t.minimumNote}</p>
             ) : null}
           </Card>
         ) : null}
 
         {/* --- Eligibility --------------------------------------------------- */}
-        <Card title="Customer eligibility" error={errors.eligibility}>
+        <Card title={t.eligibility} error={errors.eligibility}>
           <fieldset className="space-y-2">
-            <legend className="sr-only">Who can use it</legend>
-            {ELIGIBILITY_OPTIONS.map((option) => (
+            <legend className="sr-only">{t.whoCanUse}</legend>
+            {DISCOUNT_ELIGIBILITIES.map((eligibility) => (
               <RadioRow
-                key={option.value}
+                key={eligibility}
                 name="eligibility"
-                value={option.value}
-                checked={values.eligibility === option.value}
-                onChange={() => set("eligibility", option.value)}
+                value={eligibility}
+                checked={values.eligibility === eligibility}
+                onChange={() => set("eligibility", eligibility)}
               >
-                {option.label}
+                {copy.eligibilities[eligibility]}
               </RadioRow>
             ))}
           </fieldset>
 
           {values.eligibility === "SEGMENTS" ? (
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="sr-only">Segments</legend>
-              {CUSTOMER_SEGMENT_OPTIONS.map((segment) => (
+              <legend className="sr-only">{t.segments}</legend>
+              {CUSTOMER_SEGMENTS.map((segment) => (
                 <label
-                  key={segment.value}
+                  key={segment}
                   className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border-strong bg-surface px-3 py-2.5 has-checked:border-foreground"
                 >
                   <input
                     type="checkbox"
                     name="segment"
-                    value={segment.value}
-                    checked={values.segments.includes(segment.value)}
+                    value={segment}
+                    checked={values.segments.includes(segment)}
                     onChange={(event) =>
                       set(
                         "segments",
                         event.target.checked
-                          ? [...values.segments, segment.value]
-                          : values.segments.filter((entry) => entry !== segment.value),
+                          ? [...values.segments, segment]
+                          : values.segments.filter((entry) => entry !== segment),
                       )
                     }
                     className="mt-0.5"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium">{segment.label}</span>
-                    <span className="block text-xs text-muted">{segment.hint}</span>
+                    <span className="block text-sm font-medium">{copy.segments[segment].label}</span>
+                    <span className="block text-xs text-muted">
+                      {segmentHint(segment, copy.segments)}
+                    </span>
                   </span>
                 </label>
               ))}
@@ -556,12 +563,13 @@ function DiscountFormBody({
           {values.eligibility === "CUSTOMERS" ? (
             <ItemPicker
               name="customerEmail"
-              label="Find or add customers"
+              label={t.findCustomers}
               options={options.customers}
               selected={values.customerEmails}
               onChange={(emails) => set("customerEmails", emails)}
-              placeholder="Search customers, or type or paste emails"
-              empty="No past customers yet — type or paste the email addresses to allow."
+              placeholder={t.customersPlaceholder}
+              empty={t.customersEmpty}
+              t={copy.picker}
               parseEntry={parseEmails}
               invalid={Boolean(errors.eligibility)}
             />
@@ -569,59 +577,54 @@ function DiscountFormBody({
 
           {values.eligibility !== "ALL" ? (
             <p className="text-sm text-muted text-pretty">
-              Checked against the email the buyer checks out with
-              {values.method === "automatic" ? ", so it applies once they have entered it" : ""}.
+              {values.method === "automatic" ? t.eligibilityNoteAutomatic : t.eligibilityNote}
             </p>
           ) : null}
         </Card>
 
         {/* --- Usage limits -------------------------------------------------- */}
-        <Card title="Maximum discount uses">
+        <Card title={t.maxUses}>
           <LimitToggle
             name="limitTotalUses"
-            label="Limit the total number of uses"
+            label={t.limitTotal}
             checked={values.limitTotalUses}
             onCheckedChange={(checked) => set("limitTotalUses", checked)}
             inputName="usageLimit"
-            inputLabel="Total uses"
+            inputLabel={t.totalUses}
             value={values.usageLimit}
             onValueChange={(value) => set("usageLimit", value)}
             error={errors.usageLimit}
-            hint={usageCount > 0 ? `Used ${usageCount} ${usageCount === 1 ? "time" : "times"} so far.` : undefined}
+            hint={usageCount > 0 ? plural(locale, usageCount, t.usedSoFar) : undefined}
           />
           <LimitToggle
             name="limitPerCustomer"
-            label="Limit uses per customer"
+            label={t.limitPerCustomer}
             checked={values.limitPerCustomer}
             onCheckedChange={(checked) => set("limitPerCustomer", checked)}
             inputName="perCustomerLimit"
-            inputLabel="Uses per customer"
+            inputLabel={t.usesPerCustomer}
             value={values.perCustomerLimit}
             onValueChange={(value) => set("perCustomerLimit", value)}
             error={errors.perCustomerLimit}
-            hint="Counted by email, across guest and signed-in orders."
+            hint={t.perCustomerHint}
           />
         </Card>
 
         {/* --- Combinations -------------------------------------------------- */}
-        <Card title="Combinations">
+        <Card title={t.combinations}>
           <Switch
             name="combinable"
             checked={values.combinable}
             onChange={(checked) => set("combinable", checked)}
-            label="Can be combined with other discounts"
-            hint={
-              values.combinable
-                ? "Stacks with every other combinable discount on the order."
-                : "Only ever applies on its own. When several could apply, the buyer gets whichever saves them most."
-            }
+            label={t.combinable}
+            hint={values.combinable ? t.combinableHint : t.notCombinableHint}
           />
         </Card>
 
         {/* --- Schedule ------------------------------------------------------ */}
-        <Card title="Active dates">
+        <Card title={t.activeDates}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Start (UTC)" htmlFor="startsAt" error={errors.startsAt}>
+            <Field label={t.start} htmlFor="startsAt" error={errors.startsAt}>
               <Input
                 id="startsAt"
                 name="startsAt"
@@ -633,7 +636,7 @@ function DiscountFormBody({
             </Field>
 
             {values.hasEndDate ? (
-              <Field label="End (UTC)" htmlFor="endsAt" error={errors.endsAt}>
+              <Field label={t.end} htmlFor="endsAt" error={errors.endsAt}>
                 <Input
                   id="endsAt"
                   name="endsAt"
@@ -654,11 +657,9 @@ function DiscountFormBody({
               checked={values.hasEndDate}
               onChange={(event) => set("hasEndDate", event.target.checked)}
             />
-            Set an end date
+            {t.setEndDate}
           </label>
-          <p className="text-sm text-muted">
-            Times are in UTC, like every date in your admin.
-          </p>
+          <p className="text-sm text-muted">{t.utcNote}</p>
         </Card>
       </div>
 
@@ -669,41 +670,45 @@ function DiscountFormBody({
             name="active"
             checked={values.active}
             onChange={(checked) => set("active", checked)}
-            label="Active"
-            hint={values.active ? "Live within its dates." : "Switched off until you turn it on."}
+            label={t.active}
+            hint={values.active ? t.activeHint : t.inactiveHint}
           />
           <div className="flex items-center justify-between gap-3 border-t border-border pt-4 text-sm">
-            <span className="text-muted">Status</span>
+            <span className="text-muted">{t.status}</span>
             <DiscountStateBadge state={preview} />
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="text-sm font-medium">Summary</h2>
+          <h2 className="text-sm font-medium">{t.summary}</h2>
           <p className="mt-3 flex flex-wrap items-baseline gap-2">
             {values.method === "code" ? (
               <code className="rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-sm font-medium ring-1 ring-border ring-inset">
-                {values.code.trim() || "NO CODE YET"}
+                {values.code.trim() || t.noCodeYet}
               </code>
             ) : (
-              <span className="text-sm font-medium">{values.title.trim() || "Untitled"}</span>
+              <span className="text-sm font-medium">{values.title.trim() || t.untitled}</span>
             )}
             <span className="text-xs text-muted">
-              {values.method === "code" ? "Code" : "Automatic"}
+              {values.method === "code" ? t.codeLabel : t.automaticLabel}
             </span>
           </p>
           <p className="mt-2 text-sm font-medium tabular">
             {summary.value > 0 || values.type === "FREE_SHIPPING"
-              ? formatDiscountValue({
-                  type: summary.type,
-                  value: summary.value,
-                  buyQuantity: summary.buyQuantity,
-                  getQuantity: summary.getQuantity,
-                }, currency)
-              : "Enter a value"}
+              ? formatDiscountValue(
+                  {
+                    type: summary.type,
+                    value: summary.value,
+                    buyQuantity: summary.buyQuantity,
+                    getQuantity: summary.getQuantity,
+                  },
+                  currency,
+                  describe,
+                )
+              : t.enterValue}
           </p>
-          <ul className="mt-3 list-disc space-y-1.5 pl-4 text-sm text-muted marker:text-border-strong">
-            {describeDiscount(summary, currency).map((line) => (
+          <ul className="mt-3 list-disc space-y-1.5 ps-4 text-sm text-muted marker:text-border-strong">
+            {describeDiscount(summary, currency, describe).map((line) => (
               <li key={line} className="text-pretty">
                 {line}
               </li>
@@ -823,9 +828,9 @@ function Affixed({
         className,
       )}
     >
-      {prefix ? <span className="pl-3 text-sm text-muted select-none">{prefix}</span> : null}
+      {prefix ? <span className="ps-3 text-sm text-muted select-none">{prefix}</span> : null}
       {children}
-      {suffix ? <span className="pr-3 text-sm text-muted select-none">{suffix}</span> : null}
+      {suffix ? <span className="pe-3 text-sm text-muted select-none">{suffix}</span> : null}
     </div>
   );
 }
@@ -872,6 +877,7 @@ function ScopeChooser({
   onCollections,
   options,
   invalid,
+  t,
 }: {
   name: string;
   legend?: string;
@@ -886,12 +892,13 @@ function ScopeChooser({
   onCollections: (ids: string[]) => void;
   options: Options;
   invalid: boolean;
+  t: DiscountFormCopy;
 }) {
   return (
     <div className="space-y-3">
       <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
         <legend className={legend ? "mb-2 text-sm font-medium" : "sr-only"}>
-          {legend ?? "Scope"}
+          {legend ?? t.form.scope}
         </legend>
         {scopeOptions.map((option) => (
           <RadioRow
@@ -909,12 +916,13 @@ function ScopeChooser({
       {value === "PRODUCT" ? (
         <ItemPicker
           name={productName}
-          label="Find products"
+          label={t.form.findProducts}
           options={options.products}
           selected={productIds}
           onChange={onProducts}
-          placeholder="Search products"
-          empty="Your catalogue is empty. Add products first."
+          placeholder={t.form.searchProducts}
+          empty={t.form.productsEmpty}
+          t={t.picker}
           invalid={invalid}
         />
       ) : null}
@@ -922,12 +930,13 @@ function ScopeChooser({
       {value === "COLLECTION" ? (
         <ItemPicker
           name={collectionName}
-          label="Find collections"
+          label={t.form.findCollections}
           options={options.collections}
           selected={collectionIds}
           onChange={onCollections}
-          placeholder="Search collections"
-          empty="You have no collections yet. Create one to group products."
+          placeholder={t.form.searchCollections}
+          empty={t.form.collectionsEmpty}
+          t={t.picker}
           invalid={invalid}
         />
       ) : null}
@@ -970,7 +979,7 @@ function LimitToggle({
         {label}
       </label>
       {checked ? (
-        <div className="space-y-1.5 pl-6">
+        <div className="space-y-1.5 ps-6">
           <Input
             name={inputName}
             aria-label={inputLabel}
@@ -1017,7 +1026,7 @@ function Switch({
       />
       <span
         aria-hidden
-        className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-border-strong transition-colors peer-checked:bg-primary peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
+        className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-border-strong transition-colors peer-checked:bg-primary peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring after:absolute after:top-0.5 after:start-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 rtl:peer-checked:after:-translate-x-4"
       />
     </label>
   );

@@ -210,6 +210,8 @@ export const bs: Messages = {
     payNow: "Plati sada",
     paying: "Obrada plaćanja…",
     backToCart: "Nazad u korpu",
+    demoNotice:
+      "Ovo je demo trgovina. Plaćanja rade u Stripe testnom načinu — platite karticom 4242 4242 4242 4242 — i ništa neće biti poslano. Molimo ne unosite stvarnu adresu.",
     unavailable: "Ova trgovina trenutno ne prima narudžbe.",
     questions: "Pitanja?",
     blocked: {

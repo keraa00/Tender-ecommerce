@@ -4,11 +4,14 @@ Anyone can sign up, open a store, list products and take real payments. Each
 store is an isolated tenant with its own catalogue, its own orders and its own
 Stripe account; the platform takes a commission at the moment of the charge.
 
-> **Status: in active development.** Schema, tenancy, auth, store creation, slug
-> routing, product management, discounts (admin, engine, cart and checkout),
-> shipping zones and rates, a Shopify-style checkout, Stripe Connect onboarding,
-> card payments with the platform's commission, and seed data are in. Order
-> emails and the remaining admin surfaces are next — see [Roadmap](#roadmap).
+> **Status: in active development, deployable as a public demo.** Schema,
+> tenancy, auth, store creation, slug routing, product management, discounts
+> (admin, engine, cart and checkout), shipping zones and rates, a Shopify-style
+> checkout, Stripe Connect onboarding, card payments with the platform's
+> commission, fulfilment, refund and dispute sync, store moderation and seed
+> data are in. Order emails and the remaining admin surfaces are next — see
+> [Roadmap](#roadmap). The demo runs Stripe in test mode and says so on every
+> checkout; see [Deploying](#deploying).
 
 ---
 
@@ -16,21 +19,23 @@ Stripe account; the platform takes a commission at the moment of the charge.
 
 | | |
 |---|---|
-| Platform landing | Lists live stores at `/` |
+| Platform landing | Lists the stores a platform admin has featured at `/` and `/stores` — a new store is not featured until one chooses it. `/terms` and `/privacy`, and a demo notice while `SITE.demo` is on (`src/lib/site.ts`) |
+| Platform admin | `/dashboard/platform`, platform admins only (404 for anyone else) — every store with its owner, status and counts; feature a store on the landing page, or suspend it (storefront and checkout offline, nothing deleted) and lift the suspension |
 | Storefronts | Seven seeded demo stores — `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR), `/s/wildmoor-apothecary` (GBP), `/s/halden-coffee` (AUD), `/s/marlowe-paper` (CAD), `/s/bakar-atelier` (BAM), `/s/kehre-velo` (CHF) — branded per store, priced in each store's own currency |
 | Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired, and "Forgot your password?" — a reset link that signs you in for 15 minutes to choose a new one |
 | Account settings | `/dashboard/account` — **Profile**: name, and changing the sign-in email (confirmed by link before it takes effect). **Security**: change the password (current one required; every other device is signed out) and see where you're signed in — browser and system, last active — with sign-out per device or everywhere else. **Data & privacy**: download everything kept about you as JSON, and delete the account (current password plus typing your email; blocked while you still own a store). Reached from the header's account menu, the store list, and the email at the foot of the admin drawer |
-| Closing a store | Settings → General, owner only: deletes the store with its products, orders and images after the slug is typed out. Blocked while a paid order is unfulfilled or cash on delivery is uncollected; unpaid Stripe checkouts are cancelled first. The seller's Stripe account is theirs and is left alone |
+| Closing a store | Settings → General, owner only: deletes the store with its products, orders and images after the slug is typed out and the owner's current password given. Blocked while a paid order is unfulfilled or cash on delivery is uncollected; unpaid Stripe checkouts are cancelled first. The seller's Stripe account is theirs and is left alone |
 | Store creation | `/dashboard/new` — slug validation with live availability checking |
 | Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
 | Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived; a weight per option (kg in, integer grams stored) and a "requires shipping" flag for digital products and services |
-| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email. **Payments**: pick the business's country and connect a Stripe account (Accounts v2) through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit; and **cash on delivery** — on/off, the name buyers see, instructions, a fixed or percentage fee, an optional order-total range, the shipping countries it is offered for and whether it requires a phone number. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
+| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email — buyers see none until one is set; the email the owner signs in with is never shown. **Payments**: pick the business's country and connect a Stripe account (Accounts v2) through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit; and **cash on delivery** — on/off, the name buyers see, instructions, a fixed or percentage fee, an optional order-total range, the shipping countries it is offered for and whether it requires a phone number. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
 | Discounts | `admin.<host>/[storeSlug]/discounts` — codes and automatic discounts: percentage, fixed amount, buy X get Y, free shipping; whole order, products or collections; minimum spend or quantity; all customers, segments or named customers; total and per-customer limits; schedule; on/off; stacking. The pricing engine is pure and tested, ready for checkout |
 | Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout. Checkout is one page, Shopify-style, under its own pared-down header: contact (with the optional marketing opt-in), delivery — a country select of only the countries the store ships to, named in the buyer's language, then address fields that follow the country (labels, region lists, postal-code formats for 30+ countries) — shipping method, billing address, payment and the order summary, which folds into a bar on phones. Every change is saved on the cart and re-priced on the server, so a refresh loses nothing and the server's total is the only one. Payment is Stripe's **Payment Element**, embedded in the page and themed to the store. "Pay now" places the order — line, discount, address and rate snapshots, commission on the discounted total, usage limits enforced and the rate re-checked in the order transaction — creates its PaymentIntent on the seller's Stripe account, and confirms it in place (3-D Secure included). The order turns **Paid** — stock taken, cart emptied — when the payment succeeds; a declined card leaves the cart and the order for another try. An order discounts bring to zero is placed paid without Stripe. Placing an order dims the page under a spinner, then a green tick draws itself before the thank-you page — cards and 3-D Secure confirm in place. "Save my information for next time" keeps the buyer's email, addresses and way of paying for that store in that browser (server-side, behind an httpOnly cookie), so their next checkout opens filled in and priced; unticking it forgets them at once |
 | Cash on delivery | Offered beside Stripe, or instead of it — a store with COD on can trade without a Stripe account, which is how a seller where Stripe takes no merchants sells at all. Buyers choose it in checkout's Payment step; its fee is priced on the server like everything else (a percentage is of goods and shipping after discounts), and the option explains itself when this order's country or total rules it out. Only for orders that are delivered. A COD order takes its stock and empties the cart when placed, alerts the seller at once, and stays **Payment on delivery** until the seller marks it paid — or cancels it, which restocks it and gives its discount uses back. Commission is recorded on each COD order and billed to the seller separately: no part of the cash passes through Stripe |
 | Shipping | The chosen rate is charged; a free-shipping discount takes exactly that rate off. Rates are judged on the subtotal after item discounts and on the weight of what ships. A cart of digital products skips delivery entirely. A store that ships nowhere can still sell those, and says so for anything else |
 | Buy it now | On every product page: checks out that one option and quantity from a cart of its own, so the buyer's cart is still there afterwards |
-| Orders | `admin.<host>/[storeSlug]/orders` — list, and a page per order with its lines, totals, commission, discounts, customer, shipping address and method, billing address, note and a link to the payment in the seller's Stripe Dashboard. The buyer's confirmation page reads the payment from Stripe — paid, processing, or failed with a way back to try again — and shows the same delivery details |
+| Orders | `admin.<host>/[storeSlug]/orders` — list, and a page per order with its lines, totals, commission, discounts, customer, shipping address and method, billing address, note and a link to the payment in the seller's Stripe Dashboard. **Mark as fulfilled** once a paid order is sent. Refunds and disputes are made in the seller's Stripe Dashboard and come back by webhook: a full refund of an order not yet sent cancels and restocks it, a partial one shows on the order and comes off analytics, and a dispute flags the order until it is won. The buyer's confirmation page reads the payment from Stripe — paid, processing, or failed with a way back to try again — and shows the same delivery details |
+| Housekeeping | A daily Vercel Cron sweep (`/api/cron/sweep`, behind `CRON_SECRET`) resolves card checkouts left unpaid for a day — cancelling them and giving their discount uses back, or settling them if the money did arrive — and deletes abandoned carts, stale saved checkouts, editor previews and old webhook records |
 | Seed | Two stores, 31 products (one of them a service), 58 variants with weights, 6 collections, 9 discounts, 7 shipping zones with domestic and international rates — idempotent |
 
 ---
@@ -45,7 +50,7 @@ Stripe account; the platform takes a commission at the moment of the charge.
 | ORM | Prisma 7 | Client Extensions let the scoped data-access layer be enforced in one place rather than remembered at every call site |
 | Auth | Supabase Auth | Same vendor as the database, and it keeps Postgres RLS reachable as a defence-in-depth stretch goal |
 | Payments | Stripe Connect (Standard-equivalent accounts), Payment Element | See below |
-| Email | Resend | |
+| Email | Supabase Auth over SMTP | Sign-up, reset and email-change links; a Gmail account for the demo, your own domain later. Order emails are not built yet |
 | Hosting | Vercel | |
 
 ### Why Standard-equivalent accounts
@@ -328,7 +333,8 @@ and unable to upload, list or delete. Verified against the live project.
 Named deliberately, not forgotten:
 
 custom domains per store · cross-store unified cart · product reviews ·
-subscriptions · refunds · tax calculation · multi-currency · shipping-rate APIs ·
+subscriptions · in-app refunds (they are made in Stripe and synced back) · tax
+calculation · multi-currency · shipping-rate APIs ·
 seller analytics beyond basics · i18n
 
 **On cross-store carts specifically:** splitting one payment across multiple
@@ -435,8 +441,11 @@ If you point `DATABASE_URL` at Supabase rather than a local database, append
 `?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`. The pooler serves a
 certificate signed by Supabase's own root CA, which the driver behind
 `@prisma/adapter-pg` rejects when the system trust store is all it has. That
-path is resolved against the process working directory, so every entry point —
-dev server, seed, scripts — has to be launched from the repo root.
+path is resolved against the process working directory, so the seed, the
+scripts and the migration CLI have to be launched from the repo root. The app
+itself never reads the file: `src/lib/db/root.ts` swaps it for the same CA
+bundled as code (`src/lib/db/supabase-ca.ts`), because a serverless deployment
+only carries the files its build traced.
 `.env.example` carries the long version, including why the session pooler is the
 one to use.
 
@@ -456,8 +465,8 @@ npm run db:migrate
 npm run db:seed
 ```
 
-With `SUPABASE_SERVICE_ROLE_KEY` set, the seed also provisions the demo accounts
-in Supabase Auth so you can log in as them:
+With `SUPABASE_SERVICE_ROLE_KEY` and `SEED_PASSWORD` set in `.env`, the seed also
+provisions the demo accounts in Supabase Auth so you can log in as them:
 
 | Account | Role |
 |---|---|
@@ -470,7 +479,12 @@ in Supabase Auth so you can log in as them:
 | `kehre@example.com` | owns `/s/kehre-velo` (CHF) |
 | `admin@example.com` | platform admin |
 
-Password: `tender-demo-2026`. Demo fixtures — never reuse these anywhere real.
+…plus the owners of the thirteen showcase stores in
+`prisma/seed-catalog-showcase.ts`. They all sign in with the `SEED_PASSWORD` you
+set in `.env`, which is never committed: a password in the repo is a published
+password. Reseeding moves accounts that already exist onto the current
+`SEED_PASSWORD`; to rotate them without reseeding, change it and run
+`npm run seed:passwords`. Demo fixtures — never reuse the password anywhere real.
 
 Every store also gets about a year of orders (`prisma/seed-orders.ts`), so
 Customers, Orders and Analytics have something to show. Their dates count back
@@ -502,7 +516,7 @@ the door with card orders from abroad.
    ```
 
    The script is `stripe listen --events-from @accounts --events …
-   --forward-connect-to localhost:3000/api/webhooks/stripe`, with the five
+   --forward-connect-to localhost:3000/api/webhooks/stripe`, with the nine
    event types the app handles.
 
    Recent CLI versions refuse to listen without an explicit event list. CLI
@@ -565,21 +579,112 @@ and `--experimental-https-cert`.
 
 ### Deploying
 
-Nothing about the split is production-only — the same variables describe it
-anywhere:
+Tender deploys to Vercel as it is. The steps below are for a **public demo on
+a `*.vercel.app` address**: Stripe in test mode, and the seller admin on the
+same host at `/dashboard/<slug>` — single-host mode, exactly like local
+development. A `vercel.app` address cannot have an `admin.` subdomain of its
+own; [with a custom domain](#with-a-custom-domain) the admin moves to one.
+
+`vercel.json` pins the functions to Paris (`cdg1`), next to a Supabase project
+in `eu-west-3` — change it if your database lives elsewhere — and schedules the
+daily cleanup.
+
+**1. Database and storage.** From the repo root, with your local `.env`
+pointing at the production project (the session pooler, port 5432):
+
+```bash
+npm run db:deploy      # apply migrations — never `migrate dev` or `reset` here
+npm run storage:setup  # the public product-images bucket
+```
+
+Both are idempotent. The build does not migrate; run `db:deploy` again before
+deploying code that ships a new migration. Seed only if you want the demo
+stores (`npm run db:seed`), and set `SEED_PASSWORD` first — it is the password
+of every demo account, and lives only in your `.env`.
+
+**2. Vercel project.** Import the repository and deploy once to learn the
+address (`<project>.vercel.app`). Then, under Settings → Environment Variables,
+set these for **Production** and redeploy — `NEXT_PUBLIC_*` values are baked
+in at build time:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Supabase → Connect → **Transaction pooler** (port 6543). No `sslmode`/`sslrootcert` needed: the app verifies the connection with the bundled CA. Serverless runs many small instances, and the session pooler runs out of clients long before Postgres is busy |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | as in `.env` |
+| `NEXT_PUBLIC_APP_URL` | `https://<project>.vercel.app` |
+| `NEXT_PUBLIC_ADMIN_HOST` | `<project>.vercel.app` — the same host, which is what switches the admin subdomain off |
+| `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | test-mode keys (`sk_test_…`, `pk_test_…`) |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | from step 4 |
+| `CRON_SECRET` | a long random string (`openssl rand -hex 32`); Vercel Cron sends it, anyone else gets a 401 |
+
+Never paste `.env` wholesale — its `NEXT_PUBLIC_ADMIN_HOST="localhost:3000"`
+would send every admin link to localhost — and do not set `NODE_ENV` or
+`SEED_PASSWORD`. Without those variables a Preview build fails at
+`DATABASE_URL`, which keeps previews from writing to the production database.
+
+**3. Supabase Auth.** Supabase's built-in email sender only delivers to the
+members of your Supabase organization, so on its own nobody else could confirm
+a sign-up or reset a password. Give it an SMTP server: for a demo, a dedicated
+Gmail account works without a domain of your own — turn on 2-Step
+Verification, create an App Password, and under Authentication → SMTP enter
+`smtp.gmail.com`, port `465`, the Gmail address as user and the app password.
+Then:
+
+- Authentication → URL Configuration: Site URL `https://<project>.vercel.app`,
+  and redirect URLs `https://<project>.vercel.app/auth/confirm` and
+  `https://<project>.vercel.app/auth/callback`.
+- The token-hash email templates from [Local setup](#local-setup) step 2, if
+  this is a fresh project. They carry no host, so they need no change.
+- Authentication → Rate Limits: raise "emails per hour" if the default is too
+  tight for your visitors.
+- Realtime → Settings: turn off public channel access. Live order alerts use
+  private channels only.
+
+**4. Stripe webhooks** (test mode). Workbench → Webhooks → an endpoint at
+`https://<project>.vercel.app/api/webhooks/stripe`, **Events from: Connected
+accounts**, for `account.updated`, `capability.updated`,
+`account.application.deauthorized`, `payment_intent.succeeded`,
+`payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`,
+`charge.dispute.created` and `charge.dispute.closed`. Its signing secret goes
+in `STRIPE_CONNECT_WEBHOOK_SECRET`.
+
+**5. A platform admin.** The moderation page at `/dashboard/platform` is for
+users whose `platform_role` is `PLATFORM_ADMIN`. Sign up with your own address,
+then set that column on your row in `users` (Prisma Studio, or the Supabase
+table editor) rather than relying on the shared demo admin account.
+
+**6. Smoke test.** Sign up with an address outside your Supabase organization
+and confirm it from the email; open a store, add a product with a photo and
+feature it from `/dashboard/platform`; pay with `4242 4242 4242 4242` and see
+the order turn Paid, fulfil it, refund it in Stripe and see it come back;
+place a cash-on-delivery order and mark it paid; reset a password; check
+`/terms`, `/privacy` and the demo notice; and confirm
+`curl https://<project>.vercel.app/api/cron/sweep` answers 401.
+
+**Accepted for the demo.** There is no rate limiting or CAPTCHA in the app
+(SECURITY_AUDIT.md TND-07): a script can place cash-on-delivery orders and run a
+demo store's stock down (TND-01). A Vercel Firewall rate-limit rule on `POST`s
+to `/s/*/checkout*` blunts it, and a reseed restocks. The remaining audit
+findings that matter only once real money moves — discount eligibility keyed
+on a typed email (TND-04–06), a nonce-based CSP (TND-16), staff roles (TND-17)
+and a least-privilege database role (TND-21) — are open in the audit report.
+
+#### With a custom domain
 
 | | |
 |---|---|
-| `NEXT_PUBLIC_APP_URL` | `https://your-domain.com` |
+| `NEXT_PUBLIC_APP_URL` | `https://your-domain.com` — the apex, made the primary domain in Vercel, with `www` redirecting to it |
 | `NEXT_PUBLIC_ADMIN_HOST` | empty, so the admin host is derived as `admin.your-domain.com` |
-| DNS | an `admin.` record pointing at the same deployment |
+| Vercel → Domains | `your-domain.com` and `admin.your-domain.com` on the same project; no wildcard needed |
 | Supabase → Authentication → URL Configuration | `https://your-domain.com/auth/confirm` and `/auth/callback` |
-| Stripe → Workbench → Webhooks | an endpoint at `https://your-domain.com/api/webhooks/stripe`, **Events from: Connected accounts**, for `account.updated`, `capability.updated`, `account.application.deauthorized`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `payment_intent.canceled`; its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET` |
-| Stripe keys | live `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, once Stripe has reviewed the platform profile |
+| Stripe webhook | the same endpoint on `https://your-domain.com` |
+| Stripe keys | live `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, once Stripe has reviewed the platform profile — and only with a business in a country where Stripe takes platforms |
 
 The auth cookie's `Domain` is derived from the host (`your-domain.com`), so one
 session covers the platform and the admin. A real domain has a real parent, so
-the public-suffix problem that rules out `localhost` does not arise.
+the public-suffix problem that rules out `localhost` does not arise. A
+custom domain also lets you send auth email from your own address instead of
+Gmail.
 
 ### Scripts
 
@@ -593,6 +698,7 @@ the public-suffix problem that rules out `localhost` does not arise.
 | `npm run db:deploy` | Apply existing migrations — hosted Postgres, CI, production |
 | `npm run db:seed` | Seed the demo stores and their orders (idempotent) |
 | `npm run seed:images` | Refresh seed photography from Openverse |
+| `npm run seed:passwords` | Move every seeded demo account onto `SEED_PASSWORD`, without reseeding |
 | `npm run stripe:listen` | Forward connected-account webhooks from Stripe to the dev server (needs the Stripe CLI, logged in) |
 
 ---
@@ -605,9 +711,9 @@ the public-suffix problem that rules out `localhost` does not arise.
 | Data layer | Product CRUD with images and variants ✅; scoped data-access layer + isolation tests still to come | ◐ |
 | Storefront | Listing, search, filters, detail, cart | |
 | Connect | Stripe-hosted onboarding (Account Links), `account.updated` webhook, activation gating | ✅ |
-| Checkout | Order placement with discounts, Payment Element with direct charges and application fee, `payment_intent.succeeded`, inventory ✅; order emails and a sweep for abandoned unpaid orders still to come | ◐ |
+| Checkout | Order placement with discounts, Payment Element with direct charges and application fee, `payment_intent.succeeded`, inventory, a daily sweep for abandoned unpaid orders, refund and dispute sync ✅; order emails still to come | ◐ |
 | Discounts | Discount engine + tests, discount admin, cart and checkout integration | ✅ |
-| Surfaces | Seller dashboard, platform admin, buyer order history, mobile pass | |
+| Surfaces | Seller dashboard and fulfilment ✅, platform admin (store moderation ✅), buyer order history, mobile pass | ◐ |
 
 ---
 

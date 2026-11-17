@@ -13,9 +13,11 @@ import type { PublishThemeState } from "@/lib/theme/actions";
 export function PublishThemeButton({
   action,
   version,
+  t,
 }: {
   action: (state: PublishThemeState, formData: FormData) => Promise<PublishThemeState>;
   version: number;
+  t: { publish: string; publishing: string };
 }) {
   const [state, formAction, pending] = useActionState<PublishThemeState, FormData>(
     action,
@@ -31,7 +33,7 @@ export function PublishThemeButton({
         </p>
       ) : null}
       <Button type="submit" disabled={pending}>
-        {pending ? "Publishing…" : "Publish"}
+        {pending ? t.publishing : t.publish}
       </Button>
     </form>
   );

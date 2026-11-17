@@ -2,7 +2,8 @@ import "server-only";
 
 import { rootDb } from "@/lib/db/root";
 import { Prisma, ProductStatus } from "@/lib/db/types";
-import { rankByTitle, searchTerms } from "./search";
+import { isUuid } from "@/lib/ids";
+import { escapeLikePattern, rankByTitle, searchTerms } from "./search";
 import { sortProducts, type CatalogSort } from "./sort";
 
 export { isSoldOut, priceRange, totalInventory } from "./pricing";
@@ -94,8 +95,8 @@ async function rankedStorefrontSearch(
     status: ProductStatus.ACTIVE,
     AND: terms.map((term): Prisma.ProductWhereInput => ({
       OR: [
-        { title: { contains: term, mode: "insensitive" } },
-        { description: { contains: term, mode: "insensitive" } },
+        { title: { contains: escapeLikePattern(term), mode: "insensitive" } },
+        { description: { contains: escapeLikePattern(term), mode: "insensitive" } },
       ],
     })),
   } satisfies Prisma.ProductWhereInput;
@@ -211,6 +212,9 @@ export type StoreProduct = Awaited<ReturnType<typeof listStoreProducts>>[number]
  * of leaking a row.
  */
 export async function getStoreProduct(storeId: string, productId: string) {
+  // A malformed id (`/products/abc`) is a missing product, not a database
+  // error: Postgres refuses to compare a uuid column with it.
+  if (!isUuid(productId)) return null;
   return rootDb.product.findFirst({
     where: { id: productId, storeId },
     include: {

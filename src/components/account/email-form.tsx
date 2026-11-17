@@ -5,11 +5,14 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, FormNotice, Input } from "@/components/ui/field";
 import type { EmailChangeState } from "@/lib/account/actions";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 export function EmailForm({
   action,
+  t,
 }: {
   action: (state: EmailChangeState, formData: FormData) => Promise<EmailChangeState>;
+  t: AdminMessages["account"]["forms"];
 }) {
   const [state, formAction, pending] = useActionState<EmailChangeState, FormData>(action, {});
 
@@ -21,7 +24,7 @@ export function EmailForm({
     <form action={formAction} className="space-y-4" noValidate>
       <FormError>{state.formError}</FormError>
 
-      <Field label="New email" htmlFor="account-new-email" error={state.fieldErrors?.email}>
+      <Field label={t.newEmail} htmlFor="account-new-email" error={state.fieldErrors?.email}>
         <Input
           id="account-new-email"
           name="email"
@@ -34,10 +37,10 @@ export function EmailForm({
       </Field>
 
       <Field
-        label="Current password"
+        label={t.currentPassword}
         htmlFor="account-email-password"
         error={state.fieldErrors?.currentPassword}
-        hint="So a session left open somewhere can't move your account."
+        hint={t.currentPasswordHint}
       >
         <Input
           id="account-email-password"
@@ -50,7 +53,7 @@ export function EmailForm({
       </Field>
 
       <Button type="submit" size="sm" disabled={pending}>
-        {pending ? "Sending link…" : "Change email"}
+        {pending ? t.sendingLink : t.changeEmail}
       </Button>
     </form>
   );

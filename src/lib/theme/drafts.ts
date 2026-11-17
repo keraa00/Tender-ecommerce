@@ -4,6 +4,7 @@ import { cache } from "react";
 
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { defaultTheme } from "./default-theme";
 import type { ThemeDocument } from "./document";
@@ -223,9 +224,12 @@ async function checkThemeForStore(
   document: unknown,
 ): Promise<{ ok: true; theme: ThemeDocument } | { ok: false; reason: "invalid"; issues: ThemeIssue[] }> {
   const supabase = getSupabaseConfig();
+  // Issues are shown to the seller who is saving, in their admin language.
+  const { t } = await getAdminI18n();
   const parsed = parseThemeForWrite(document, {
     // Without storage configured there are no uploads, so no image is ours.
     isAllowedImageUrl: supabase ? storeImageUrlPolicy(storeId, supabase.url) : () => false,
+    t,
   });
   if (!parsed.ok) return { ok: false, reason: "invalid", issues: parsed.issues };
 
@@ -244,7 +248,7 @@ async function checkThemeForStore(
       .filter((reference) => foreignIds.has(reference.id))
       .map((reference) => ({
         path: reference.path,
-        message: "Choose one of this store's collections.",
+        message: t.themeValidation.foreignCollection,
       }));
     if (issues.length > 0) return { ok: false, reason: "invalid", issues };
   }

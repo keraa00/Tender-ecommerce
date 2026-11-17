@@ -37,12 +37,16 @@ export async function isStoreSlugTaken(slug: string): Promise<boolean> {
 }
 
 /**
- * Storefronts to feature on the platform landing page, each with the picture
- * from the top of its home page as `coverUrl`.
+ * Storefronts to feature on the platform landing page and /stores, each with
+ * the picture from the top of its home page as `coverUrl`.
+ *
+ * Only stores a platform admin has featured: anyone can open a store, and a
+ * stranger's must not reach the front page by signing up. Suspended stores
+ * never show, featured or not.
  */
 export async function listPublicStores(limit = 12) {
   const stores = await rootDb.store.findMany({
-    where: { status: { not: "SUSPENDED" } },
+    where: { featured: true, status: { not: "SUSPENDED" } },
     orderBy: { createdAt: "asc" },
     take: limit,
     include: {
@@ -59,19 +63,18 @@ export async function listPublicStores(limit = 12) {
 
 /**
  * The address buyers are offered — on the contact page and at checkout: the
- * store's own contact email, falling back to the owner's account email.
- * `ownerOnly` skips the store's, for the settings page to name the fallback.
+ * store's own contact email, or none.
+ *
+ * Never the owner's account email. That is the address they sign in with,
+ * and falling back to it would publish every seller's login on their
+ * storefront — and, through the store list, to anyone collecting them.
  */
-export async function getStoreContactEmail(
-  storeId: string,
-  { ownerOnly = false }: { ownerOnly?: boolean } = {},
-) {
+export async function getStoreContactEmail(storeId: string) {
   const store = await rootDb.store.findUnique({
     where: { id: storeId },
-    select: { contactEmail: true, owner: { select: { email: true } } },
+    select: { contactEmail: true },
   });
-  if (!store) return null;
-  return (ownerOnly ? null : store.contactEmail) ?? store.owner.email;
+  return store?.contactEmail ?? null;
 }
 
 /**

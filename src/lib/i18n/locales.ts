@@ -1,7 +1,8 @@
 /**
- * Storefront languages. Only the storefront's own chrome is translated —
- * buttons, headings, empty states. Product titles and descriptions are the
- * seller's words and are shown as written.
+ * The languages Tender speaks: the storefront's buyers and, separately, the
+ * sellers in the admin. Only Tender's own copy is translated — buttons,
+ * headings, empty states. Product titles and descriptions are the seller's
+ * words and are shown as written.
  *
  * Dependency-free so the language switcher (a Client Component) can import it.
  */
@@ -28,6 +29,14 @@ export const DEFAULT_LOCALE: Locale = "en";
 
 /** The cookie the buyer's choice is kept in. Shared by every storefront. */
 export const LOCALE_COOKIE = "tender_locale";
+
+/**
+ * The cookie the seller's admin language is kept in. Separate from the
+ * buyer's, so browsing a shop in German leaves the admin as it was — and the
+ * theme editor's preview keeps showing the storefront in the storefront's
+ * language rather than the seller's.
+ */
+export const ADMIN_LOCALE_COOKIE = "tender_admin_locale";
 
 /** Each language named in itself, which is how a reader looks for their own. */
 export const LOCALE_NAMES: Record<Locale, string> = {
@@ -67,7 +76,7 @@ export const INTL_LOCALES: Record<Locale, string> = {
   zh: "zh-CN",
 };
 
-/** Arabic reads right to left; the storefront mirrors its layout to match. */
+/** Arabic reads right to left; the layout is mirrored to match. */
 export function localeDirection(locale: Locale): "ltr" | "rtl" {
   return locale === "ar" ? "rtl" : "ltr";
 }

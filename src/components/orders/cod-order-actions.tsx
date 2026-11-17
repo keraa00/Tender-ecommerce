@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { CodOrderActionResult } from "@/lib/orders/actions";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import type { OrderActionResult } from "@/lib/orders/actions";
 
 /**
  * The two ways out of "payment on delivery": the cash came in, or the parcel
@@ -14,16 +16,18 @@ export function CodOrderActions({
   total,
   markPaid,
   cancel,
+  t,
 }: {
   /** Formatted: what the courier collects. */
   total: string;
-  markPaid: () => Promise<CodOrderActionResult>;
-  cancel: () => Promise<CodOrderActionResult>;
+  markPaid: () => Promise<OrderActionResult>;
+  cancel: () => Promise<OrderActionResult>;
+  t: AdminMessages["orders"]["actions"];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const run = (action: () => Promise<CodOrderActionResult>) =>
+  const run = (action: () => Promise<OrderActionResult>) =>
     startTransition(async () => {
       setError(null);
       const result = await action();
@@ -34,26 +38,22 @@ export function CodOrderActions({
     <div className="mt-3 space-y-2">
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={pending} onClick={() => run(markPaid)}>
-          Mark as paid
+          {t.markPaid}
         </Button>
         <Button
           size="sm"
           variant="secondary"
           disabled={pending}
           onClick={() => {
-            if (
-              window.confirm(
-                "Cancel this order? Its items go back into stock and any discount uses are given back. This can't be undone.",
-              )
-            ) {
+            if (window.confirm(t.cancelConfirm)) {
               run(cancel);
             }
           }}
         >
-          Cancel and restock
+          {t.cancelRestock}
         </Button>
       </div>
-      <p className="text-xs text-muted">Mark it paid once the courier has handed over {total}.</p>
+      <p className="text-xs text-muted">{format(t.markPaidHint, { total })}</p>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

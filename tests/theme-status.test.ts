@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import {
   hasUnpublishedChanges,
   parseThemeVersion,
   themeStatus,
-  themeStatusBadge,
-  themeStatusSummary,
+  themeStatusBadge as badgeIn,
+  themeStatusSummary as summaryIn,
+  type ThemeStatus,
+  type ThemeStatusCopy,
 } from "@/lib/theme/status";
+
+const EN: ThemeStatusCopy = { locale: "en", t: en.onlineStore };
+const themeStatusBadge = (status: ThemeStatus) => badgeIn(status, EN);
+const themeStatusSummary = (status: ThemeStatus) => summaryIn(status, EN);
 
 const saved = new Date("2026-10-05T12:30:00Z");
 const published = new Date("2026-10-04T09:15:00Z");
@@ -42,7 +49,7 @@ describe("themeStatus", () => {
     expect(status.kind).toBe("changes");
     expect(hasUnpublishedChanges(status)).toBe(true);
     expect(themeStatusSummary(status)).toBe(
-      "Published 4 Oct 2026, 09:15. Changes saved 5 Oct 2026, 12:30 aren't live yet.",
+      "Published 4 Oct 2026, 09:15. Changes saved 5 Oct 2026, 12:30 aren’t live yet.",
     );
   });
 

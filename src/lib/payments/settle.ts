@@ -6,7 +6,7 @@ import { rootDb } from "@/lib/db/root";
 import { OrderIssue, OrderStatus, PaymentMethod, type Prisma } from "@/lib/db/types";
 import { releaseDiscounts } from "@/lib/discounts/redemption";
 import { isUuid } from "@/lib/ids";
-import { ORDER_METADATA_KEY, paymentMismatch } from "./rules";
+import { ORDER_METADATA_KEY, paymentMismatch, refundOutcome, type RefundOutcome } from "./rules";
 
 /**
  * Moving an order out of PENDING: paid, or cancelled before it was.
@@ -185,6 +185,17 @@ export async function cancelCodOrder(tx: Tx, order: OrderRef): Promise<boolean> 
   });
   if (count === 0) return false;
 
+  await restockOrder(tx, order);
+  await releaseDiscounts(tx, { storeId: order.storeId, orderId: order.id });
+  return true;
+}
+
+/**
+ * Puts an order's units back into stock, in a fixed variant order so two
+ * restocks never lock rows against each other. The caller has just made the
+ * one conditional move that entitles it to — a restock is never repeated.
+ */
+async function restockOrder(tx: Tx, order: OrderRef): Promise<void> {
   const quantities = await orderQuantities(tx, order.id);
   for (const variantId of [...quantities.keys()].sort()) {
     await tx.variant.updateMany({
@@ -192,9 +203,131 @@ export async function cancelCodOrder(tx: Tx, order: OrderRef): Promise<boolean> 
       data: { inventoryQty: { increment: quantities.get(variantId)! } },
     });
   }
+}
 
-  await releaseDiscounts(tx, { storeId: order.storeId, orderId: order.id });
-  return true;
+// ---------------------------------------------------------------------------
+// Fulfilment
+// ---------------------------------------------------------------------------
+
+/**
+ * PAID → FULFILLED: the seller has sent it, or handed it over. Only a paid
+ * order — a card order whose money is in, or a cash-on-delivery order marked
+ * paid — so nothing is shipped against a payment that may still fail.
+ * Conditional like every move here: a second click moves nothing.
+ */
+export async function fulfillOrder(tx: Tx, order: OrderRef): Promise<boolean> {
+  const { count } = await tx.order.updateMany({
+    where: { id: order.id, storeId: order.storeId, status: OrderStatus.PAID },
+    data: { status: OrderStatus.FULFILLED, fulfilledAt: new Date() },
+  });
+  return count > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Refunds and disputes
+// ---------------------------------------------------------------------------
+
+/**
+ * The card order a charge or dispute belongs to, by its PaymentIntent — set on
+ * the order long before anything can be refunded or disputed — and only on the
+ * connected account that order was charged on. A payment the seller took
+ * outside Tender matches no order and is ignored.
+ */
+export async function findOrderForPaymentIntentId(
+  paymentIntentId: string,
+  accountId: string,
+): Promise<OrderRef | null> {
+  return rootDb.order.findFirst({
+    where: {
+      stripePaymentIntentId: paymentIntentId,
+      stripeAccountId: accountId,
+      paymentMethod: PaymentMethod.STRIPE,
+    },
+    select: { id: true, storeId: true },
+  });
+}
+
+/**
+ * Brings a refund made in the seller's Stripe Dashboard onto the order, with
+ * `amountRefundedCents` the charge's refunded total so far (see
+ * `refundOutcome`). The move is conditional on the recorded total still being
+ * below the new one, so of two deliveries only one gets through — and only that
+ * one restocks a fully refunded order that was never sent.
+ *
+ * An order that was OVERSOLD is not restocked: its stock was set to zero when
+ * it was paid rather than reduced by its quantities, so putting those back
+ * would invent units. Its seller restocks by hand.
+ *
+ * A full refund of an order paid after it was cancelled settles that issue.
+ * Discount uses are not given back: the code was used.
+ */
+export async function recordRefund(
+  tx: Tx,
+  order: OrderRef,
+  amountRefundedCents: number,
+): Promise<RefundOutcome> {
+  const current = await tx.order.findFirst({
+    where: { id: order.id, storeId: order.storeId },
+    select: { status: true, totalCents: true, refundedCents: true, issues: true },
+  });
+  if (!current) return "none";
+
+  const outcome = refundOutcome(current, amountRefundedCents);
+  if (outcome === "none") return outcome;
+
+  const refundedCents = Math.min(amountRefundedCents, current.totalCents);
+  const now = new Date();
+  const fullRefund = refundedCents >= current.totalCents;
+
+  const { count } = await tx.order.updateMany({
+    where: {
+      id: order.id,
+      storeId: order.storeId,
+      refundedCents: { lt: refundedCents },
+      ...(outcome === "cancel" ? { status: OrderStatus.PAID } : {}),
+    },
+    data: {
+      refundedCents,
+      refundedAt: now,
+      ...(outcome === "cancel" ? { status: OrderStatus.CANCELLED, cancelledAt: now } : {}),
+      ...(fullRefund && current.issues.includes(OrderIssue.PAID_AFTER_CANCEL)
+        ? { issues: current.issues.filter((issue) => issue !== OrderIssue.PAID_AFTER_CANCEL) }
+        : {}),
+    },
+  });
+  if (count === 0) return "none";
+
+  if (outcome === "cancel" && !current.issues.includes(OrderIssue.OVERSOLD)) {
+    await restockOrder(tx, order);
+  }
+  return outcome;
+}
+
+/**
+ * Raises or clears the order's DISPUTED flag: raised when the buyer's bank
+ * opens a dispute, cleared when Stripe closes it in the seller's favour. Both
+ * are conditional on the flag's current state, so redeliveries do nothing.
+ */
+export async function setOrderDisputed(tx: Tx, order: OrderRef, disputed: boolean): Promise<boolean> {
+  if (disputed) {
+    const { count } = await tx.order.updateMany({
+      where: { id: order.id, storeId: order.storeId, NOT: { issues: { has: OrderIssue.DISPUTED } } },
+      data: { issues: { push: OrderIssue.DISPUTED } },
+    });
+    return count > 0;
+  }
+
+  const current = await tx.order.findFirst({
+    where: { id: order.id, storeId: order.storeId, issues: { has: OrderIssue.DISPUTED } },
+    select: { issues: true },
+  });
+  if (!current) return false;
+
+  const { count } = await tx.order.updateMany({
+    where: { id: order.id, storeId: order.storeId, issues: { has: OrderIssue.DISPUTED } },
+    data: { issues: current.issues.filter((issue) => issue !== OrderIssue.DISPUTED) },
+  });
+  return count > 0;
 }
 
 /**

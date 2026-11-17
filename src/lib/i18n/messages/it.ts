@@ -199,6 +199,8 @@ export const it: Messages = {
     payNow: "Paga ora",
     paying: "Elaborazione del pagamento…",
     backToCart: "Torna al carrello",
+    demoNotice:
+      "Questo è un negozio demo. I pagamenti funzionano in modalità test di Stripe — paga con la carta 4242 4242 4242 4242 — e non verrà spedito nulla. Non inserire un indirizzo reale.",
     unavailable: "Al momento questo negozio non accetta ordini.",
     questions: "Domande?",
     blocked: {

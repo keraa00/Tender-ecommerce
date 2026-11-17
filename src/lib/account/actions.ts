@@ -25,6 +25,9 @@ import { revokeSession } from "@/lib/account/sessions";
 import { accountPath } from "@/lib/admin/nav";
 import { verifyPassword, type PasswordCheck } from "@/lib/auth/password";
 import { requireUser } from "@/lib/auth/session";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { confirmRedirectUrl } from "@/lib/auth/urls";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
@@ -39,16 +42,14 @@ export type PasswordChangeState = AccountFormState<PasswordChangeField>;
 export type SessionsState = { notice?: string; formError?: string };
 export type DeleteAccountState = AccountFormState<DeleteAccountField>;
 
-const WRONG_PASSWORD = "That isn't your current password.";
-const RATE_LIMITED = "Too many attempts. Wait a minute and try again.";
-
 /** The outcome of `verifyPassword` as a field error, or null when it passed. */
 function passwordCheckError(
   check: PasswordCheck,
+  t: AdminMessages["account"]["errors"],
 ): { fieldErrors: { currentPassword: string } } | { formError: string } | null {
   if (check === "ok") return null;
-  if (check === "rate-limited") return { formError: RATE_LIMITED };
-  return { fieldErrors: { currentPassword: WRONG_PASSWORD } };
+  if (check === "rate-limited") return { formError: t.rateLimited };
+  return { fieldErrors: { currentPassword: t.wrongPassword } };
 }
 
 function logUnexpected(where: string, error: { code?: string; status?: number }) {
@@ -63,16 +64,17 @@ export async function updateProfileAction(
   _prev: ProfileState,
   formData: FormData,
 ): Promise<ProfileState> {
-  const user = await requireUser(accountPath());
+  const [user, { t: messages }] = await Promise.all([requireUser(accountPath()), getAdminI18n()]);
+  const t = messages.account;
 
-  const parsed = parseProfileForm(formData);
+  const parsed = parseProfileForm(formData, t.errors);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.updateUser({ data: { name: parsed.data.name } });
   if (error) {
     logUnexpected("updateProfileAction", error);
-    return { formError: authErrorMessage(error, "Could not save your name. Please try again.") };
+    return { formError: authErrorMessage(error, t.errors.nameFailed, t.authErrors) };
   }
 
   // `mirrorAuthUser` would catch up on the next read anyway; writing it now
@@ -80,7 +82,7 @@ export async function updateProfileAction(
   await rootDb.user.update({ where: { id: user.id }, data: { name: parsed.data.name } });
 
   revalidatePath("/", "layout");
-  return { notice: "Saved." };
+  return { notice: t.notices.saved };
 }
 
 // ---------------------------------------------------------------------------
@@ -98,13 +100,17 @@ export async function changeEmailAction(
   _prev: EmailChangeState,
   formData: FormData,
 ): Promise<EmailChangeState> {
-  const user = await requireUser(accountPath());
+  const [user, { t: messages }] = await Promise.all([requireUser(accountPath()), getAdminI18n()]);
+  const t = messages.account;
 
-  const parsed = parseEmailChangeForm(formData, user.email);
+  const parsed = parseEmailChangeForm(formData, user.email, t.errors);
   const values = { email: String(formData.get("email") ?? "") };
   if (!parsed.ok) return { values, fieldErrors: parsed.fieldErrors };
 
-  const failed = passwordCheckError(await verifyPassword(user.email, parsed.data.currentPassword));
+  const failed = passwordCheckError(
+    await verifyPassword(user.email, parsed.data.currentPassword),
+    t.errors,
+  );
   if (failed) return { values, ...failed };
 
   const supabase = await createSupabaseServerClient();
@@ -117,17 +123,14 @@ export async function changeEmailAction(
     return {
       values,
       ...(error.code === "email_exists" || error.code === "email_address_invalid"
-        ? { fieldErrors: { email: authErrorMessage(error) } }
-        : { formError: authErrorMessage(error, "Could not start the change. Please try again.") }),
+        ? { fieldErrors: { email: authErrorMessage(error, t.errors.generic, t.authErrors) } }
+        : { formError: authErrorMessage(error, t.errors.emailFailed, t.authErrors) }),
     };
   }
 
   revalidatePath(accountPath());
   return {
-    notice:
-      `We've emailed a confirmation link to ${parsed.data.email}, and one to ` +
-      `${user.email} too. Your address changes once the change is confirmed — ` +
-      `until then, keep signing in with ${user.email}.`,
+    notice: format(t.notices.emailSent, { email: parsed.data.email, current: user.email }),
   };
 }
 
@@ -139,12 +142,19 @@ export async function changePasswordAction(
   _prev: PasswordChangeState,
   formData: FormData,
 ): Promise<PasswordChangeState> {
-  const user = await requireUser(accountPath("security"));
+  const [user, { t: messages }] = await Promise.all([
+    requireUser(accountPath("security")),
+    getAdminI18n(),
+  ]);
+  const t = messages.account;
 
-  const parsed = parsePasswordChangeForm(formData);
+  const parsed = parsePasswordChangeForm(formData, t.errors);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
-  const failed = passwordCheckError(await verifyPassword(user.email, parsed.data.currentPassword));
+  const failed = passwordCheckError(
+    await verifyPassword(user.email, parsed.data.currentPassword),
+    t.errors,
+  );
   if (failed) return failed;
 
   const supabase = await createSupabaseServerClient();
@@ -152,8 +162,8 @@ export async function changePasswordAction(
   if (error) {
     logUnexpected("changePasswordAction", error);
     return error.code === "weak_password" || error.code === "same_password"
-      ? { fieldErrors: { newPassword: authErrorMessage(error) } }
-      : { formError: authErrorMessage(error, "Could not change your password. Please try again.") };
+      ? { fieldErrors: { newPassword: authErrorMessage(error, t.errors.generic, t.authErrors) } }
+      : { formError: authErrorMessage(error, t.errors.passwordFailed, t.authErrors) };
   }
 
   // A new password is usually a reaction to the old one being known. Whoever
@@ -163,9 +173,7 @@ export async function changePasswordAction(
 
   revalidatePath(accountPath("security"));
   return {
-    notice: signOutError
-      ? "Password updated."
-      : "Password updated. Every other device has been signed out.",
+    notice: signOutError ? t.notices.passwordUpdated : t.notices.passwordUpdatedSignedOut,
   };
 }
 
@@ -177,17 +185,17 @@ export async function signOutOtherSessionsAction(
   _prev: SessionsState,
   _formData: FormData,
 ): Promise<SessionsState> {
-  await requireUser(accountPath("security"));
+  const [, { t }] = await Promise.all([requireUser(accountPath("security")), getAdminI18n()]);
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signOut({ scope: "others" });
   if (error) {
     console.error("signOutOtherSessionsAction failed", error);
-    return { formError: "Could not sign out your other devices. Please try again." };
+    return { formError: t.account.errors.signOutFailed };
   }
 
   revalidatePath(accountPath("security"));
-  return { notice: "Every other device has been signed out." };
+  return { notice: t.account.notices.signedOutOthers };
 }
 
 const sessionIdSchema = z.uuid();
@@ -229,9 +237,13 @@ export async function deleteAccountAction(
   _prev: DeleteAccountState,
   formData: FormData,
 ): Promise<DeleteAccountState> {
-  const user = await requireUser(accountPath("privacy"));
+  const [user, { t: messages }] = await Promise.all([
+    requireUser(accountPath("privacy")),
+    getAdminI18n(),
+  ]);
+  const t = messages.account;
 
-  const parsed = parseDeleteAccountForm(formData, user.email);
+  const parsed = parseDeleteAccountForm(formData, user.email, t.errors);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const blockers = accountDeletionBlockers({
@@ -239,10 +251,13 @@ export async function deleteAccountAction(
     platformRole: user.platformRole,
   });
   if (blockers.length > 0) {
-    return { formError: describeAccountDeletionBlocker(blockers[0]) };
+    return { formError: describeAccountDeletionBlocker(blockers[0], t.privacy) };
   }
 
-  const failed = passwordCheckError(await verifyPassword(user.email, parsed.data.currentPassword));
+  const failed = passwordCheckError(
+    await verifyPassword(user.email, parsed.data.currentPassword),
+    t.errors,
+  );
   if (failed) return failed;
 
   try {
@@ -251,10 +266,10 @@ export async function deleteAccountAction(
     // A store created in another tab since the check above: the RESTRICT
     // foreign key is the backstop.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
-      return { formError: "You own a store again. Delete it from its Settings first." };
+      return { formError: t.errors.ownsStoreAgain };
     }
     console.error("deleteAccountAction: deleting the users row failed", error);
-    return { formError: "Could not delete your account. Please try again." };
+    return { formError: t.errors.deleteFailed };
   }
 
   // A hard delete: Supabase removes the user's sessions and refresh tokens
@@ -262,7 +277,7 @@ export async function deleteAccountAction(
   const { error } = await createSupabaseAdminClient().auth.admin.deleteUser(user.id);
   if (error) {
     console.error("deleteAccountAction: deleting the Auth user failed", error);
-    return { formError: "We couldn't finish deleting your account. Please try again." };
+    return { formError: t.errors.deleteUnfinished };
   }
 
   // The session is already gone server-side; this only clears its cookies.

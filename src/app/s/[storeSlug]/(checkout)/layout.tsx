@@ -6,6 +6,7 @@ import { StoreMark } from "@/components/store-mark";
 import { BagIcon } from "@/components/storefront/icons";
 import { cn } from "@/lib/cn";
 import { localeDirection } from "@/lib/i18n/locales";
+import { SITE } from "@/lib/site";
 import { getStorefrontI18n } from "@/lib/i18n/server";
 import { storefrontPaths } from "@/lib/storefront/links";
 import { getStoreBySlug, getStoreContactEmail } from "@/lib/stores/queries";
@@ -65,6 +66,15 @@ export default async function CheckoutLayout({
           </Link>
         </div>
       </header>
+
+      {SITE.demo ? (
+        <p
+          role="note"
+          className="border-b border-warning/30 bg-warning/10 px-4 py-2.5 text-center text-sm text-warning sm:px-6"
+        >
+          {t.checkout.demoNotice}
+        </p>
+      ) : null}
 
       <main className="flex-1">{children}</main>
 

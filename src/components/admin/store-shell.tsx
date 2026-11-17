@@ -4,14 +4,19 @@ import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment, useSelectedLayoutSegments } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { NavIcon } from "@/components/admin/nav-icons";
 import { useNewOrders } from "@/components/admin/new-orders";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { StoreMark } from "@/components/store-mark";
 import { accountUrl, storeAdminPath } from "@/lib/admin/links";
 import { ADMIN_NAV } from "@/lib/admin/nav";
 import { signOutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/cn";
-import { describeNewOrders, formatNewOrderCount } from "@/lib/orders/live";
+import { format } from "@/lib/i18n/format";
+import { setAdminLocaleAction } from "@/lib/i18n/actions";
+import type { AdminMessages } from "@/lib/i18n/admin";
+import { formatNewOrderCount } from "@/lib/orders/live";
 
 /**
  * The seller admin's chrome: a permanent left drawer on desktop, an overlay one
@@ -39,6 +44,7 @@ type StoreShellProps = {
   statusBadge: ReactNode;
   /** Setup is finished from the store's home page, so the badge links there. */
   setupIncomplete: boolean;
+  t: { shell: AdminMessages["shell"]; nav: AdminMessages["nav"] };
   children: ReactNode;
 };
 
@@ -49,6 +55,7 @@ export function StoreShell({
   userEmail,
   statusBadge,
   setupIncomplete,
+  t,
   children,
 }: StoreShellProps) {
   const segment = useSelectedLayoutSegment();
@@ -59,7 +66,7 @@ export function StoreShell({
   // paint the old number for a moment before dropping to nothing — so on that
   // page, from its first render on the server, there is no count.
   const onOrdersList = segments.length === 1 && segments[0] === "orders";
-  const { count } = useNewOrders();
+  const { count, describe } = useNewOrders();
   const newOrders = onOrdersList ? 0 : count;
 
   // Navigating is the usual reason the drawer should close, and on mobile the
@@ -92,6 +99,7 @@ export function StoreShell({
       userEmail={userEmail}
       statusBadge={statusBadge}
       setupIncomplete={setupIncomplete}
+      t={t}
       activeSegment={segment}
       newOrders={newOrders}
     />
@@ -99,7 +107,7 @@ export function StoreShell({
 
   return (
     <div className="flex flex-1">
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 self-start border-r border-border bg-surface-subtle lg:block">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 self-start border-e border-border bg-surface-subtle lg:block">
         {drawer}
       </aside>
 
@@ -107,15 +115,15 @@ export function StoreShell({
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
-            aria-label="Close menu"
+            aria-label={t.shell.closeMenu}
             onClick={() => setMenuOpen(false)}
             className="absolute inset-0 h-full w-full bg-foreground/40 backdrop-blur-[1px]"
           />
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`${store.name} menu`}
-            className="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-background shadow-xl"
+            aria-label={format(t.shell.storeMenu, { store: store.name })}
+            className="absolute inset-y-0 start-0 w-72 max-w-[85vw] border-e border-border bg-background shadow-xl"
           >
             {drawer}
           </div>
@@ -127,16 +135,20 @@ export function StoreShell({
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
-            aria-label={newOrders > 0 ? `Open menu, ${describeNewOrders(newOrders)}` : "Open menu"}
+            aria-label={
+              newOrders > 0
+                ? format(t.shell.openMenuWithOrders, { orders: describe(newOrders) })
+                : t.shell.openMenu
+            }
             aria-expanded={menuOpen}
-            className="relative -ml-1 grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground cursor-pointer"
+            className="relative -ms-1 grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground cursor-pointer"
           >
             {/* The count itself is in the drawer; closed, this is all that
                 says there is something new in it. */}
             {newOrders > 0 ? (
               <span
                 aria-hidden
-                className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-background"
+                className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-background"
               />
             ) : null}
             <svg
@@ -176,9 +188,12 @@ function DrawerContents({
   userEmail,
   statusBadge,
   setupIncomplete,
+  t,
   activeSegment,
   newOrders,
 }: Omit<StoreShellProps, "children"> & { activeSegment: string | null; newOrders: number }) {
+  const { locale, common } = useAdminI18n();
+  const { describe } = useNewOrders();
   // On the home page the setup steps are already on screen.
   const badgeLinksHome = setupIncomplete && activeSegment !== null;
 
@@ -197,11 +212,11 @@ function DrawerContents({
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="h-3 w-3"
+            className="h-3 w-3 rtl:-scale-x-100"
           >
             <path d="m15 18-6-6 6-6" />
           </svg>
-          All stores
+          {t.shell.allStores}
         </a>
 
         <div className="mt-2 flex items-start gap-2.5 px-1">
@@ -213,7 +228,9 @@ function DrawerContents({
           />
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold tracking-tight">{store.name}</p>
-            <p className="truncate text-xs text-muted tabular">/s/{store.slug}</p>
+            <p className="truncate text-xs text-muted tabular">
+              <span dir="ltr">/s/{store.slug}</span>
+            </p>
           </div>
         </div>
 
@@ -221,7 +238,7 @@ function DrawerContents({
           {badgeLinksHome ? (
             <Link
               href={storeAdminPath(store.slug)}
-              title="Finish setting up your store"
+              title={t.shell.finishSetup}
               className="inline-flex rounded-full transition-opacity hover:opacity-80 cursor-pointer"
             >
               {statusBadge}
@@ -232,7 +249,7 @@ function DrawerContents({
         </div>
       </div>
 
-      <nav aria-label="Store" className="flex-1 overflow-y-auto p-2">
+      <nav aria-label={t.nav.store} className="flex-1 overflow-y-auto p-2">
         {ADMIN_NAV.map((group, index) => (
           <div
             key={group.label ?? index}
@@ -240,7 +257,7 @@ function DrawerContents({
           >
             {group.label ? (
               <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-muted">
-                {group.label}
+                {t.nav[group.label]}
               </p>
             ) : null}
             <ul className="flex flex-col gap-0.5">
@@ -249,7 +266,7 @@ function DrawerContents({
                 const count = section.segment === "orders" ? newOrders : 0;
 
                 return (
-                  <li key={section.label} className="relative">
+                  <li key={section.segment ?? ""} className="relative">
                     <Link
                       href={storeAdminPath(store.slug, section.segment ?? undefined)}
                       aria-current={active ? "page" : undefined}
@@ -262,11 +279,11 @@ function DrawerContents({
                       )}
                     >
                       <NavIcon name={section.icon} className="h-[18px] w-[18px]" />
-                      <span className="flex-1">{section.label}</span>
+                      <span className="flex-1">{t.nav[section.label]}</span>
                       {count > 0 ? (
                         <span className="min-w-5 rounded-full bg-primary px-1.5 text-center text-xs font-medium leading-5 text-primary-foreground tabular">
                           <span aria-hidden>{formatNewOrderCount(count)}</span>
-                          <span className="sr-only">, {describeNewOrders(count)}</span>
+                          <span className="sr-only">, {describe(count)}</span>
                         </span>
                       ) : null}
                       <PendingDot />
@@ -278,8 +295,8 @@ function DrawerContents({
                         href={storefrontUrl}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label="View online store (opens in a new tab)"
-                        title="View online store"
+                        aria-label={t.shell.viewOnlineStoreNewTab}
+                        title={t.shell.viewOnlineStore}
                         className="absolute inset-y-1 end-1 grid w-8 place-items-center rounded-md text-muted transition-colors hover:bg-background hover:text-foreground"
                       >
                         <ExternalIcon className="h-4 w-4" />
@@ -301,15 +318,24 @@ function DrawerContents({
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
         >
           <ExternalIcon className="h-[18px] w-[18px]" />
-          View storefront
+          {t.shell.viewStorefront}
         </a>
+
+        <LanguageSwitcher
+          locale={locale}
+          label={common.language}
+          action={setAdminLocaleAction}
+          placement="above"
+          showName
+          className="h-9 w-full gap-2.5 px-2.5 text-sm text-muted"
+        />
 
         <div className="mt-1 flex items-center gap-2 px-2.5 pt-2">
           {/* Account settings live on the platform's own host, hence `<a>`. */}
           <a
             href={accountUrl()}
             className="min-w-0 flex-1 truncate text-xs text-muted underline-offset-4 hover:text-foreground hover:underline"
-            title={`${userEmail} · Account settings`}
+            title={format(t.shell.accountSettingsFor, { email: userEmail })}
           >
             {userEmail}
           </a>
@@ -318,7 +344,7 @@ function DrawerContents({
               type="submit"
               className="rounded-md px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-danger/10 hover:text-danger cursor-pointer"
             >
-              Sign out
+              {t.shell.signOut}
             </button>
           </form>
         </div>

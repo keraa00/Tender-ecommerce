@@ -5,13 +5,17 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input } from "@/components/ui/field";
 import type { DeleteAccountState } from "@/lib/account/actions";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 export function DeleteAccountForm({
   action,
   email,
+  t,
 }: {
   action: (state: DeleteAccountState, formData: FormData) => Promise<DeleteAccountState>;
   email: string;
+  t: AdminMessages["account"]["forms"];
 }) {
   const [state, formAction, pending] = useActionState<DeleteAccountState, FormData>(action, {});
   const [typed, setTyped] = useState("");
@@ -23,7 +27,7 @@ export function DeleteAccountForm({
       <FormError>{state.formError}</FormError>
 
       <Field
-        label={`Type ${email} to confirm`}
+        label={format(t.confirmDelete, { email })}
         htmlFor="delete-account-email"
         error={errors.confirmEmail}
       >
@@ -40,7 +44,11 @@ export function DeleteAccountForm({
         />
       </Field>
 
-      <Field label="Current password" htmlFor="delete-account-password" error={errors.currentPassword}>
+      <Field
+        label={t.currentPassword}
+        htmlFor="delete-account-password"
+        error={errors.currentPassword}
+      >
         <Input
           id="delete-account-password"
           name="currentPassword"
@@ -52,7 +60,7 @@ export function DeleteAccountForm({
       </Field>
 
       <Button type="submit" variant="danger" size="sm" disabled={pending || !confirmed}>
-        {pending ? "Deleting…" : "Delete my account permanently"}
+        {pending ? t.deleting : t.deleteAccount}
       </Button>
     </form>
   );

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { storeAdminPath } from "@/lib/admin/links";
 import { rootDb } from "@/lib/db/root";
 import { Prisma } from "@/lib/db/types";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
 import { getStoreContext } from "@/lib/stores/context";
 import { parseCollectionForm, type CollectionFieldErrors } from "./form";
@@ -17,7 +18,6 @@ export type CollectionFormState = {
   fieldErrors?: CollectionFieldErrors;
 };
 
-const SLUG_TAKEN = "You already have a collection at that address.";
 
 /**
  * Keeps only the ids that name a product in this store, in the order given.
@@ -51,9 +51,9 @@ export async function createCollectionAction(
   formData: FormData,
 ): Promise<CollectionFormState> {
   // The tenant comes from the URL plus the session, never from the form body.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
-  const parsed = parseCollectionForm(formData);
+  const parsed = parseCollectionForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const { draft } = parsed;
@@ -80,10 +80,10 @@ export async function createCollectionAction(
     collectionId = collection.id;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { fieldErrors: { slug: SLUG_TAKEN } };
+      return { fieldErrors: { slug: t.collections.errors.slugTaken } };
     }
     console.error("createCollectionAction failed", error);
-    return { formError: "Could not save the collection. Please try again." };
+    return { formError: t.collections.errors.saveFailed };
   }
 
   revalidateCollectionPages(storeSlug);
@@ -96,13 +96,13 @@ export async function updateCollectionAction(
   _prev: CollectionFormState,
   formData: FormData,
 ): Promise<CollectionFormState> {
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
 
   if (!isUuid(collectionId)) notFound();
   const existing = await getStoreCollection(store.id, collectionId);
   if (!existing) notFound();
 
-  const parsed = parseCollectionForm(formData);
+  const parsed = parseCollectionForm(formData, t);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
   const { draft } = parsed;
@@ -137,16 +137,16 @@ export async function updateCollectionAction(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { fieldErrors: { slug: SLUG_TAKEN } };
+      return { fieldErrors: { slug: t.collections.errors.slugTaken } };
     }
     console.error("updateCollectionAction failed", error);
-    return { formError: "Could not save the collection. Please try again." };
+    return { formError: t.collections.errors.saveFailed };
   }
 
   revalidateCollectionPages(storeSlug);
   revalidatePath(`/dashboard/${storeSlug}/collections/${existing.id}`);
 
-  return { notice: "Saved." };
+  return { notice: t.collections.saved };
 }
 
 export async function deleteCollectionAction(

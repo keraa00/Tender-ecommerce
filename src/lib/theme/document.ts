@@ -39,8 +39,8 @@ export type PageType = (typeof PAGE_TYPES)[number];
 export const THEME_SETTINGS = {
   accent: field.color({
     label: "Accent colour",
-    help: "Buttons and highlights. Publishing also makes it your store's colour across Tender.",
-    nullLabel: "Use your store's colour",
+    help: "Buttons and highlights. Publishing also makes it your store’s colour across Tender.",
+    nullLabel: "Use your store’s colour",
   }),
   headingFont: field.select({
     label: "Heading font",

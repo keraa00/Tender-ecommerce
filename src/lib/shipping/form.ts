@@ -1,4 +1,6 @@
 import { countryName, isCountryCode } from "@/lib/address/countries";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import { regionsOf } from "@/lib/address/regions";
 import { parseMoneyToCents } from "@/lib/money";
 import { MAX_WEIGHT_GRAMS, parseWeightToGrams } from "@/lib/weight";
@@ -64,14 +66,17 @@ export type ParsedZoneForm =
 export function parseZoneForm(
   formData: FormData,
   { restOfWorld }: { restOfWorld: boolean },
+  /** The admin's copy, and its `Intl` tag for naming countries in the errors. */
+  { t, intl }: { t: AdminMessages; intl: string },
 ): ParsedZoneForm {
   const fieldErrors: ZoneFieldErrors = {};
+  const say = t.settings.shipping.errors;
 
   const name = field(formData, "name").replace(/\s+/g, " ");
   if (name === "") {
-    fieldErrors.name = "Give the zone a name. Buyers don't see it.";
+    fieldErrors.name = say.zoneName;
   } else if (name.length > MAX_ZONE_NAME) {
-    fieldErrors.name = `Keep the name under ${MAX_ZONE_NAME} characters.`;
+    fieldErrors.name = format(say.zoneNameTooLong, { max: MAX_ZONE_NAME });
   }
 
   const countries: ZoneCountryDraft[] = [];
@@ -81,9 +86,9 @@ export function parseZoneForm(
     const unknown = codes.find((code) => !isCountryCode(code));
 
     if (unknown !== undefined) {
-      fieldErrors.countries = `"${unknown}" is not a country code.`;
+      fieldErrors.countries = format(say.invalidCountry, { code: unknown });
     } else if (codes.length === 0) {
-      fieldErrors.countries = "Choose at least one country.";
+      fieldErrors.countries = say.noCountries;
     }
 
     for (const countryCode of fieldErrors.countries ? [] : codes) {
@@ -98,7 +103,9 @@ export function parseZoneForm(
       const regionCodes = chosen.filter((code) => known.has(code));
 
       if (regionCodes.length === 0) {
-        fieldErrors.countries ??= `Choose at least one region in ${countryName(countryCode, "en")}, or ship to all of it.`;
+        fieldErrors.countries ??= format(say.noRegions, {
+          country: countryName(countryCode, intl),
+        });
         continue;
       }
 
@@ -171,22 +178,23 @@ function parseBounds(
   return { min, max };
 }
 
-export function parseRateForm(formData: FormData): ParsedRateForm {
+export function parseRateForm(formData: FormData, t: AdminMessages): ParsedRateForm {
   const fieldErrors: RateFieldErrors = {};
+  const say = t.settings.shipping.errors;
 
   const name = field(formData, "name").replace(/\s+/g, " ");
   if (name === "") {
-    fieldErrors.name = "Name the rate — buyers choose by it, like “Standard” or “Express”.";
+    fieldErrors.name = say.rateName;
   } else if (name.length > MAX_RATE_NAME) {
-    fieldErrors.name = `Keep the name under ${MAX_RATE_NAME} characters.`;
+    fieldErrors.name = format(say.rateNameTooLong, { max: MAX_RATE_NAME });
   }
 
   const rawPrice = field(formData, "price");
   const priceCents = rawPrice === "" ? null : parseMoneyToCents(rawPrice);
   if (priceCents === null) {
-    fieldErrors.price = "Enter a price like 4.90, or 0 for free.";
+    fieldErrors.price = say.price;
   } else if (priceCents > MAX_RATE_CENTS) {
-    fieldErrors.price = "That price is too large.";
+    fieldErrors.price = say.priceTooLarge;
   }
 
   // --- Delivery estimate: a range of business days, or none -----------------
@@ -197,13 +205,13 @@ export function parseRateForm(formData: FormData): ParsedRateForm {
   const maxDays = parseDays(field(formData, "maxDays"));
 
   if (minDays === "invalid" || maxDays === "invalid") {
-    fieldErrors.delivery = `Enter whole business days, from 0 to ${MAX_DELIVERY_DAYS}.`;
+    fieldErrors.delivery = format(say.delivery, { max: MAX_DELIVERY_DAYS });
   } else if (minDays !== null || maxDays !== null) {
     // One number on its own is an exact estimate: "3" means 3–3.
     minDeliveryDays = minDays ?? maxDays;
     maxDeliveryDays = maxDays ?? minDays;
     if (minDeliveryDays! > maxDeliveryDays!) {
-      fieldErrors.delivery = "The shortest estimate can't be longer than the longest.";
+      fieldErrors.delivery = say.deliveryOrder;
     }
   }
 
@@ -226,15 +234,11 @@ export function parseRateForm(formData: FormData): ParsedRateForm {
       : parseBounds(field(formData, "minWeight"), field(formData, "maxWeight"), parseWeightToGrams, MAX_WEIGHT_GRAMS);
 
     if (bounds === "invalid") {
-      fieldErrors.condition = subtotal
-        ? "Enter amounts like 50.00."
-        : "Enter weights in kilograms, like 2 or 0.5.";
+      fieldErrors.condition = subtotal ? say.amounts : say.weights;
     } else if (bounds === "empty") {
-      fieldErrors.condition = subtotal
-        ? "Enter a minimum, a maximum or both — or choose no condition."
-        : "Enter a minimum weight, a maximum or both — or choose no condition.";
+      fieldErrors.condition = subtotal ? say.amountRange : say.weightRange;
     } else if (bounds === "reversed") {
-      fieldErrors.condition = "The minimum can't be more than the maximum.";
+      fieldErrors.condition = say.minAboveMax;
     } else if (subtotal) {
       minSubtotalCents = bounds.min;
       maxSubtotalCents = bounds.max;

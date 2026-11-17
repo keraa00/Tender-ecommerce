@@ -1,4 +1,6 @@
 import type { CustomerSegment } from "@/lib/db/types";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 /**
  * Customer segments a discount can be limited to.
@@ -36,57 +38,42 @@ export const LAPSED_AFTER_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Each segment's rule. What a segment is called, and how it is explained, is
+ * the admin's copy — `t.segments` — in the seller's language.
+ */
 const SEGMENTS: Record<
   CustomerSegment,
-  {
-    label: string;
-    hint: string;
-    matches: (profile: CustomerProfile, now: Date) => boolean;
-  }
+  (profile: CustomerProfile, now: Date) => boolean
 > = {
-  FIRST_TIME: {
-    label: "First-time customers",
-    hint: "No paid orders at this store yet.",
-    matches: (profile) => profile.settledOrders === 0,
-  },
-  RETURNING: {
-    label: "Returning customers",
-    hint: "At least one paid order before.",
-    matches: (profile) => profile.settledOrders >= 1,
-  },
-  LOYAL: {
-    label: "Loyal customers",
-    hint: `${LOYAL_MIN_ORDERS} or more paid orders.`,
-    matches: (profile) => profile.settledOrders >= LOYAL_MIN_ORDERS,
-  },
-  LAPSED: {
-    label: "Lapsed customers",
-    hint: `Ordered before, but not in the last ${LAPSED_AFTER_DAYS} days.`,
-    matches: (profile, now) =>
-      profile.lastOrderAt !== null &&
-      now.getTime() - profile.lastOrderAt.getTime() > LAPSED_AFTER_DAYS * DAY_MS,
-  },
-  ACCOUNT_HOLDERS: {
-    label: "Signed-in customers",
-    hint: "Checking out with an account, not as a guest.",
-    matches: (profile) => profile.hasAccount,
-  },
+  FIRST_TIME: (profile) => profile.settledOrders === 0,
+  RETURNING: (profile) => profile.settledOrders >= 1,
+  LOYAL: (profile) => profile.settledOrders >= LOYAL_MIN_ORDERS,
+  LAPSED: (profile, now) =>
+    profile.lastOrderAt !== null &&
+    now.getTime() - profile.lastOrderAt.getTime() > LAPSED_AFTER_DAYS * DAY_MS,
+  ACCOUNT_HOLDERS: (profile) => profile.hasAccount,
 };
 
-export const CUSTOMER_SEGMENT_OPTIONS: readonly {
-  value: CustomerSegment;
-  label: string;
-  hint: string;
-}[] = (
-  ["FIRST_TIME", "RETURNING", "LOYAL", "LAPSED", "ACCOUNT_HOLDERS"] as const
-).map((value) => ({ value, label: SEGMENTS[value].label, hint: SEGMENTS[value].hint }));
+/** Every segment, in the order the discount form lists them. */
+export const CUSTOMER_SEGMENTS: readonly CustomerSegment[] = [
+  "FIRST_TIME",
+  "RETURNING",
+  "LOYAL",
+  "LAPSED",
+  "ACCOUNT_HOLDERS",
+];
 
 export function isCustomerSegment(value: unknown): value is CustomerSegment {
   return typeof value === "string" && Object.hasOwn(SEGMENTS, value);
 }
 
-export function segmentLabel(segment: CustomerSegment): string {
-  return SEGMENTS[segment].label;
+/** A segment's hint, with the thresholds it names filled in. */
+export function segmentHint(
+  segment: CustomerSegment,
+  t: AdminMessages["segments"],
+): string {
+  return format(t[segment].hint, { count: LOYAL_MIN_ORDERS, days: LAPSED_AFTER_DAYS });
 }
 
 /** True when the buyer is in at least one of the segments. */
@@ -95,5 +82,5 @@ export function matchesAnySegment(
   profile: CustomerProfile,
   now: Date,
 ): boolean {
-  return segments.some((segment) => SEGMENTS[segment].matches(profile, now));
+  return segments.some((segment) => SEGMENTS[segment](profile, now));
 }

@@ -192,6 +192,8 @@ export const ja: Messages = {
     payNow: "今すぐ支払う",
     paying: "お支払いを処理中…",
     backToCart: "カートに戻る",
+    demoNotice:
+      "これはデモストアです。決済は Stripe のテストモードで行われます（カード番号 4242 4242 4242 4242 をご利用ください）。商品は発送されません。実際の住所は入力しないでください。",
     unavailable: "このストアは現在ご注文を受け付けていません。",
     questions: "ご質問は",
     blocked: {

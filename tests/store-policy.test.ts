@@ -10,6 +10,7 @@ import {
   canPublishTheme,
   checkoutBlockedReason,
   isStorePubliclyVisible,
+  statusAfterSuspension,
   stripeReady,
 } from "@/lib/stores/policy";
 
@@ -180,5 +181,22 @@ describe("canDeleteStore", () => {
   it("is the owner's call alone", () => {
     expect(canDeleteStore({ role: StoreMemberRole.OWNER })).toBe(true);
     expect(canDeleteStore({ role: StoreMemberRole.STAFF })).toBe(false);
+  });
+});
+
+describe("statusAfterSuspension", () => {
+  const suspended = { ...tradeable, status: StoreStatus.SUSPENDED };
+
+  it("reopens a store that can be paid, by card or in cash", () => {
+    expect(statusAfterSuspension(suspended)).toBe(StoreStatus.ACTIVE);
+    expect(
+      statusAfterSuspension({ ...suspended, stripeAccountId: null, codEnabled: true }),
+    ).toBe(StoreStatus.ACTIVE);
+  });
+
+  it("sends one that still has no way to be paid back to setup", () => {
+    expect(
+      statusAfterSuspension({ ...suspended, stripeChargesEnabled: false, codEnabled: false }),
+    ).toBe(StoreStatus.PENDING);
   });
 });

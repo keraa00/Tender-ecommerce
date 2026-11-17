@@ -1,5 +1,10 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import { attachDatabasePool } from "@vercel/functions";
+import { Pool } from "pg";
+
 import { PrismaClient } from "@/generated/prisma/client";
+
+import { poolConfigFrom } from "./pool-config";
 
 /**
  * The unscoped Prisma client.
@@ -26,8 +31,19 @@ function createPrismaClient() {
     );
   }
 
+  const pool = new Pool(
+    poolConfigFrom(connectionString, {
+      production: process.env.NODE_ENV === "production",
+    }),
+  );
+  // On Vercel, lets idle connections close before an instance is suspended,
+  // rather than leaving them open on the pooler. A no-op anywhere else.
+  attachDatabasePool(pool);
+
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    // A passed-in pool outlives `$disconnect()` unless told otherwise, and the
+    // dev cache below relies on disconnecting to let a stale client's go.
+    adapter: new PrismaPg(pool, { disposeExternalPool: true }),
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]

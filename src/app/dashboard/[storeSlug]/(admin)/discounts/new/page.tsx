@@ -5,33 +5,39 @@ import { DiscountForm } from "@/components/discounts/discount-form";
 import { storeAdminPath } from "@/lib/admin/links";
 import { createDiscountAction } from "@/lib/discounts/actions";
 import { blankDiscountFormValues } from "@/lib/discounts/form-values";
-import { discountFormOptions } from "@/lib/discounts/options";
+import { discountFormCopy, discountFormOptions } from "@/lib/discounts/options";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { getStoreContext } from "@/lib/stores/context";
 
-export const metadata: Metadata = { title: "New discount" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.discounts.new.title };
+}
 
 export default async function NewDiscountPage(
   props: PageProps<"/dashboard/[storeSlug]/discounts/new">,
 ) {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, i18n] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  const { t } = i18n;
 
-  const options = await discountFormOptions(store.id);
+  const options = await discountFormOptions(store.id, i18n);
   // Bound server-side, so the tenant is never read from the submitted body.
   const action = createDiscountAction.bind(null, storeSlug);
   const now = new Date();
 
   return (
     <AdminPage
-      title="New discount"
-      description="Choose what it gives, who it is for and when it runs."
-      back={{ href: storeAdminPath(storeSlug, "discounts"), label: "Discounts" }}
+      title={t.discounts.new.title}
+      description={t.discounts.new.description}
+      back={{ href: storeAdminPath(storeSlug, "discounts"), label: t.discounts.title }}
     >
       <DiscountForm
         action={action}
         initialValues={blankDiscountFormValues(now)}
         options={options}
-        submitLabel="Save discount"
+        submitLabel={t.discounts.new.submit}
+        t={discountFormCopy(t)}
         now={now.toISOString()}
         currency={store.currency}
       />

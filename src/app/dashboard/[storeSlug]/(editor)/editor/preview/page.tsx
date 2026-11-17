@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { StorefrontFrame } from "@/components/storefront/storefront-frame";
 import { PreviewBridge } from "@/components/theme/preview-bridge";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { canEditTheme } from "@/lib/stores/policy";
 import { getStoreContext } from "@/lib/stores/context";
 import { getStorefrontContext } from "@/lib/theme/data";
@@ -10,10 +11,10 @@ import { getPreviewTheme } from "@/lib/theme/drafts";
 import { isPreviewSession } from "@/lib/theme/preview";
 import { ThemePage } from "@/lib/theme/render";
 
-export const metadata: Metadata = {
-  title: "Preview",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getAdminI18n();
+  return { title: t.themeEditor.preview, robots: { index: false, follow: false } };
+}
 
 /**
  * The storefront home page drawn from the seller's unsaved edits, for the

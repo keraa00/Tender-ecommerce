@@ -15,6 +15,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { storeAdminPath } from "@/lib/admin/links";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/dates";
+import { plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { formatMoney } from "@/lib/money";
 import { orderArrivedAt } from "@/lib/orders/live";
 import {
@@ -30,8 +32,8 @@ export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/orders">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Orders · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.orders.title} · ${store.name}` };
 }
 
 export default async function OrdersPage(
@@ -39,7 +41,13 @@ export default async function OrdersPage(
 ) {
   const { storeSlug } = await props.params;
   const { page: pageParam } = await props.searchParams;
-  const { store, membership } = await getStoreContext(storeSlug);
+  const [{ store, membership }, { t: messages, locale, intl }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.orders;
+  const statuses = messages.badges.order;
+  const number = new Intl.NumberFormat(intl);
 
   // `NewOrdersNotice` marks orders seen up to this moment. Taken before the
   // reads, so everything it covers had been paid by the time the list was read
@@ -67,27 +75,25 @@ export default async function OrdersPage(
 
   return (
     <AdminPage
-      title="Orders"
-      description={
-        total === 0
-          ? "Every order placed with your store will appear here."
-          : `${total} ${total === 1 ? "order" : "orders"}, newest first.`
-      }
+      title={t.title}
+      description={total === 0 ? t.empty : plural(locale, total, t.count)}
     >
-      <NewOrdersNotice renderedAt={renderedAt.toISOString()} />
+      <NewOrdersNotice renderedAt={renderedAt.toISOString()} t={messages.liveOrders} />
 
       <StatGrid columns={showCod ? 5 : 4}>
-        <Stat label="Awaiting payment" value={String(counts.PENDING - codDue)} />
-        {showCod ? <Stat label="Payment on delivery" value={String(codDue)} /> : null}
-        <Stat label="Paid" value={String(counts.PAID)} />
-        <Stat label="Fulfilled" value={String(counts.FULFILLED)} />
-        <Stat label="Cancelled" value={String(counts.CANCELLED)} />
+        <Stat label={statuses.PENDING} value={number.format(counts.PENDING - codDue)} />
+        {showCod ? (
+          <Stat label={messages.badges.paymentOnDelivery} value={number.format(codDue)} />
+        ) : null}
+        <Stat label={statuses.PAID} value={number.format(counts.PAID)} />
+        <Stat label={statuses.FULFILLED} value={number.format(counts.FULFILLED)} />
+        <Stat label={statuses.CANCELLED} value={number.format(counts.CANCELLED)} />
       </StatGrid>
 
       <div className="mt-6">
         {orders.length === 0 ? (
           <EmptyState
-            title="No orders yet"
+            title={t.emptyTitle}
             action={
               canAcceptOrders(store) ? (
                 <ButtonLink
@@ -95,18 +101,16 @@ export default async function OrdersPage(
                   variant="secondary"
                   size="sm"
                 >
-                  Review your catalogue
+                  {t.reviewCatalogue}
                 </ButtonLink>
               ) : (
                 <ButtonLink href={storeAdminPath(store.slug, "settings/payments")} size="sm">
-                  Set up payments
+                  {t.setUpPayments}
                 </ButtonLink>
               )
             }
           >
-            {canAcceptOrders(store)
-              ? "Your store can take orders. They will show up here the moment a buyer checks out."
-              : "Your store cannot take orders until you finish Stripe onboarding or turn on cash on delivery, so no order can be placed yet."}
+            {canAcceptOrders(store) ? t.emptyCanTake : t.emptyCannotTake}
           </EmptyState>
         ) : (
           <Rows>
@@ -122,30 +126,35 @@ export default async function OrdersPage(
                   {isNew(order) ? (
                     <span
                       aria-hidden
-                      className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent"
+                      className="absolute start-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent"
                     />
                   ) : null}
                   <div className="w-16 shrink-0 font-medium tabular">
                     #{order.orderNumber}
-                    {isNew(order) ? <span className="sr-only"> (new)</span> : null}
+                    {isNew(order) ? <span className="sr-only"> {t.newOrder}</span> : null}
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate">{order.email}</p>
                     <p className="truncate text-sm text-muted tabular">
-                      {formatDate(order.createdAt)} · {order._count.lines}{" "}
-                      {order._count.lines === 1 ? "item" : "items"}
+                      {formatDate(order.createdAt, locale)} ·{" "}
+                      {plural(locale, order._count.lines, t.items)}
                       {order.shippingRateName ? ` · ${order.shippingRateName}` : ""}
                     </p>
                   </div>
 
-                  <div className="shrink-0 text-right font-medium tabular">
-                    {formatMoney(order.totalCents, order.currency)}
+                  <div className="shrink-0 text-end font-medium tabular">
+                    {formatMoney(order.totalCents, order.currency, intl)}
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5">
                     {order.issues.length > 0 ? (
-                      <Badge tone="warning">Needs attention</Badge>
+                      <Badge tone="warning">{t.needsAttention}</Badge>
+                    ) : null}
+                    {order.refundedCents > 0 ? (
+                      <Badge>
+                        {order.refundedCents >= order.totalCents ? t.refunded : t.partlyRefunded}
+                      </Badge>
                     ) : null}
                     <OrderStatusBadge status={order.status} paymentMethod={order.paymentMethod} />
                   </div>

@@ -12,21 +12,23 @@ import { RESERVED_STORE_SLUGS } from "@/lib/slug";
 
 /**
  * Dashboard pages that belong to the platform rather than to one store: the
- * store list, the create-store form and account settings. They stay on the
+ * store list, the create-store form, account settings and the platform
+ * admin's moderation page. They stay on the
  * root host — a host named after one store's admin is the wrong place to stand
  * when you do not have a store yet, or are about to delete your account.
  *
  * Every name here other than "" is also a reserved store slug, or a store could
  * claim it and have its admin shadowed by the platform page.
  */
-const PLATFORM_DASHBOARD_SEGMENTS = new Set(["", "new", "account"]);
+const PLATFORM_DASHBOARD_SEGMENTS = new Set(["", "new", "account", "platform"]);
 
 /**
  * Framework and API paths are served from whichever host asked for them. In
  * particular the dev server's HMR endpoints live under `/_next`, and rewriting
  * those onto `/dashboard/_next/…` breaks fast refresh on the admin host.
+ * `robots.txt` is answered on both hosts, so crawlers of either find it.
  */
-const PASS_THROUGH_PREFIXES = ["/_next", "/api", "/favicon.ico"];
+const PASS_THROUGH_PREFIXES = ["/_next", "/api", "/favicon.ico", "/robots.txt"];
 
 /**
  * `pass` leaves the request alone, `rewrite` serves an internal path under the

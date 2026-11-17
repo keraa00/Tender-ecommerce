@@ -5,6 +5,9 @@ import { useActionState, useEffect, useState } from "react";
 import { KEEP_LOGO, LogoField, type LogoChoice } from "@/components/stores/logo-field";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Textarea } from "@/components/ui/field";
+import { format } from "@/lib/i18n/format";
+import { formatRich } from "@/lib/i18n/rich";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import {
   checkStoreSlugAction,
   createStoreAction,
@@ -18,7 +21,14 @@ import { SLUG_MIN_LENGTH, slugify } from "@/lib/slug";
 // as its own state that has to be reset on every keystroke.
 type CheckState = { slug: string; value: SlugAvailability } | null;
 
-export function CreateStoreForm() {
+type CreateStoreCopy = {
+  form: AdminMessages["platform"]["newStore"];
+  logo: AdminMessages["stores"]["logo"];
+  images: AdminMessages["validation"]["images"];
+};
+
+export function CreateStoreForm({ t: copy }: { t: CreateStoreCopy }) {
+  const t = copy.form;
   const [state, formAction, pending] = useActionState<
     CreateStoreState,
     FormData
@@ -59,17 +69,17 @@ export function CreateStoreForm() {
       <FormError>{state.formError}</FormError>
 
       <Field
-        label="Store name"
+        label={t.name}
         htmlFor="name"
         error={state.fieldErrors?.name}
-        hint="Shown to buyers at the top of your storefront."
+        hint={t.nameHint}
       >
         <Input
           id="name"
           name="name"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Rosewater Ceramics"
+          placeholder={t.namePlaceholder}
           autoComplete="off"
           required
           aria-invalid={Boolean(state.fieldErrors?.name)}
@@ -77,13 +87,17 @@ export function CreateStoreForm() {
       </Field>
 
       <Field
-        label="Store address"
+        label={t.address}
         htmlFor="slug"
         error={state.fieldErrors?.slug}
-        hint={<SlugHint slug={effectiveSlug} availability={availability} />}
+        hint={<SlugHint slug={effectiveSlug} availability={availability} t={t} />}
       >
-        <div className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground">
-          <span className="pl-3 text-sm text-muted select-none">/s/</span>
+        {/* A URL reads left to right in every language. */}
+        <div
+          dir="ltr"
+          className="flex items-center rounded-lg border border-border-strong bg-surface focus-within:border-foreground"
+        >
+          <span className="ps-3 text-sm text-muted select-none">/s/</span>
           <Input
             id="slug"
             name="slug"
@@ -92,19 +106,19 @@ export function CreateStoreForm() {
               setSlugEdited(true);
               setSlug(slugify(event.target.value));
             }}
-            placeholder="rosewater-ceramics"
+            placeholder={t.addressPlaceholder}
             autoComplete="off"
-            className="border-0 bg-transparent pl-1 focus-visible:outline-none"
+            className="border-0 bg-transparent ps-1 focus-visible:outline-none"
             aria-invalid={Boolean(state.fieldErrors?.slug)}
           />
         </div>
       </Field>
 
       <Field
-        label="Description"
+        label={t.description}
         htmlFor="description"
         error={state.fieldErrors?.description}
-        hint="Optional. One or two lines about what you sell."
+        hint={t.descriptionHint}
       >
         <Textarea
           id="description"
@@ -112,7 +126,7 @@ export function CreateStoreForm() {
           rows={3}
           maxLength={280}
           defaultValue={state.values?.description}
-          placeholder="Small-batch stoneware, thrown and glazed in Lisbon."
+          placeholder={t.descriptionPlaceholder}
         />
       </Field>
 
@@ -123,6 +137,7 @@ export function CreateStoreForm() {
         value={logo}
         onChange={setLogo}
         error={state.fieldErrors?.logo}
+        t={{ logo: copy.logo, images: copy.images }}
       />
 
       <Button
@@ -133,7 +148,7 @@ export function CreateStoreForm() {
           pending || (availability !== null && availability.status !== "available")
         }
       >
-        {pending ? "Creating store…" : "Create store"}
+        {pending ? t.creating : t.create}
       </Button>
     </form>
   );
@@ -142,27 +157,27 @@ export function CreateStoreForm() {
 function SlugHint({
   slug,
   availability,
+  t,
 }: {
   slug: string;
   availability: SlugAvailability | null;
+  t: CreateStoreCopy["form"];
 }) {
   if (slug.length < SLUG_MIN_LENGTH) {
-    return <>At least {SLUG_MIN_LENGTH} characters. This is your public URL.</>;
+    return <>{format(t.slugTooShort, { min: SLUG_MIN_LENGTH })}</>;
   }
 
   if (availability === null) {
-    return <span className="text-muted">Checking availability…</span>;
+    return <span className="text-muted">{t.checking}</span>;
   }
 
+  // Isolated so the leading slash stays put inside a right-to-left sentence.
+  const path = <bdi dir="ltr">/s/{slug}</bdi>;
   switch (availability.status) {
     case "available":
-      return (
-        <span className="text-success">
-          /s/{slug} is available.
-        </span>
-      );
+      return <span className="text-success">{formatRich(t.available, { path })}</span>;
     case "taken":
-      return <span className="text-danger">/s/{slug} is already taken.</span>;
+      return <span className="text-danger">{formatRich(t.taken, { path })}</span>;
     case "invalid":
       return <span className="text-danger">{availability.message}</span>;
   }

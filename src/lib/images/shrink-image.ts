@@ -45,7 +45,19 @@ export async function shrinkImage(
     bitmap.close();
   }
 
-  throw new Error("That image is too large. Try a smaller one.");
+  throw new ImageTooLargeError();
+}
+
+/**
+ * Even the smallest size tried was over the limit. Its own class so the form
+ * that called can say so in the seller's language; anything else thrown here
+ * is a browser that could not decode or encode the file.
+ */
+export class ImageTooLargeError extends Error {
+  constructor() {
+    super("That image is too large. Try a smaller one.");
+    this.name = "ImageTooLargeError";
+  }
 }
 
 async function encode(bitmap: ImageBitmap, width: number, height: number): Promise<Blob> {

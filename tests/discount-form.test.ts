@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/lib/i18n/admin/en";
 import { parseDateTimeInput, toDateTimeInputValue } from "@/lib/dates";
 import {
   normalizeDiscountCode,
@@ -37,7 +38,7 @@ const BASE: Fields = {
 };
 
 function parse(overrides: Fields = {}) {
-  return parseDiscountForm(form({ ...BASE, ...overrides }), NOW);
+  return parseDiscountForm(form({ ...BASE, ...overrides }), en, NOW);
 }
 
 function draft(overrides: Fields = {}): DiscountDraft {

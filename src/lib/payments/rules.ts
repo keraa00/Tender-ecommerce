@@ -367,3 +367,43 @@ export function stripeBillingDetails(email: string, address: PostalAddress): Str
 export function stripeLocale(locale: Locale): "ar" | "de" | "en" | "es" | "fr" | "hr" | "it" | "ja" | "pt" | "ru" | "tr" | "zh" {
   return locale === "bs" ? "hr" : locale;
 }
+
+// ---------------------------------------------------------------------------
+// Refunds and disputes
+// ---------------------------------------------------------------------------
+
+/**
+ * What a `charge.refunded` event means for the order it refunds, given how
+ * much of the charge Stripe now says is refunded in all.
+ *
+ * - `none`: nothing new — a redelivery, or an older event arriving after a
+ *   newer one. Refunds only ever add up, so a smaller total is stale.
+ * - `cancel`: the whole charge came back on an order not yet sent. It will not
+ *   be sent now, so it is cancelled and its stock goes back.
+ * - `record`: a partial refund, or a full one on an order already fulfilled or
+ *   cancelled. The order says how much came back and otherwise stays put.
+ *
+ * The refunded total is capped at the order's own total: the amount Tender
+ * charged is the order total, so more is not possible, and the database
+ * refuses it anyway.
+ */
+export type RefundOutcome = "none" | "cancel" | "record";
+
+export function refundOutcome(
+  order: Pick<Order, "status" | "totalCents" | "refundedCents">,
+  amountRefundedCents: number,
+): RefundOutcome {
+  const refunded = Math.min(amountRefundedCents, order.totalCents);
+  if (refunded <= order.refundedCents) return "none";
+  if (order.status === OrderStatus.PAID && refunded >= order.totalCents) return "cancel";
+  return "record";
+}
+
+/**
+ * Whether a closed dispute leaves the order's DISPUTED flag up. Won — the
+ * money stays with the seller — clears it; lost, or anything Stripe adds
+ * later, leaves it for the seller to see.
+ */
+export function disputeStillOpen(status: Stripe.Dispute.Status): boolean {
+  return status !== "won" && status !== "warning_closed" && status !== "prevented";
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
@@ -42,6 +43,7 @@ export function SaveBar({
   savedKey?: unknown;
   className?: string;
 }) {
+  const { common } = useAdminI18n();
   const barRef = useRef<HTMLDivElement>(null);
   const baseline = useRef<string | null>(null);
   const rebaseOnReset = useRef(false);
@@ -129,7 +131,7 @@ export function SaveBar({
       className={cn(
         // Over the content column: the whole width under the mobile header's
         // position on phones, beside the 16rem drawer on desktop.
-        "fixed inset-x-0 top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur transition-transform duration-200 lg:left-64",
+        "fixed inset-x-0 top-0 z-40 border-b border-border bg-background/95 shadow-sm backdrop-blur transition-transform duration-200 lg:start-64",
         visible ? "translate-y-0" : "invisible -translate-y-full",
         className,
       )}
@@ -142,14 +144,14 @@ export function SaveBar({
           {pending ? null : (
             <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-warning" />
           )}
-          {pending ? "Saving…" : "Unsaved changes"}
+          {pending ? common.saving : common.unsavedChanges}
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={onDiscard}>
-            Discard
+            {common.discard}
           </Button>
           <Button type="submit" size="sm" disabled={pending || disabled}>
-            {pending ? "Saving…" : label}
+            {pending ? common.saving : label}
           </Button>
         </div>
       </div>

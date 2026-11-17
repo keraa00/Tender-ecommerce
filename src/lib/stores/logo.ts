@@ -5,7 +5,7 @@
  * create-store form, the server action and the shared `StoreMark` all read it.
  */
 
-import { ACCEPTED_IMAGE_TYPES } from "@/lib/products/constants";
+import { ACCEPTED_IMAGE_TYPES, type ImageMessages } from "@/lib/products/constants";
 
 /**
  * Logos are cropped to a square of at most this many pixels in the browser
@@ -22,12 +22,15 @@ export const LOGO_PIXELS = 512;
 export const MAX_LOGO_BYTES = 1_000_000;
 
 /** Human-readable reason a logo file is unusable, or null when it is fine. */
-export function logoRejectionReason(file: { size: number; type: string }): string | null {
+export function logoRejectionReason(
+  file: { size: number; type: string },
+  t: ImageMessages,
+): string | null {
   if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    return "Use a JPEG, PNG, WebP or AVIF image.";
+    return t.wrongType;
   }
-  if (file.size === 0) return "That file is empty.";
-  if (file.size > MAX_LOGO_BYTES) return "Logos must be under 1MB.";
+  if (file.size === 0) return t.empty;
+  if (file.size > MAX_LOGO_BYTES) return t.logoTooLarge;
   return null;
 }
 

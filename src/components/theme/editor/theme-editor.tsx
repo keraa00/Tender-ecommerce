@@ -3,19 +3,22 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAdminI18n } from "@/components/admin/admin-i18n";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import type {
   PublishThemeState,
   SaveThemeDraftResult,
   StagePreviewResult,
   UploadThemeImageResult,
 } from "@/lib/theme/actions";
-import {
+import type {
   THEME_SETTINGS,
-  type ThemeBlock,
-  type ThemeDocument,
-  type ThemeSection,
+  ThemeBlock,
+  ThemeDocument,
+  ThemeSection,
 } from "@/lib/theme/document";
 import type { Fields } from "@/lib/theme/fields";
 import {
@@ -71,7 +74,10 @@ export type ThemeEditorProps = {
   initialVersion: number;
   /** Whether a saved draft is waiting that buyers do not see yet. */
   initialUnpublished: boolean;
+  /** Already in the seller's language — see `sectionManifests()`. */
   manifests: SectionManifest[];
+  /** `THEME_SETTINGS`, its labels in the seller's language. */
+  themeSettings: typeof THEME_SETTINGS;
   collections: { id: string; title: string }[];
   /** This tab's preview session; see `src/lib/theme/preview.ts`. */
   session: string;
@@ -83,6 +89,7 @@ export type ThemeEditorProps = {
     upload: (formData: FormData) => Promise<UploadThemeImageResult>;
     publish: (state: PublishThemeState, formData: FormData) => Promise<PublishThemeState>;
   };
+  t: AdminMessages["themeEditor"];
 };
 
 type Notice = { tone: "info" | "success" | "danger"; text: string } | null;
@@ -100,12 +107,16 @@ export function ThemeEditor({
   initialVersion,
   initialUnpublished,
   manifests,
+  themeSettings,
   collections,
   session,
   urls,
   canPublish,
   actions,
+  t,
 }: ThemeEditorProps) {
+  const { locale } = useAdminI18n();
+  const blockedCopy = useMemo(() => ({ locale, t: t.operations }), [locale, t]);
   const [history, setHistory] = useState<History<ThemeDocument>>(() =>
     createHistory(initialDocument),
   );
@@ -132,7 +143,7 @@ export function ThemeEditor({
     () => new Map(manifests.map((manifest) => [manifest.type, manifest])),
     [manifests],
   );
-  const nameOf = (type: string) => manifestByType.get(type)?.name ?? "Section";
+  const nameOf = (type: string) => manifestByType.get(type)?.name ?? t.section;
 
   // ---------------------------------------------------------------------------
   // Live preview
@@ -169,7 +180,7 @@ export function ThemeEditor({
         try {
           result = await actions.stage({ session, document: current });
         } catch {
-          result = { ok: false, issues: [{ path: "", message: "The preview could not be updated." }] };
+          result = { ok: false, issues: [{ path: "", message: t.previewFailed }] };
         }
         if (!state.queued) break;
         // A newer edit arrived meanwhile: send that one before reporting.
@@ -185,7 +196,7 @@ export function ThemeEditor({
         toPreview({ type: PREVIEW_REFRESH });
       }
     },
-    [actions, session, toPreview],
+    [actions, session, toPreview, t.previewFailed],
   );
 
   useEffect(() => {
@@ -249,13 +260,17 @@ export function ThemeEditor({
 
   const undoEdit = useCallback(() => {
     setHistory((current) => undo(current));
-    setAnnouncement("Undone.");
-  }, []);
+    setAnnouncement(t.undone);
+  }, [t]);
 
   const redoEdit = useCallback(() => {
     setHistory((current) => redo(current));
-    setAnnouncement("Redone.");
-  }, []);
+    setAnnouncement(t.redone);
+  }, [t]);
+
+  // Positions are counted from 1 for the seller, in their own digits.
+  const moved = (name: string, position: number, total: number) =>
+    format(t.moved, { name, position: position + 1, total });
 
   const sections = document.pages.home.sections;
 
@@ -268,15 +283,13 @@ export function ThemeEditor({
       edit(next);
       const position = next.pages.home.sections.findIndex((section) => section.id === id);
       const section = next.pages.home.sections[position];
-      setAnnouncement(
-        `${nameOf(section.type)} moved to position ${position + 1} of ${sections.length}.`,
-      );
+      setAnnouncement(moved(nameOf(section.type), position, sections.length));
     },
 
     onAddSection: (type) => {
       const manifest = manifestByType.get(type);
       if (!manifest) return;
-      const result = addSection(document, manifest);
+      const result = addSection(document, manifest, blockedCopy);
       if (!result.ok) {
         setNotice({ tone: "danger", text: result.reason });
         return;
@@ -290,7 +303,7 @@ export function ThemeEditor({
           ? { kind: "block", sectionId: result.id, blockId: first.id }
           : { kind: "section", id: result.id },
       );
-      setAnnouncement(`${manifest.name} added at the end of the page.`);
+      setAnnouncement(format(t.sectionAdded, { name: manifest.name }));
     },
 
     onRemoveSection: (id) => {
@@ -303,28 +316,32 @@ export function ThemeEditor({
         next.pages.home.sections[Math.min(index, next.pages.home.sections.length - 1)];
       setSelected(neighbour ? { kind: "section", id: neighbour.id } : { kind: "theme" });
       // Undo brings it back, so removing does not ask first.
-      setAnnouncement(`${name} removed. Undo to bring it back.`);
+      setAnnouncement(format(t.removed, { name }));
     },
 
     onToggleSection: (id) => {
       const section = sections.find((entry) => entry.id === id);
       if (!section) return;
       edit(setSectionHidden(document, id, !section.hidden));
-      setAnnouncement(`${nameOf(section.type)} ${section.hidden ? "shown" : "hidden"}.`);
+      setAnnouncement(
+        format(section.hidden ? t.shown : t.hidden, { name: nameOf(section.type) }),
+      );
     },
 
     onAddBlock: (sectionId, blockType) => {
       const section = findSection(document, sectionId);
       const manifest = section && manifestByType.get(section.type);
       if (!manifest) return;
-      const result = addBlock(document, sectionId, manifest, blockType);
+      const result = addBlock(document, sectionId, manifest, blockType, blockedCopy);
       if (!result.ok) {
         setNotice({ tone: "danger", text: result.reason });
         return;
       }
       edit(result.document);
       select({ kind: "block", sectionId, blockId: result.id });
-      setAnnouncement(`${manifest.blocks[blockType].name} added to ${manifest.name}.`);
+      setAnnouncement(
+        format(t.blockAdded, { block: manifest.blocks[blockType].name, section: manifest.name }),
+      );
     },
 
     onMoveBlock: (sectionId, blockId, to) => {
@@ -333,7 +350,7 @@ export function ThemeEditor({
       edit(next);
       const blocks = findSection(next, sectionId)?.blocks ?? [];
       const position = blocks.findIndex((block) => block.id === blockId);
-      setAnnouncement(`${blockName(sectionId, blocks[position])} moved to position ${position + 1} of ${blocks.length}.`);
+      setAnnouncement(moved(blockName(sectionId, blocks[position]), position, blocks.length));
     },
 
     onRemoveBlock: (sectionId, blockId) => {
@@ -343,21 +360,23 @@ export function ThemeEditor({
       if (selected.kind === "block" && selected.blockId === blockId) {
         setSelected({ kind: "section", id: sectionId });
       }
-      setAnnouncement(`${blockName(sectionId, block)} removed. Undo to bring it back.`);
+      setAnnouncement(format(t.removed, { name: blockName(sectionId, block) }));
     },
 
     onToggleBlock: (sectionId, blockId) => {
       const block = findSection(document, sectionId)?.blocks.find((entry) => entry.id === blockId);
       if (!block) return;
       edit(setBlockHidden(document, sectionId, blockId, !block.hidden));
-      setAnnouncement(`${blockName(sectionId, block)} ${block.hidden ? "shown" : "hidden"}.`);
+      setAnnouncement(
+        format(block.hidden ? t.shown : t.hidden, { name: blockName(sectionId, block) }),
+      );
     },
   };
 
   function blockName(sectionId: string, block: ThemeBlock | undefined): string {
     const section = findSection(document, sectionId);
     const manifest = section && manifestByType.get(section.type);
-    return (block && manifest?.blocks[block.type]?.name) ?? "Block";
+    return (block && manifest?.blocks[block.type]?.name) ?? t.block;
   }
 
   // ---------------------------------------------------------------------------
@@ -367,13 +386,13 @@ export function ThemeEditor({
   const save = useCallback(async (): Promise<number | null> => {
     const snapshot = document;
     setBusy("saving");
-    setNotice({ tone: "info", text: "Saving…" });
+    setNotice({ tone: "info", text: t.saving });
 
     let result: SaveThemeDraftResult;
     try {
       result = await actions.save({ document: snapshot, baseVersion: saved.version });
     } catch {
-      result = { ok: false, error: "Could not save the theme. Please try again." };
+      result = { ok: false, error: t.saveFailed };
     }
     setBusy(null);
 
@@ -386,16 +405,16 @@ export function ThemeEditor({
 
     setSaved({ document: snapshot, version: result.version });
     setUnpublished(true);
-    setNotice({ tone: "success", text: "Saved. Publish to show buyers." });
+    setNotice({ tone: "success", text: t.savedPublishHint });
     return result.version;
-  }, [actions, document, saved.version]);
+  }, [actions, document, saved.version, t]);
 
   const publish = useCallback(async () => {
     const version = dirty ? await save() : saved.version;
     if (version === null) return;
 
     setBusy("publishing");
-    setNotice({ tone: "info", text: "Publishing…" });
+    setNotice({ tone: "info", text: t.publishing });
     const formData = new FormData();
     formData.set("baseVersion", String(version));
 
@@ -403,7 +422,7 @@ export function ThemeEditor({
     try {
       result = await actions.publish({}, formData);
     } catch {
-      result = { formError: "Could not publish the theme. Please try again." };
+      result = { formError: t.publishFailed };
     }
     setBusy(null);
 
@@ -412,8 +431,8 @@ export function ThemeEditor({
       return;
     }
     setUnpublished(false);
-    setNotice({ tone: "success", text: result.notice ?? "Published." });
-  }, [actions, dirty, save, saved.version]);
+    setNotice({ tone: "success", text: result.notice ?? t.published });
+  }, [actions, dirty, save, saved.version, t]);
 
   // ⌘Z / Ctrl+Z undoes, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y redoes, ⌘S / Ctrl+S
   // saves. Undo is the editor's even inside a text input: the input's value is
@@ -463,23 +482,24 @@ export function ThemeEditor({
     colorFallback: store.accentColor ?? "#1c1917",
     collections,
     uploadImage: actions.upload,
+    t: t.fields,
   };
 
   const panel: { title: string; subtitle?: string; fields: Fields; values: Record<string, unknown>; key: string } =
     target.kind === "theme"
-      ? { title: "Theme settings", fields: THEME_SETTINGS, values: document.settings, key: "theme" }
+      ? { title: t.themeSettings, fields: themeSettings, values: document.settings, key: "theme" }
       : target.kind === "section"
         ? {
             title: nameOf(target.section.type),
-            subtitle: target.pinned ? "On every page of your store." : undefined,
+            subtitle: target.pinned ? t.onEveryPage : undefined,
             fields: manifestByType.get(target.section.type)?.settings ?? {},
             values: target.section.settings,
             key: `section:${target.section.id}`,
           }
         : {
             title:
-              manifestByType.get(target.section.type)?.blocks[target.block.type]?.name ?? "Block",
-            subtitle: `In ${nameOf(target.section.type)}`,
+              manifestByType.get(target.section.type)?.blocks[target.block.type]?.name ?? t.block,
+            subtitle: format(t.inSection, { section: nameOf(target.section.type) }),
             fields: manifestByType.get(target.section.type)?.blocks[target.block.type]?.settings ?? {},
             values: target.block.settings,
             key: `block:${target.section.id}:${target.block.id}`,
@@ -488,7 +508,7 @@ export function ThemeEditor({
   const generalIssues = issues.filter((issue) => issue.path === "");
 
   const exit = (event: React.MouseEvent) => {
-    if (dirty && !window.confirm("Leave without saving your changes?")) event.preventDefault();
+    if (dirty && !window.confirm(t.leaveConfirm)) event.preventDefault();
   };
 
   return (
@@ -501,33 +521,33 @@ export function ThemeEditor({
             onClick={exit}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
           >
-            <span aria-hidden className="rtl:-scale-x-100">←</span> Exit
+            <span aria-hidden className="rtl:-scale-x-100">←</span> {t.exit}
           </Link>
           <span aria-hidden className="h-5 w-px bg-border" />
           <p className="max-w-48 truncate text-sm font-medium">{store.name}</p>
           <label className="ms-2 flex items-center gap-2 text-sm text-muted">
-            Page
+            {t.page}
             {/* One page so far; the selector is where the next ones go. */}
             <select
               defaultValue="home"
               className="h-8 cursor-pointer rounded-lg border border-border-strong bg-surface px-2 text-sm text-foreground"
             >
-              <option value="home">Home page</option>
+              <option value="home">{t.homePage}</option>
             </select>
           </label>
 
           <div className="ms-2 flex items-center">
-            <IconButton label="Undo (⌘Z)" disabled={!canUndo(history)} onClick={undoEdit}>
+            <IconButton label={t.undo} disabled={!canUndo(history)} onClick={undoEdit}>
               <ToolbarIcon path="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
             </IconButton>
-            <IconButton label="Redo (⇧⌘Z)" disabled={!canRedo(history)} onClick={redoEdit}>
+            <IconButton label={t.redo} disabled={!canRedo(history)} onClick={redoEdit}>
               <ToolbarIcon path="m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
             </IconButton>
           </div>
 
           <div
             role="group"
-            aria-label="Preview size"
+            aria-label={t.previewSize}
             className="ms-1 flex rounded-lg border border-border-strong p-0.5"
           >
             {(["desktop", "mobile"] as const).map((option) => (
@@ -535,8 +555,8 @@ export function ThemeEditor({
                 key={option}
                 type="button"
                 aria-pressed={device === option}
-                aria-label={option === "desktop" ? "Desktop preview" : "Mobile preview"}
-                title={option === "desktop" ? "Desktop" : "Mobile"}
+                aria-label={option === "desktop" ? t.desktopPreview : t.mobilePreview}
+                title={option === "desktop" ? t.desktop : t.mobile}
                 onClick={() => setDevice(option)}
                 className={cn(
                   "grid h-7 w-8 cursor-pointer place-items-center rounded-md transition-colors",
@@ -568,7 +588,7 @@ export function ThemeEditor({
                   : "text-muted",
             )}
           >
-            {notice?.text ?? (dirty ? "Unsaved changes" : unpublished ? "Saved, not published" : "")}
+            {notice?.text ?? (dirty ? t.unsavedChanges : unpublished ? t.savedNotPublished : "")}
           </p>
 
           <a
@@ -577,7 +597,7 @@ export function ThemeEditor({
             rel="noreferrer"
             className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
           >
-            View store
+            {t.viewStore}
           </a>
           <Button
             variant="secondary"
@@ -585,7 +605,7 @@ export function ThemeEditor({
             disabled={!dirty || busy !== null || conflict}
             onClick={() => void save()}
           >
-            {busy === "saving" ? "Saving…" : "Save"}
+            {busy === "saving" ? t.saving : t.save}
           </Button>
           {canPublish ? (
             <Button
@@ -593,7 +613,7 @@ export function ThemeEditor({
               disabled={(!dirty && !unpublished) || busy !== null || conflict}
               onClick={() => void publish()}
             >
-              {busy === "publishing" ? "Publishing…" : "Publish"}
+              {busy === "publishing" ? t.publishing : t.publish}
             </Button>
           ) : null}
         </header>
@@ -603,26 +623,25 @@ export function ThemeEditor({
             role="alert"
             className="flex items-center gap-3 border-b border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger"
           >
-            <p className="flex-1">
-              Someone else saved this store&apos;s design while you were editing. Saving here would
-              overwrite their work.
-            </p>
+            <p className="flex-1">{t.conflict}</p>
             <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
-              Reload
+              {t.reload}
             </Button>
           </div>
         ) : null}
 
         <div className="flex min-h-0 flex-1">
           <aside
-            aria-label="Sections"
-            className="w-72 shrink-0 overflow-y-auto border-r border-border bg-background"
+            aria-label={t.sections}
+            className="w-72 shrink-0 overflow-y-auto border-e border-border bg-background"
           >
             <SectionList
               document={document}
               manifests={manifests}
               selected={editing}
               actions={listActions}
+              t={t}
+              blockedCopy={blockedCopy}
             />
           </aside>
 
@@ -630,7 +649,7 @@ export function ThemeEditor({
             <iframe
               ref={iframeRef}
               src={urls.preview}
-              title={`Preview of ${store.name}`}
+              title={format(t.previewOf, { store: store.name })}
               style={device === "mobile" ? { width: MOBILE_WIDTH } : undefined}
               className={cn(
                 "h-full rounded-lg border border-border bg-background shadow-sm transition-[width] duration-200",
@@ -640,8 +659,8 @@ export function ThemeEditor({
           </main>
 
           <aside
-            aria-label="Settings"
-            className="w-80 shrink-0 overflow-y-auto border-l border-border bg-background"
+            aria-label={t.settings}
+            className="w-80 shrink-0 overflow-y-auto border-s border-border bg-background"
           >
             <div className="border-b border-border px-4 py-3">
               <h2 className="font-semibold tracking-tight">{panel.title}</h2>
@@ -654,7 +673,7 @@ export function ThemeEditor({
                 </p>
               ) : null}
               {Object.keys(panel.fields).length === 0 ? (
-                <p className="text-sm text-muted">Nothing to set here.</p>
+                <p className="text-sm text-muted">{t.nothingToSet}</p>
               ) : (
                 <SettingsFields
                   // A fresh panel per target, so inputs never carry state across.
@@ -675,14 +694,14 @@ export function ThemeEditor({
                     size="sm"
                     onClick={() => listActions.onToggleSection(target.section.id)}
                   >
-                    {target.section.hidden ? "Show section" : "Hide section"}
+                    {target.section.hidden ? t.showSection : t.hideSection}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => listActions.onRemoveSection(target.section.id)}
                   >
-                    Remove section
+                    {t.removeSection}
                   </Button>
                 </div>
               ) : null}
@@ -693,14 +712,14 @@ export function ThemeEditor({
                     size="sm"
                     onClick={() => listActions.onToggleBlock(target.section.id, target.block.id)}
                   >
-                    {target.block.hidden ? "Show block" : "Hide block"}
+                    {target.block.hidden ? t.showBlock : t.hideBlock}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => listActions.onRemoveBlock(target.section.id, target.block.id)}
                   >
-                    Remove block
+                    {t.removeBlock}
                   </Button>
                 </div>
               ) : null}
@@ -715,16 +734,13 @@ export function ThemeEditor({
 
       <div className="grid flex-1 place-items-center px-6 py-24 text-center lg:hidden">
         <div className="max-w-sm">
-          <h1 className="text-lg font-semibold tracking-tight">Use a larger screen</h1>
-          <p className="mt-2 text-sm text-muted text-pretty">
-            The theme editor shows your storefront beside its settings, which needs a wider
-            window than this.
-          </p>
+          <h1 className="text-lg font-semibold tracking-tight">{t.largerScreen}</h1>
+          <p className="mt-2 text-sm text-muted text-pretty">{t.largerScreenBody}</p>
           <a
             href={urls.exit}
             className="mt-6 inline-block text-sm font-medium underline underline-offset-4"
           >
-            Back to Online store
+            {t.backToOnlineStore}
           </a>
         </div>
       </div>

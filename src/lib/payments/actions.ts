@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 
+import { format } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { getStoreContext } from "@/lib/stores/context";
 import { canManagePayments } from "@/lib/stores/policy";
 import { isStripeConfigured } from "@/lib/stripe/server";
@@ -25,20 +27,24 @@ export async function startStripeOnboardingAction(
   _prev: PaymentsFormState,
   formData: FormData,
 ): Promise<PaymentsFormState> {
-  const { user, store, membership } = await getStoreContext(storeSlug);
+  const [{ user, store, membership }, { t: messages }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.settings.connect;
 
   if (!canManagePayments(membership)) {
-    return { formError: "Only the store owner can set up payments." };
+    return { formError: t.ownerOnly };
   }
   if (!isStripeConfigured()) {
-    return { formError: "Stripe is not configured on this server yet." };
+    return { formError: t.notConfigured };
   }
 
   // Only posted while the store has no account; continuing setup sends none.
   const rawCountry = formData.get("country");
   const country = isStripeMerchantCountry(rawCountry) ? rawCountry : null;
   if (rawCountry !== null && !country) {
-    return { fieldErrors: { country: "Choose the country your business is based in." } };
+    return { fieldErrors: { country: t.countryRequired } };
   }
 
   let url: string;
@@ -47,7 +53,7 @@ export async function startStripeOnboardingAction(
     url = await createOnboardingLink(store.slug, accountId);
   } catch (error) {
     if (error instanceof CountryRequiredError) {
-      return { fieldErrors: { country: "Choose the country your business is based in." } };
+      return { fieldErrors: { country: t.countryRequired } };
     }
     console.error("startStripeOnboardingAction failed", error);
     // Stripe refusing the request is a setup problem the owner can fix in
@@ -58,8 +64,8 @@ export async function startStripeOnboardingAction(
     return {
       formError:
         refused && typeof message === "string"
-          ? `Stripe refused the request: ${message}`
-          : "Could not reach Stripe. Please try again.",
+          ? format(t.refused, { message })
+          : t.unreachable,
     };
   }
 

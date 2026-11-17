@@ -6,14 +6,16 @@ import { AdminPage, EmptyState, Rows } from "@/components/admin/page-shell";
 import { ButtonLink } from "@/components/ui/button";
 import { storeAdminPath } from "@/lib/admin/links";
 import { collectionCover, listStoreCollections } from "@/lib/collections/queries";
+import { plural } from "@/lib/i18n/format";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { getStoreContext } from "@/lib/stores/context";
 
 export async function generateMetadata(
   props: PageProps<"/dashboard/[storeSlug]/collections">,
 ): Promise<Metadata> {
   const { storeSlug } = await props.params;
-  const { store } = await getStoreContext(storeSlug);
-  return { title: `Collections · ${store.name}` };
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  return { title: `${t.collections.title} · ${store.name}` };
 }
 
 export default async function CollectionsPage(
@@ -21,38 +23,39 @@ export default async function CollectionsPage(
 ) {
   const { storeSlug } = await props.params;
   // Membership is verified here; `store.id` is the only tenant key used below.
-  const { store } = await getStoreContext(storeSlug);
+  const [{ store }, { t: messages, locale }] = await Promise.all([
+    getStoreContext(storeSlug),
+    getAdminI18n(),
+  ]);
+  const t = messages.collections;
 
   const collections = await listStoreCollections(store.id);
   const newHref = storeAdminPath(store.slug, "collections/new");
 
   return (
     <AdminPage
-      title="Collections"
+      title={t.title}
       description={
-        collections.length === 0
-          ? "Group products so buyers can browse by theme."
-          : `${collections.length} ${collections.length === 1 ? "collection" : "collections"}.`
+        collections.length === 0 ? t.empty : plural(locale, collections.length, t.count)
       }
       action={
         collections.length > 0 ? (
           <ButtonLink href={newHref} size="sm">
-            New collection
+            {t.newCollection}
           </ButtonLink>
         ) : null
       }
     >
       {collections.length === 0 ? (
         <EmptyState
-          title="No collections yet"
+          title={t.emptyTitle}
           action={
             <ButtonLink href={newHref} size="lg">
-              Create a collection
+              {t.create}
             </ButtonLink>
           }
         >
-          Collections group products — “Summer”, “Gifts under $30”, “Mugs” — and
-          each one gets its own page on your storefront.
+          {t.emptyBody}
         </EmptyState>
       ) : (
         <Rows>
@@ -81,8 +84,8 @@ export default async function CollectionsPage(
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{collection.title}</p>
                     <p className="truncate text-sm text-muted tabular">
-                      {count} {count === 1 ? "product" : "products"} · /collections/
-                      {collection.slug}
+                      {plural(locale, count, t.products)} ·{" "}
+                      <span dir="ltr">/collections/{collection.slug}</span>
                     </p>
                   </div>
                 </Link>

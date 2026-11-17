@@ -1,3 +1,5 @@
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 import * as z from "zod";
 
 import { isCountryCode } from "@/lib/address/countries";
@@ -41,17 +43,22 @@ export type ParsedGeneralSettings =
   | { ok: true; settings: GeneralSettings }
   | { ok: false; fieldErrors: GeneralSettingsErrors };
 
-export function parseGeneralSettingsForm(formData: FormData): ParsedGeneralSettings {
+/** `t` is the admin's copy in the seller's language, which the errors are said in. */
+export function parseGeneralSettingsForm(
+  formData: FormData,
+  t: AdminMessages,
+): ParsedGeneralSettings {
+  const say = t.stores.errors;
   const fieldErrors: GeneralSettingsErrors = {};
 
   const currency = field(formData, "currency").toUpperCase();
-  if (!isSupportedCurrency(currency)) fieldErrors.currency = "Choose a currency from the list.";
+  if (!isSupportedCurrency(currency)) fieldErrors.currency = say.currency;
 
   const rawEmail = field(formData, "contactEmail").toLowerCase();
   let contactEmail: string | null = null;
   if (rawEmail !== "") {
     if (rawEmail.length > MAX_EMAIL || !email.safeParse(rawEmail).success) {
-      fieldErrors.contactEmail = "Enter an email address like hello@yourstore.com.";
+      fieldErrors.contactEmail = say.contactEmail;
     } else {
       contactEmail = rawEmail;
     }
@@ -95,7 +102,10 @@ export const CHECKOUT_FIELD_MODES = {
 
 type ModeField = keyof typeof CHECKOUT_FIELD_MODES;
 
-export function parseCheckoutSettingsForm(formData: FormData): ParsedCheckoutSettings {
+export function parseCheckoutSettingsForm(
+  formData: FormData,
+  t: AdminMessages,
+): ParsedCheckoutSettings {
   const fieldErrors: CheckoutSettingsErrors = {};
   const modes = {} as Record<ModeField, CheckoutFieldMode>;
 
@@ -105,7 +115,7 @@ export function parseCheckoutSettingsForm(formData: FormData): ParsedCheckoutSet
     if (allowed.includes(value)) {
       modes[name] = value as CheckoutFieldMode;
     } else {
-      fieldErrors[name] = "Choose one of the options.";
+      fieldErrors[name] = t.stores.errors.option;
     }
   }
 
@@ -216,15 +226,18 @@ function optionalCents(raw: string): number | null | undefined {
  * The fee is one field, read as money or as a percentage by the type beside it;
  * blank means no fee.
  */
-export function parseCodSettingsForm(formData: FormData): ParsedCodSettings {
+export function parseCodSettingsForm(formData: FormData, t: AdminMessages): ParsedCodSettings {
+  const say = t.stores.errors;
   const fieldErrors: CodSettingsErrors = {};
 
   const label = field(formData, "codLabel");
-  if (label.length > COD_LABEL_MAX) fieldErrors.codLabel = `Keep it to ${COD_LABEL_MAX} characters.`;
+  if (label.length > COD_LABEL_MAX) {
+    fieldErrors.codLabel = format(say.codLabelTooLong, { max: COD_LABEL_MAX });
+  }
 
   const instructions = field(formData, "codInstructions");
   if (instructions.length > COD_INSTRUCTIONS_MAX) {
-    fieldErrors.codInstructions = `Keep it to ${COD_INSTRUCTIONS_MAX} characters.`;
+    fieldErrors.codInstructions = format(say.codInstructionsTooLong, { max: COD_INSTRUCTIONS_MAX });
   }
 
   const feeType: CodFeeType = field(formData, "codFeeType") === "PERCENTAGE" ? "PERCENTAGE" : "FIXED_AMOUNT";
@@ -233,21 +246,21 @@ export function parseCodSettingsForm(formData: FormData): ParsedCodSettings {
   if (rawFee !== "") {
     if (feeType === "PERCENTAGE") {
       const bps = parsePercentToBps(rawFee);
-      if (bps === null || bps > 10_000) fieldErrors.codFee = "Enter a percentage between 0 and 100.";
+      if (bps === null || bps > 10_000) fieldErrors.codFee = say.codFeePercent;
       else feeValue = bps;
     } else {
       const cents = parseMoneyToCents(rawFee);
-      if (cents === null || cents > MAX_FIXED_FEE_CENTS) fieldErrors.codFee = "Enter an amount, like 2.50.";
+      if (cents === null || cents > MAX_FIXED_FEE_CENTS) fieldErrors.codFee = say.codFeeAmount;
       else feeValue = cents;
     }
   }
 
   const min = optionalCents(field(formData, "codMinTotal"));
   const max = optionalCents(field(formData, "codMaxTotal"));
-  if (min === undefined) fieldErrors.codMinTotal = "Enter an amount, or leave it blank for no minimum.";
-  if (max === undefined) fieldErrors.codMaxTotal = "Enter an amount, or leave it blank for no maximum.";
+  if (min === undefined) fieldErrors.codMinTotal = say.codMin;
+  if (max === undefined) fieldErrors.codMaxTotal = say.codMax;
   if (typeof min === "number" && typeof max === "number" && min > max) {
-    fieldErrors.codMaxTotal = "The maximum can't be less than the minimum.";
+    fieldErrors.codMaxTotal = say.codMaxBelowMin;
   }
 
   let countryCodes: string[] = [];
@@ -256,9 +269,9 @@ export function parseCodSettingsForm(formData: FormData): ParsedCodSettings {
       .getAll("codCountry")
       .map((value) => (typeof value === "string" ? value.trim().toUpperCase() : ""));
     if (codes.some((code) => !isCountryCode(code))) {
-      fieldErrors.codCountries = "Choose countries from the list.";
+      fieldErrors.codCountries = say.codCountries;
     } else if (codes.length === 0) {
-      fieldErrors.codCountries = "Choose at least one country, or offer it everywhere you ship.";
+      fieldErrors.codCountries = say.codNoCountries;
     } else {
       countryCodes = [...new Set(codes)].sort();
     }

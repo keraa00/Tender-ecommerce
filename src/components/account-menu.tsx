@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { displayName, initialsFor } from "@/lib/account/display";
 import { signOutAction } from "@/lib/auth/actions";
+import { format } from "@/lib/i18n/format";
+import type { AdminMessages } from "@/lib/i18n/admin";
 
 function SignOutIcon({ className }: { className?: string }) {
   return (
@@ -37,7 +39,18 @@ const signOutClass = `${itemBase} text-muted hover:bg-danger/10 hover:text-dange
  * to their stores and account settings, and Sign out. Opens and closes like
  * the storefront's language switcher — outside click and Escape both close it.
  */
-export function AccountMenu({ name, email }: { name: string | null; email: string }) {
+export function AccountMenu({
+  name,
+  email,
+  platformAdmin = false,
+  t,
+}: {
+  name: string | null;
+  email: string;
+  /** Adds the way to the platform admin's moderation page. */
+  platformAdmin?: boolean;
+  t: AdminMessages["header"];
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -68,7 +81,7 @@ export function AccountMenu({ name, email }: { name: string | null; email: strin
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="true"
         aria-expanded={open}
-        aria-label={`Account menu for ${displayName(name, email)}`}
+        aria-label={format(t.accountMenuFor, { name: displayName(name, email) })}
         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-strong bg-surface text-xs font-semibold text-foreground transition-colors hover:bg-surface-hover"
       >
         <span aria-hidden>{initialsFor(name, email)}</span>
@@ -84,19 +97,24 @@ export function AccountMenu({ name, email }: { name: string | null; email: strin
           </div>
           <div className="border-t border-border pt-1">
             <Link href="/dashboard" onClick={close} className={itemClass}>
-              Your stores
+              {t.yourStores}
             </Link>
             <Link href="/dashboard/account" onClick={close} className={itemClass}>
-              Account settings
+              {t.accountSettings}
             </Link>
+            {platformAdmin ? (
+              <Link href="/dashboard/platform" onClick={close} className={itemClass}>
+                {t.platform}
+              </Link>
+            ) : null}
           </div>
           <form action={signOutAction} className="mt-1 border-t border-border pt-1">
             <button
               type="submit"
               className={signOutClass}
             >
-              <SignOutIcon className="h-4 w-4" />
-              Sign out
+              <SignOutIcon className="h-4 w-4 rtl:-scale-x-100" />
+              {t.signOut}
             </button>
           </form>
         </div>

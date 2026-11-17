@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
 import { rootDb } from "@/lib/db/root";
+import { getAdminI18n } from "@/lib/i18n/server";
 import { isUuid } from "@/lib/ids";
-import { cancelCodOrder, markCodOrderPaid } from "@/lib/payments/settle";
+import { cancelCodOrder, fulfillOrder, markCodOrderPaid } from "@/lib/payments/settle";
 import { getStoreContext } from "@/lib/stores/context";
 import type { UnseenOrders } from "./live";
 import { listUnseenOrderIds } from "./queries";
@@ -54,52 +55,59 @@ export async function getUnseenOrdersAction(storeSlug: string): Promise<UnseenOr
   };
 }
 
-export type CodOrderActionResult = { ok: true } | { ok: false; error: string };
+export type OrderActionResult = { ok: true } | { ok: false; error: string };
 
 /**
- * Moves a cash-on-delivery order on from "payment on delivery": paid, once the
+ * Moves one of the store's orders on: a cash-on-delivery order paid, once the
  * courier has handed over the cash, or cancelled — refused at the door, never
- * sent — with its stock put back and its discount uses released.
+ * sent — with its stock put back and its discount uses released; or a paid
+ * order fulfilled.
  *
  * The order id comes from the browser, so it only narrows a lookup scoped to
- * the member's store; another store's order moves nothing. Both moves are
- * conditional on the order still being an unpaid COD order, so a double click
- * or a second tab does nothing the second time.
+ * the member's store; another store's order moves nothing. Every move is
+ * conditional on the order still being where it started, so a double click or
+ * a second tab does nothing the second time, and says why.
  */
-async function moveCodOrder(
+async function moveOrder(
   storeSlug: string,
   orderId: string,
-  move: typeof markCodOrderPaid,
-): Promise<CodOrderActionResult> {
-  const { store } = await getStoreContext(storeSlug);
-  if (!isUuid(orderId)) return { ok: false, error: "That order doesn't exist." };
+  move: typeof fulfillOrder,
+  stale: "notAwaitingCash" | "notPaid",
+): Promise<OrderActionResult> {
+  const [{ store }, { t }] = await Promise.all([getStoreContext(storeSlug), getAdminI18n()]);
+  if (!isUuid(orderId)) return { ok: false, error: t.orders.errors.notFound };
 
   let moved: boolean;
   try {
     moved = await rootDb.$transaction((tx) => move(tx, { id: orderId, storeId: store.id }));
   } catch (error) {
-    console.error("moveCodOrder failed", error);
-    return { ok: false, error: "Could not update the order. Please try again." };
+    console.error("moveOrder failed", error);
+    return { ok: false, error: t.orders.errors.failed };
   }
 
   // The order, the list, the overview's totals and the customer pages all
   // read it.
   revalidatePath(`/dashboard/${storeSlug}`, "layout");
-  return moved
-    ? { ok: true }
-    : { ok: false, error: "This order isn't awaiting cash on delivery any more. Reload to see where it stands." };
+  return moved ? { ok: true } : { ok: false, error: t.orders.errors[stale] };
 }
 
 export async function markCodOrderPaidAction(
   storeSlug: string,
   orderId: string,
-): Promise<CodOrderActionResult> {
-  return moveCodOrder(storeSlug, orderId, markCodOrderPaid);
+): Promise<OrderActionResult> {
+  return moveOrder(storeSlug, orderId, markCodOrderPaid, "notAwaitingCash");
 }
 
 export async function cancelCodOrderAction(
   storeSlug: string,
   orderId: string,
-): Promise<CodOrderActionResult> {
-  return moveCodOrder(storeSlug, orderId, cancelCodOrder);
+): Promise<OrderActionResult> {
+  return moveOrder(storeSlug, orderId, cancelCodOrder, "notAwaitingCash");
+}
+
+export async function fulfillOrderAction(
+  storeSlug: string,
+  orderId: string,
+): Promise<OrderActionResult> {
+  return moveOrder(storeSlug, orderId, fulfillOrder, "notPaid");
 }

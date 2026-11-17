@@ -46,17 +46,22 @@ export async function getStoreTotals(
       totalCents: true,
       platformFeeCents: true,
       sellerNetCents: true,
+      refundedCents: true,
     },
   });
 
+  // Partial refunds come off what was taken and what the seller keeps; a full
+  // refund has already cancelled its order and left the sum. The commission
+  // stays: a refund in Stripe does not return the application fee.
+  const refundedCents = result._sum.refundedCents ?? 0;
   const orders = result._count._all;
-  const grossCents = result._sum.totalCents ?? 0;
+  const grossCents = (result._sum.totalCents ?? 0) - refundedCents;
 
   return {
     orders,
     grossCents,
     feeCents: result._sum.platformFeeCents ?? 0,
-    netCents: result._sum.sellerNetCents ?? 0,
+    netCents: (result._sum.sellerNetCents ?? 0) - refundedCents,
     averageOrderCents: orders === 0 ? null : Math.round(grossCents / orders),
   };
 }

@@ -25,6 +25,15 @@ export function searchTerms(query: string): string[] {
   return [...new Set(words.filter(Boolean))].slice(0, MAX_TERMS);
 }
 
+/**
+ * A term made literal for a `LIKE`/`ILIKE` pattern. Prisma's `contains` wraps
+ * its value in `%…%` without escaping it, so a search for `%` or `_` would
+ * match every product; Postgres's default escape character is a backslash.
+ */
+export function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 /** Whether `term` appears in `text` at the start of a word. */
