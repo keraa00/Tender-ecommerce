@@ -40,7 +40,7 @@ const signInSchema = z.object({
 
 const NOT_CONFIGURED =
   "Authentication isn't configured yet. Add your Supabase keys to .env — " +
-  "see README → Local setup.";
+  "see docs/setup.md.";
 
 export async function signUpAction(
   _prev: AuthState,

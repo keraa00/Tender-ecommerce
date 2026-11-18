@@ -219,7 +219,7 @@ model Store {
   ownerId String @map("owner_id") @db.Uuid
 
   /// Connected Stripe account: Standard-equivalent, created through Accounts v2
-  /// (see README "Why Standard-equivalent accounts"). Unique so an inbound
+  /// (see docs/architecture.md → Payments). Unique so an inbound
   /// Connect webhook's `account` field resolves to exactly one store in a
   /// single lookup.
   stripeAccountId          String? @unique @map("stripe_account_id")
@@ -490,7 +490,7 @@ model ProductOnCollection {
 
 /// One cart per (store, session, kind). There is deliberately no cross-store
 /// cart: a single payment cannot be split across multiple connected accounts
-/// without a materially harder settlement design. See README "Out of scope".
+/// without a materially harder settlement design. See docs/architecture.md → Out of scope.
 ///
 /// `kind` lets "Buy it now" check out one item from a cart of its own, so the
 /// buyer's everyday cart is still there afterwards.

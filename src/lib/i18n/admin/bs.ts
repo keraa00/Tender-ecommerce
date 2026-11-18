@@ -1464,7 +1464,7 @@ export const bs: AdminMessages = {
       unconfiguredTitle: "Stripe nije podešen",
       unavailable: "Nedostupno",
       unconfiguredBody:
-        "Ovaj server nema Stripe ključeve. Postavite {secret} i {publishable} — pogledajte odjeljak Payments u README datoteci.",
+        "Ovaj server nema Stripe ključeve. Postavite {secret} i {publishable} — pogledajte odjeljak Payments u datoteci docs/setup.md.",
       connectTitle: "Povežite Stripe",
       notConnected: "Nije povezano",
       connectBody:

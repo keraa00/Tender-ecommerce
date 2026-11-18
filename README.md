@@ -1,723 +1,257 @@
-# Tender — a multi-tenant e-commerce platform
+# Tender
 
-Anyone can sign up, open a store, list products and take real payments. Each
-store is an isolated tenant with its own catalogue, its own orders and its own
-Stripe account; the platform takes a commission at the moment of the charge.
+**A multi-tenant e-commerce platform.** Anyone can sign up, open a store, list
+products and take payments. Each store is an isolated tenant with its own
+catalogue, orders and Stripe account, and the platform takes a commission (5%
+by default) at the moment of the charge.
 
-> **Status: in active development, deployable as a public demo.** Schema,
-> tenancy, auth, store creation, slug routing, product management, discounts
-> (admin, engine, cart and checkout), shipping zones and rates, a Shopify-style
-> checkout, Stripe Connect onboarding, card payments with the platform's
-> commission, fulfilment, refund and dispute sync, store moderation and seed
-> data are in. Order emails and the remaining admin surfaces are next — see
-> [Roadmap](#roadmap). The demo runs Stripe in test mode and says so on every
-> checkout; see [Deploying](#deploying).
+**Live demo:** coming soon
+<!-- TODO: replace with https://<project>.vercel.app once deployed -->
 
----
+> The demo runs Stripe in **test mode** and nothing is ever shipped. Sign up to
+> open your own store and try the seller side, or check out in a demo store with
+> card `4242 4242 4242 4242`, any future expiry and any CVC.
 
-## What works today
-
-| | |
+| Landing page | Storefront |
 |---|---|
-| Platform landing | Lists the stores a platform admin has featured at `/` and `/stores` — a new store is not featured until one chooses it. `/terms` and `/privacy`, and a demo notice while `SITE.demo` is on (`src/lib/site.ts`) |
-| Platform admin | `/dashboard/platform`, platform admins only (404 for anyone else) — every store with its owner, status and counts; feature a store on the landing page, or suspend it (storefront and checkout offline, nothing deleted) and lift the suspension |
-| Storefronts | Seven seeded demo stores — `/s/nordhavn-supply` (USD), `/s/rosewater-ceramics` (EUR), `/s/wildmoor-apothecary` (GBP), `/s/halden-coffee` (AUD), `/s/marlowe-paper` (CAD), `/s/bakar-atelier` (BAM), `/s/kehre-velo` (CHF) — branded per store, priced in each store's own currency |
-| Auth | Email/password via Supabase Auth, with both email-confirmation callback shapes wired, and "Forgot your password?" — a reset link that signs you in for 15 minutes to choose a new one |
-| Account settings | `/dashboard/account` — **Profile**: name, and changing the sign-in email (confirmed by link before it takes effect). **Security**: change the password (current one required; every other device is signed out) and see where you're signed in — browser and system, last active — with sign-out per device or everywhere else. **Data & privacy**: download everything kept about you as JSON, and delete the account (current password plus typing your email; blocked while you still own a store). Reached from the header's account menu, the store list, and the email at the foot of the admin drawer |
-| Closing a store | Settings → General, owner only: deletes the store with its products, orders and images after the slug is typed out and the owner's current password given. Blocked while a paid order is unfulfilled or cash on delivery is uncollected; unpaid Stripe checkouts are cancelled first. The seller's Stripe account is theirs and is left alone |
-| Store creation | `/dashboard/new` — slug validation with live availability checking |
-| Seller admin | `admin.<host>/[storeSlug]` — its own subdomain, with a left drawer: Home, Orders, Products, Customers, Discounts, Analytics |
-| Product management | `admin.<host>/[storeSlug]/products` — create, edit and delete products with variants and uploaded photos; draft / published / archived; a weight per option (kg in, integer grams stored) and a "requires shipping" flag for digital products and services |
-| Store settings | `admin.<host>/[storeSlug]/settings` — **General**: logo, the store's currency (two-decimal currencies only; locked once the store has an order) and a customer contact email — buyers see none until one is set; the email the owner signs in with is never shown. **Payments**: pick the business's country and connect a Stripe account (Accounts v2) through Stripe-hosted onboarding, continue an unfinished setup, and see whether charges and payouts are enabled — read live from Stripe on every visit; and **cash on delivery** — on/off, the name buyers see, instructions, a fixed or percentage fee, an optional order-total range, the shipping countries it is offered for and whether it requires a phone number. **Shipping and delivery**: zones of countries, optionally narrowed to states or provinces, one zone per country, an optional rest-of-world zone, and rates per zone — price, delivery estimate, and an optional order-price or weight range — with "You ship to N countries". **Checkout**: phone, company, first name, address line 2, marketing opt-in and order note |
-| Discounts | `admin.<host>/[storeSlug]/discounts` — codes and automatic discounts: percentage, fixed amount, buy X get Y, free shipping; whole order, products or collections; minimum spend or quantity; all customers, segments or named customers; total and per-customer limits; schedule; on/off; stacking. The pricing engine is pure and tested, ready for checkout |
-| Cart & checkout | Automatic discounts and codes priced live in the cart drawer, cart page and checkout. Checkout is one page, Shopify-style, under its own pared-down header: contact (with the optional marketing opt-in), delivery — a country select of only the countries the store ships to, named in the buyer's language, then address fields that follow the country (labels, region lists, postal-code formats for 30+ countries) — shipping method, billing address, payment and the order summary, which folds into a bar on phones. Every change is saved on the cart and re-priced on the server, so a refresh loses nothing and the server's total is the only one. Payment is Stripe's **Payment Element**, embedded in the page and themed to the store. "Pay now" places the order — line, discount, address and rate snapshots, commission on the discounted total, usage limits enforced and the rate re-checked in the order transaction — creates its PaymentIntent on the seller's Stripe account, and confirms it in place (3-D Secure included). The order turns **Paid** — stock taken, cart emptied — when the payment succeeds; a declined card leaves the cart and the order for another try. An order discounts bring to zero is placed paid without Stripe. Placing an order dims the page under a spinner, then a green tick draws itself before the thank-you page — cards and 3-D Secure confirm in place. "Save my information for next time" keeps the buyer's email, addresses and way of paying for that store in that browser (server-side, behind an httpOnly cookie), so their next checkout opens filled in and priced; unticking it forgets them at once |
-| Cash on delivery | Offered beside Stripe, or instead of it — a store with COD on can trade without a Stripe account, which is how a seller where Stripe takes no merchants sells at all. Buyers choose it in checkout's Payment step; its fee is priced on the server like everything else (a percentage is of goods and shipping after discounts), and the option explains itself when this order's country or total rules it out. Only for orders that are delivered. A COD order takes its stock and empties the cart when placed, alerts the seller at once, and stays **Payment on delivery** until the seller marks it paid — or cancels it, which restocks it and gives its discount uses back. Commission is recorded on each COD order and billed to the seller separately: no part of the cash passes through Stripe |
-| Shipping | The chosen rate is charged; a free-shipping discount takes exactly that rate off. Rates are judged on the subtotal after item discounts and on the weight of what ships. A cart of digital products skips delivery entirely. A store that ships nowhere can still sell those, and says so for anything else |
-| Buy it now | On every product page: checks out that one option and quantity from a cart of its own, so the buyer's cart is still there afterwards |
-| Orders | `admin.<host>/[storeSlug]/orders` — list, and a page per order with its lines, totals, commission, discounts, customer, shipping address and method, billing address, note and a link to the payment in the seller's Stripe Dashboard. **Mark as fulfilled** once a paid order is sent. Refunds and disputes are made in the seller's Stripe Dashboard and come back by webhook: a full refund of an order not yet sent cancels and restocks it, a partial one shows on the order and comes off analytics, and a dispute flags the order until it is won. The buyer's confirmation page reads the payment from Stripe — paid, processing, or failed with a way back to try again — and shows the same delivery details |
-| Housekeeping | A daily Vercel Cron sweep (`/api/cron/sweep`, behind `CRON_SECRET`) resolves card checkouts left unpaid for a day — cancelling them and giving their discount uses back, or settling them if the money did arrive — and deletes abandoned carts, stale saved checkouts, editor previews and old webhook records |
-| Seed | Two stores, 31 products (one of them a service), 58 variants with weights, 6 collections, 9 discounts, 7 shipping zones with domestic and international rates — idempotent |
+| ![Tender landing page](docs/screenshots/landing.webp) | ![A demo storefront](docs/screenshots/storefront.webp) |
+| **Checkout** | **Seller admin** |
+| ![One-page checkout](docs/screenshots/checkout.webp) | ![Seller admin home](docs/screenshots/admin.webp) |
 
 ---
 
-## Stack
+## Features
 
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | Next.js 16 (App Router) + TypeScript | Server Components keep tenant-scoped queries on the server by construction |
-| Styling | Tailwind CSS v4 | |
-| Database | PostgreSQL (Supabase) | |
-| ORM | Prisma 7 | Client Extensions let the scoped data-access layer be enforced in one place rather than remembered at every call site |
-| Auth | Supabase Auth | Same vendor as the database, and it keeps Postgres RLS reachable as a defence-in-depth stretch goal |
-| Payments | Stripe Connect (Standard-equivalent accounts), Payment Element | See below |
-| Email | Supabase Auth over SMTP | Sign-up, reset and email-change links; a Gmail account for the demo, your own domain later. Order emails are not built yet |
-| Hosting | Vercel | |
+**For shoppers**
+- Branded storefronts at `/s/<store>`: catalogue, collections, search and
+  product pages, priced in the store's own currency
+- A one-page checkout with an embedded Stripe Payment Element (3-D Secure
+  included), address forms that adapt to 30+ countries, and an optional saved
+  checkout
+- Discount codes and automatic discounts priced live; "Buy it now" without
+  losing the cart
+- Cash on delivery where the seller offers it
 
-### Why Standard-equivalent accounts
+**For sellers**
+- A seller admin for orders, products with variants and photos, collections,
+  customers and analytics, with live alerts for new paid orders
+- Discounts: percentage, fixed amount, buy X get Y and free shipping, with
+  segments, limits and schedules
+- Shipping zones and rates by country, region, order value or weight
+- A theme editor with sections, fonts, accent colours, a live preview and
+  draft/publish
+- Stripe-hosted onboarding: refunds and disputes are handled in the seller's
+  own Stripe Dashboard and synced back
 
-Account type is the payments decision that is expensive to reverse. It fixes who
-owns identity verification, who absorbs a chargeback, and how much onboarding UI
-becomes the platform's problem.
+**Platform and accounts**
+- Store moderation: feature stores on the landing page, or suspend them
+- Account settings: email change, password change, active sessions, data
+  export and account deletion
+- Storefront and admin in 12 languages, including right-to-left Arabic
 
-| | Standard | Express | Custom |
-|---|---|---|---|
-| KYC | Stripe | Stripe, in a flow you trigger | The platform |
-| Onboarding | Stripe-hosted (Account Links) | Stripe-hosted, lightly branded | Built from scratch |
-| Seller dashboard | Full Stripe Dashboard | Cut-down Express dashboard | Built from scratch |
-| Disputes | Seller | Seller, via the platform | Platform |
-| Negative balances | Stripe | Platform | Platform |
-| Per-account monthly fee | None | Yes | Yes |
-
-**Standard was chosen.** At this scope the differentiator is *where the risk
-sits*, not the onboarding UI. Identity verification, payouts and disputes
-belong with Stripe and the seller, and the seller gets the full Stripe
-Dashboard to handle them — a cheap trade when [refunds are out of
-scope](#out-of-scope) here anyway.
-
-Accounts are created with Stripe's **Accounts v2 API** (`/v2/core/accounts`):
-`dashboard: "full"`, `defaults.responsibilities` of
-`fees_collector: "stripe"` and `losses_collector: "stripe"` — which makes
-Stripe responsible for KYC — and the `merchant` configuration with card
-payments requested. Stripe reports that combination as a Standard account.
-Owners onboard through v2 **Account Links**, Stripe-hosted onboarding.
-
-Why not the older routes: Stripe refuses Accounts v1 creation for new Connect
-platforms unless a compatibility setting is switched on, and its docs say OAuth
-"isn't recommended for new Connect platforms". The costs of v2:
-
-- **The owner picks their country before going to Stripe.** Accounts v2 needs
-  it to add the merchant configuration, and it can't change afterwards.
-  Settings → Payments offers the countries where Stripe takes merchants
-  (`STRIPE_MERCHANT_COUNTRIES` in `src/lib/payments/rules.ts`, from
-  stripe.com/global — Stripe's Country Specs API also lists countries it only
-  pays out to).
-- **A seller who already has a Stripe account** signs in with it but gets a new
-  account for Tender, rather than connecting the old one.
-- **Readiness is read from capabilities, not flags.** "Can take money" is
-  `configuration.merchant.capabilities.card_payments.status === "active"`;
-  "has submitted their details" is "card payments requested and no requirement
-  awaiting the seller" (`accountReadiness`). Accounts created earlier through
-  v1 read the same way — Accounts v2 manages them too.
-
-**Express** would be right if onboarding conversion were the business, and
-**Custom** means owning KYC and a regulatory surface this project has no
-business taking on.
-
-What that choice commits the code to:
-
-- **Direct charges.** Each order's PaymentIntent is created *on* the connected
-  account — `{ stripeContext: store.stripeAccountId }` — with commission taken
-  as `application_fee_amount`. Stripe's processing fee comes out of the
-  seller's side, not the platform's. Stripe.js loads as the same account, so the
-  Payment Element can confirm it.
-- **The buyer's card statement shows the seller,** not the platform. Correct
-  for a marketplace, and worth knowing before the first "what is this charge"
-  email.
-- **One webhook endpoint, for connected accounts.** With direct charges, every
-  event Tender acts on — `account.updated`, `capability.updated`,
-  `account.application.deauthorized`, `payment_intent.succeeded`,
-  `payment_intent.canceled` — happens on a seller's account. (Accounts v2
-  accounts still send these v1 events, in the connected-accounts scope;
-  `capability.updated` is the one that says card payments switched on.) They arrive at `/api/webhooks/stripe` with an `account` field naming
-  the seller. Connect also delivers the seller's own payments taken elsewhere;
-  PaymentIntents without Tender's order id in their metadata are ignored.
-- **This database is the source of truth for orders.** Charges live on the
-  connected account and aren't queryable from the platform account by default.
-- **A store cannot sell until Stripe says so.** `stripeChargesEnabled` is
-  copied from the account — on `account.updated` and `capability.updated`,
-  and whenever the owner opens Settings → Payments — and checkout is gated on
-  it. The handler re-reads the account rather than trusting the payload, and
-  the v2 read can trail the v1 event by a few seconds: when a recent event says
-  card payments just went live but the read disagrees, the handler re-reads
-  for a few seconds, then answers 500 so Stripe redelivers instead of leaving
-  the store closed (`eventSignalsCardActive`). A row with a
-  `stripeAccountId` is not the same thing as a store that can take money.
-  Finishing onboarding is also what moves a new store from PENDING to ACTIVE.
-- **Stock is taken when the money is in, not when the order is placed.** An
-  order is placed unpaid with its discounts redeemed, then paid by its
-  PaymentIntent; the transaction that flips it to PAID takes the stock and
-  empties the cart. An abandoned payment holds no stock, and placing the order
-  again cancels the old attempt — PaymentIntent first — and gives its discount
-  uses back.
+The full list, surface by surface, is in [docs/features.md](docs/features.md).
 
 ---
 
-## Architecture
+## Tech stack
 
-```mermaid
-flowchart TB
-    Buyer[Buyer] --> SF["/s/[storeSlug]<br/>storefront"]
-    Seller[Seller] --> DASH["admin.host/[storeSlug]<br/>seller admin"]
-    Admin[Platform admin] --> PADM["/admin<br/>cross-store"]
-
-    SF --> RESOLVE["getStoreBySlug(slug)"]
-    DASH --> CTX["getStoreContext(slug, session)<br/>resolves store + verifies membership"]
-
-    RESOLVE --> SCOPED[Scoped data access<br/>every query filtered by storeId]
-    CTX --> SCOPED
-    PADM --> ROOT["rootDb — unscoped<br/>cross-store by definition"]
-
-    SCOPED --> PG[(PostgreSQL)]
-    ROOT --> PG
-
-    Stripe[Stripe Connect] -.->|"connected-account events, signature-verified"| WH["/api/webhooks/stripe"]
-    WH --> SETTLE["settleOrder / cancelUnpaidOrder<br/>conditional on status = PENDING"]
-    SETTLE --> PG
-```
-
-The important edge is `getStoreContext`. Seller-admin requests resolve their
-tenant from the **URL slug plus the authenticated session**, never from a field
-in the request body. Everything downstream receives an already-verified
-`store.id`.
-
-### The admin subdomain
-
-The seller admin is served from `admin.<host>`; the platform — landing page,
-login, storefronts, the store list — stays on the root host. `src/proxy.ts`
-rewrites `admin.tender.com/acme/orders` onto the internal route
-`/dashboard/acme/orders`, and redirects each host's traffic to whichever one
-owns it, so every page has exactly one canonical URL.
-
-Internally the route tree kept its old shape. That is the point: route files,
-`getStoreContext()` and `revalidatePath()` all still speak `/dashboard/…`, so
-moving the admin onto a subdomain did not become a rename of every route in the
-app. The rules live in `src/lib/admin/routing.ts` as pure functions with tests —
-a proxy is exactly where an untested branch becomes a redirect loop.
-
-Three consequences worth knowing:
-
-- **The host proves nothing.** A request arriving on `admin.` is no more trusted
-  than one arriving anywhere else. Membership is still proved by
-  `getStoreContext()`, which 404s — not 403s — for non-members.
-- **`redirect()` and `revalidatePath()` diverge.** They take strings that look
-  identical and are not: `revalidatePath` names an internal route and keeps the
-  `/dashboard` prefix, while `redirect` names a URL a browser will visit and
-  goes through `src/lib/admin/links.ts`.
-- **One session spans both hosts.** The Supabase auth cookie is written with
-  `Domain=<root hostname>` rather than host-only. Without that, a cookie set at
-  login on the root host is never sent to the admin subdomain.
-
-Setting `NEXT_PUBLIC_ADMIN_HOST` to the same host as `NEXT_PUBLIC_APP_URL`
-switches the whole split off, and `/dashboard/<slug>` paths work exactly as they
-did before — useful anywhere wildcard DNS is not available.
+| Layer | Choice |
+|---|---|
+| Framework | [Next.js 16](https://nextjs.org) (App Router), React 19, TypeScript |
+| Styling | Tailwind CSS v4 |
+| Database | PostgreSQL on [Supabase](https://supabase.com), [Prisma 7](https://www.prisma.io) |
+| Auth, storage, realtime | Supabase Auth, Storage and Realtime |
+| Payments | [Stripe Connect](https://docs.stripe.com/connect): Accounts v2, direct charges, Payment Element |
+| Validation & tests | Zod, Vitest |
+| Hosting | Vercel (with a daily Vercel Cron cleanup) |
 
 ---
 
-## Tenancy model
+## How it works
 
-Four layers, because any one of them alone is a single point of failure.
+- **The tenant comes from the URL and the session, never the request body.**
+  Seller-admin requests resolve their store through `getStoreContext(slug,
+  session)`, which also proves membership; non-members get a 404, not a 403.
+- **Every query is scoped by `storeId`.** Uniqueness constraints are composite
+  with it, and only a few named callers may use the unscoped client.
+- **Direct charges on the seller's Stripe account,** with the platform's
+  commission taken as an `application_fee_amount` on the post-discount total.
+- **Webhooks and settlement are idempotent.** An order is settled by a
+  conditional `UPDATE … WHERE status = 'PENDING'`, so a retried webhook and the
+  confirmation page can race without double-counting stock.
+- **Money is integer cents** everywhere, and orders snapshot their lines,
+  prices, addresses and commission.
+- **The Supabase Data API is closed.** Grants are revoked and RLS is a deny-all
+  backstop; every read and write goes through Prisma on the server.
 
-**1. Schema.** Every root entity carries `storeId`, and every uniqueness
-constraint a tenant can influence is composite with it:
-
-```
-@@unique([storeId, slug])   // products, collections
-@@unique([storeId, code])   // discounts
-@@unique([storeId, orderNumber])
-@@unique([storeId, sku])    // variants
-```
-
-Two stores can both sell `/p/black-tee` and both define `WELCOME10`. The seed
-does exactly that, so the constraint is exercised from day one.
-
-`Variant` also carries a denormalised `storeId`. A variant id is the one
-catalogue identifier a client hands us raw — add-to-cart, checkout lines — so it
-is the prime IDOR surface. Carrying the tenant key locally turns "does this
-variant belong to this store?" into one indexed predicate instead of a two-hop
-join through `Product`.
-
-**2. A scoped data-access layer.** Route handlers do not call the ORM directly.
-`src/lib/db/root.ts` exports the unscoped client with a comment naming its only
-three legitimate callers; everything store-scoped goes through
-`src/lib/stores/context.ts`.
-
-**3. Isolation tests.** Not yet written. The contract they will pin down: seller
-A cannot read B's orders, edit B's products, apply B's discount code, or see B's
-revenue.
-
-**4. The Supabase Data API is closed.** Supabase publishes every table in
-`public` through PostgREST, and its stock grants give `anon` and `authenticated`
-full DML on each one. `anon` is the role behind `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-which ships to every browser that loads the app — so the default posture leaves
-orders, carts and users readable and writable by anyone who reads the page
-source, on a route that never runs the application code enforcing `storeId`.
-
-The migration `20260827080543_revoke_data_api_access` closes it outright rather
-than modelling it with policies: the table, sequence and function grants are
-revoked from both roles, so are the default privileges that would re-grant them
-on the next `CREATE TABLE`, and RLS is enabled with no policies on all fifteen
-tables as a deny-all backstop. Nothing here needs the Data API — `supabase-js`
-is called only for `auth.*` and Storage, and every database read and write goes
-through Prisma on the direct connection. `service_role` is left intact: it is
-server-only, and the seed and product image uploads depend on it.
-
-> RLS here is a backstop, not the tenancy mechanism. Prisma connects as the
-> table owner, which bypasses it. Per-tenant RLS policies — scoping enforced in
-> the database rather than above it — remain a stretch goal.
-
-**Product images** are the one thing that lives outside Postgres. They go to the
-`product-images` Storage bucket under a `<storeId>/` prefix, written server-side
-with `service_role` after `getStoreContext()` has already tied the store to the
-session — so the tenant prefix is never taken from anything a client sent. No
-storage policies are created, which leaves `anon` able to read (storefront photos
-are public by definition, and `next/image` cannot optimise what it cannot fetch)
-and unable to upload, list or delete. Verified against the live project.
-
-> Supabase's `remove()` reports no error when a policy filters the object out, so
-> a delete that did nothing looks like a delete that worked. The object surviving
-> is the thing to assert, not the absent error.
+The reasoning behind each, with a diagram, is in
+[docs/architecture.md](docs/architecture.md).
 
 ---
 
-## Design decisions worth defending
+## Getting started
 
-1. **Money is integer cents, everywhere.** `parseMoneyToCents` reads digits out
-   of the string rather than going via `parseFloat(x) * 100` — 1.005 is not
-   exactly representable in binary floating point and that route silently
-   rounds it *down*. Tested.
-2. **`OrderLine` snapshots title and price.** An order is a historical record,
-   not a join. Deleting a product must not rewrite what someone was charged.
-3. **`platformFeeCents` and `sellerNetCents` are stored on the order**, never
-   recomputed. Commission rates change; settled orders must not.
-4. **Commission is charged on the post-discount total.** The platform takes a
-   cut of what the buyer actually paid. A seller running a 20% promotion is not
-   billed commission on the 20% they gave away.
-5. **Stock moves only in the transaction that flips an order to PAID.** Stripe
-   retries webhooks, and the confirmation page settles the order too, so the
-   same payment can arrive twice at once. Settling is a conditional
-   `UPDATE … WHERE status = 'PENDING'`, and only the call whose update actually
-   changed the row takes stock, empties the cart or — for a cancellation — gives
-   discount uses back. A replay finds the order already moved and does nothing.
-   `WebhookEvent` records which events were handled and short-circuits
-   redeliveries; it is not what makes them safe.
-6. **The cart is store-scoped.** One cart per store, no cross-store checkout —
-   see [Out of scope](#out-of-scope).
-7. **Non-members get 404, not 403,** on `/dashboard/[storeSlug]`. A seller
-   poking at a rival's slug should learn nothing, including whether the guess
-   was right.
-8. **Rendering mode never depends on environment variables.**
-   `getCurrentUser()` calls `connection()` before checking whether Supabase is
-   configured. Without it, a build with no keys prerenders `/dashboard` as a
-   static redirect and then silently switches to dynamic once keys are added.
-9. **Discount rules are enforced twice, usage limits once — at the right
-   moment.** The form parser (`src/lib/discounts/form.ts`) explains a bad
-   discount in words; CHECK constraints in `20260926160000_discount_rules`
-   refuse one from any other write path. The engine
-   (`src/lib/discounts/engine.ts`) decides amounts from counts it read earlier,
-   which is fine for showing a total; `redeemDiscounts` re-checks inside the
-   order transaction with a conditional `UPDATE … WHERE usage_count <
-   usage_limit`, so two buyers racing for the last use cannot both get it.
-   Customer segments are rules over order history, not stored lists — there is
-   no customers table to keep in step.
-10. **Shipping is quoted in one pure function, and the client only ever
-    requests.** `quoteCheckout` (`src/lib/checkout/quote.ts`) prices item
-    discounts first, picks the zone and the rates the order qualifies for, then
-    prices again with the chosen rate so a free-shipping discount takes
-    exactly that off. A rate id from the browser is a request: one that is not
-    among the eligible rates for this store, address and cart is never
-    charged, and the order transaction re-reads the rate by id, store, zone and
-    price. Addresses, the rate's name, zone and estimate, and the currency are
-    snapshotted onto the order like its lines. Tax will be one more term in
-    `summarisePricing` and one more column.
-11. **"Buy it now" is a second cart, not a detour around the first.** A
-    `BUY_NOW` cart beside the buyer's own, keyed the same way, so checkout,
-    discount codes, re-pricing and the saved draft all work on it unchanged
-    and paying for the order deletes only it. The cost is one more row per
-    session; stashing and restoring the everyday cart instead would risk
-    losing it on any failure in between.
-
----
-
-## Out of scope
-
-Named deliberately, not forgotten:
-
-custom domains per store · cross-store unified cart · product reviews ·
-subscriptions · in-app refunds (they are made in Stripe and synced back) · tax
-calculation · multi-currency · shipping-rate APIs ·
-seller analytics beyond basics · i18n
-
-**On cross-store carts specifically:** splitting one payment across multiple
-connected accounts is a genuinely hard settlement problem — separate charges,
-separate refund paths, partial-failure handling. It is not a UI convenience and
-it is not in this project.
-
-**On custom domains:** wildcard DNS plus per-tenant SSL provisioning is
-infrastructure work well outside this project's scope. Path-based routing ships.
-
----
-
-## Local setup
-
-Requires Node 22+.
+**Prerequisites:** Node.js 22+, a Supabase project, and a Stripe account in
+test mode with Connect enabled (only needed for card payments). The
+[Stripe CLI](https://docs.stripe.com/stripe-cli) forwards webhooks locally.
 
 ```bash
+git clone https://github.com/keraa00/Tender-ecommerce.git
+cd Tender-ecommerce
 npm install
+cp .env.example .env           # fill in the values, see below
+
+npx prisma dev --name ecom     # in its own terminal: a local Postgres; paste
+                               # the DATABASE_URL and SHADOW_DATABASE_URL it prints
+npm run db:migrate             # apply migrations
+npm run storage:setup          # create the product-images bucket in Supabase
+npm run db:seed                # demo stores, products and a year of orders
+npm run dev                    # http://localhost:3000
 ```
 
-**1. Database.** Either a local Postgres or a Supabase project.
+For card payments, also run `stripe login` and `npm run stripe:listen` while
+you test.
 
-```bash
-npx prisma dev --name ecom
-```
+Supabase needs a few dashboard settings (redirect URLs and token-hash email
+templates), and Stripe needs Connect branding before onboarding works. Both
+are covered step by step in **[docs/setup.md](docs/setup.md)**, along with the
+demo accounts the seed creates.
 
-That prints `DATABASE_URL` and `SHADOW_DATABASE_URL`. Copy `.env.example` to
-`.env` and paste them in.
+### Environment variables
 
-**2. Supabase** (needed for auth; storefronts work without it). Create a project
-at [supabase.com](https://supabase.com), then from Project Settings → API Keys
-copy the project URL, the *publishable* key (`sb_publishable_…`) and a *secret*
-key (`sb_secret_…`) into `.env`. Supabase renamed these: publishable was the
-anon key, secret was the service-role key. The variable names in `.env.example`
-keep the old spelling — only the values changed.
+Copy `.env.example`, which documents each variable in detail.
 
-Set the redirect URLs under Authentication → URL Configuration:
-
-```
-http://localhost:3000/auth/confirm
-http://localhost:3000/auth/callback
-```
-
-Then, under Authentication → Emails → Templates, change **Confirm signup** to
-send the token hash:
-
-```html
-<h2>Confirm your signup</h2>
-<p>
-  <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup"
-    >Confirm your email</a
-  >
-</p>
-```
-
-This is worth doing even though `/auth/confirm` also accepts the stock
-`{{ .ConfirmationURL }}` template. That default sends the user through
-Supabase's own verify endpoint, which hands back a PKCE code redeemable only in
-the browser that signed up — so confirming from a phone, or from webmail in a
-second browser, fails. A token hash carries no such tie and works anywhere.
-
-Appending to `{{ .RedirectTo }}` rather than rebuilding the URL from
-`{{ .SiteURL }}` is what preserves the `next` path the app put on
-`emailRedirectTo`, so a user confirming from a deep link still lands where they
-were headed.
-
-Do the same for the two templates account settings sends, for the same
-reason — a reset link is very often opened on a phone:
-
-- **Reset password**:
-  `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a>`
-- **Change email address**:
-  `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email_change">Confirm the change</a>`
-
-And under Authentication → Providers → Email (Sign In / Providers in newer
-dashboards):
-
-- **Secure email change: on** — the default. Both the old and the new inbox
-  have to confirm, so a session left open somewhere cannot move the account to
-  an address its owner has never seen. Account settings shows the pending
-  address until both links are clicked.
-- **Secure password change: off** — the default. The app asks for the current
-  password itself before changing it (`src/lib/auth/password.ts`), because
-  Supabase's own "require current password" check is a setting this repo
-  cannot see, and with it off a wrong `current_password` is quietly accepted.
-  Turning it on makes password changes in sessions older than a day fail with
-  "sign out and back in".
-- Optional: turn on Supabase's security notification emails (password
-  changed, email changed) in the Emails section, so a change made by someone
-  else does not go unnoticed.
-
-Supabase's built-in email sender allows only a couple of emails an hour, which
-sign-up, reset and email-change links all share. Set up custom SMTP before
-real users arrive.
-
-Account deletion and store deletion use the secret key
-(`SUPABASE_SERVICE_ROLE_KEY`) as image uploads do: the Auth user is deleted
-through `auth.admin`. "Where you're signed in" reads and revokes rows of
-Supabase's internal `auth.sessions` table directly — there is no public API for
-listing one user's sessions — see `src/lib/account/sessions.ts` for what was
-checked and what still works if Supabase ever closes that off.
-
-If you point `DATABASE_URL` at Supabase rather than a local database, append
-`?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`. The pooler serves a
-certificate signed by Supabase's own root CA, which the driver behind
-`@prisma/adapter-pg` rejects when the system trust store is all it has. That
-path is resolved against the process working directory, so the seed, the
-scripts and the migration CLI have to be launched from the repo root. The app
-itself never reads the file: `src/lib/db/root.ts` swaps it for the same CA
-bundled as code (`src/lib/db/supabase-ca.ts`), because a serverless deployment
-only carries the files its build traced.
-`.env.example` carries the long version, including why the session pooler is the
-one to use.
-
-**3. Product image storage.**
-
-```bash
-npm run storage:setup
-```
-
-Creates the public `product-images` bucket that seller uploads go to. Idempotent,
-and safe to re-run after changing the limits in `scripts/setup-storage.ts`.
-
-**4. Migrate and seed.**
-
-```bash
-npm run db:migrate
-npm run db:seed
-```
-
-With `SUPABASE_SERVICE_ROLE_KEY` and `SEED_PASSWORD` set in `.env`, the seed also
-provisions the demo accounts in Supabase Auth so you can log in as them:
-
-| Account | Role |
+| Variable | Purpose |
 |---|---|
-| `nordhavn@example.com` | owns `/s/nordhavn-supply` (USD) |
-| `rosewater@example.com` | owns `/s/rosewater-ceramics` (EUR) |
-| `wildmoor@example.com` | owns `/s/wildmoor-apothecary` (GBP) |
-| `halden@example.com` | owns `/s/halden-coffee` (AUD) |
-| `marlowe@example.com` | owns `/s/marlowe-paper` (CAD) |
-| `bakar@example.com` | owns `/s/bakar-atelier` (BAM) |
-| `kehre@example.com` | owns `/s/kehre-velo` (CHF) |
-| `admin@example.com` | platform admin |
-
-…plus the owners of the thirteen showcase stores in
-`prisma/seed-catalog-showcase.ts`. They all sign in with the `SEED_PASSWORD` you
-set in `.env`, which is never committed: a password in the repo is a published
-password. Reseeding moves accounts that already exist onto the current
-`SEED_PASSWORD`; to rotate them without reseeding, change it and run
-`npm run seed:passwords`. Demo fixtures — never reuse the password anywhere real.
-
-Every store also gets about a year of orders (`prisma/seed-orders.ts`), so
-Customers, Orders and Analytics have something to show. Their dates count back
-from when the seed runs, so reseeding keeps recent customers recent.
-
-The demo stores start without a Stripe account, so their storefronts browse but
-card checkout says payments aren't set up — step 5 connects one. The five newer
-stores also offer cash on delivery in their home countries (Wildmoor in the UK,
-Halden in Australia, Marlowe in Canada, Bakar in Bosnia and Herzegovina, Kehre
-in Switzerland and Liechtenstein), so they take orders there without Stripe,
-and their history mixes cash still due, cash collected and parcels refused at
-the door with card orders from abroad.
-
-**5. Payments (Stripe test mode).**
-
-1. In a Stripe sandbox or test mode, copy the keys from Developers → API keys
-   into `STRIPE_SECRET_KEY` (`sk_test_…`) and
-   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_…`).
-2. Turn on Connect (Dashboard → Connect → Get started) and fill in the
-   platform's branding under Connect settings — name, icon, colour. Stripe-hosted
-   onboarding will not start without it.
-3. Forward connected-account webhooks to the dev server with the
-   [Stripe CLI](https://docs.stripe.com/stripe-cli), and keep it running while
-   you test:
-
-   ```bash
-   stripe login
-   npm run stripe:listen
-   ```
-
-   The script is `stripe listen --events-from @accounts --events …
-   --forward-connect-to localhost:3000/api/webhooks/stripe`, with the nine
-   event types the app handles.
-
-   Recent CLI versions refuse to listen without an explicit event list. CLI
-   1.50+ also needs **Settings → Team and security → MCP and CLI access**
-   switched on before `stripe login` works. Put the `whsec_…` it prints (or
-   `stripe listen --print-secret`) in `STRIPE_CONNECT_WEBHOOK_SECRET`. Without it the
-   app still works — Settings → Payments and the confirmation page read Stripe
-   directly — but stores and orders only update when someone looks.
-4. Sign in as a store owner, open Settings → Payments, choose the country the
-   business is based in (United States makes the test values below simplest),
-   click **Connect with Stripe** and finish test onboarding: SMS code
-   `000000`, date of birth `01/01/1901`, address line 1 `address_full_match`,
-   ID / SSN `000000000` (or `0000` for the last four), website
-   `https://accessible.stripe.com`, and the test bank account Stripe offers.
-   Back in the admin the store shows **Under review**, then **Live** within a
-   minute or two.
-5. Check out with `4242 4242 4242 4242`, any future expiry and any CVC.
-   `4000 0025 0000 3155` asks for 3-D Secure; `4000 0000 0000 9995` is declined.
-
-**6. Run.**
-
-```bash
-npm run dev
-```
-
-Locally that is one host:
-
-| | |
-|---|---|
-| `http://localhost:3000` | Everything — landing page, login, storefronts, your store list |
-| `http://localhost:3000/dashboard/<slug>` | The seller admin |
-
-In production the seller admin moves to its own subdomain, `admin.<your-domain>`,
-and `/dashboard/<slug>` redirects there. `.env` ships with
-`NEXT_PUBLIC_ADMIN_HOST="localhost:3000"`, which switches that split off for
-local development; clearing it turns it back on.
-
-The reason local development does not run the split is the session rather than
-the routing. One session has to cover both hosts, which takes an auth cookie
-scoped to the parent domain, and `localhost` cannot carry one: it is a public
-suffix, so RFC 6265 §5.3 has the browser *downgrade* `Domain=localhost` to a
-host-only cookie rather than honour it. `admin.localhost` never receives the
-session, and a signed-in seller bounces between the login page and an admin that
-cannot see them.
-
-A hostname with a dot does carry it, so the split can be run locally by clearing
-`NEXT_PUBLIC_ADMIN_HOST` and pointing `NEXT_PUBLIC_APP_URL` at one:
-
-- **`http://lvh.me:3000`** — `lvh.me` and `*.lvh.me` are public DNS names
-  resolving to 127.0.0.1, so nothing needs adding to `/etc/hosts`.
-- **A name of your own** — `127.0.0.1  tender.test admin.tender.test` in
-  `/etc/hosts`. `.test` is reserved for this (RFC 6761) and, unlike `.local`,
-  does not collide with mDNS.
-
-Either way the browser marks plain `http://` on a real hostname Not Secure —
-only `localhost` is treated as a trustworthy origin. For a padlock, issue a
-certificate covering both hosts with [mkcert](https://github.com/FiloSottile/mkcert)
-(`mkcert lvh.me "*.lvh.me"`) and pass it to `next dev --experimental-https-key`
-and `--experimental-https-cert`.
-
-### Deploying
-
-Tender deploys to Vercel as it is. The steps below are for a **public demo on
-a `*.vercel.app` address**: Stripe in test mode, and the seller admin on the
-same host at `/dashboard/<slug>` — single-host mode, exactly like local
-development. A `vercel.app` address cannot have an `admin.` subdomain of its
-own; [with a custom domain](#with-a-custom-domain) the admin moves to one.
-
-`vercel.json` pins the functions to Paris (`cdg1`), next to a Supabase project
-in `eu-west-3` — change it if your database lives elsewhere — and schedules the
-daily cleanup.
-
-**1. Database and storage.** From the repo root, with your local `.env`
-pointing at the production project (the session pooler, port 5432):
-
-```bash
-npm run db:deploy      # apply migrations — never `migrate dev` or `reset` here
-npm run storage:setup  # the public product-images bucket
-```
-
-Both are idempotent. The build does not migrate; run `db:deploy` again before
-deploying code that ships a new migration. Seed only if you want the demo
-stores (`npm run db:seed`), and set `SEED_PASSWORD` first — it is the password
-of every demo account, and lives only in your `.env`.
-
-**2. Vercel project.** Import the repository and deploy once to learn the
-address (`<project>.vercel.app`). Then, under Settings → Environment Variables,
-set these for **Production** and redeploy — `NEXT_PUBLIC_*` values are baked
-in at build time:
-
-| Variable | Value |
-|---|---|
-| `DATABASE_URL` | Supabase → Connect → **Transaction pooler** (port 6543). No `sslmode`/`sslrootcert` needed: the app verifies the connection with the bundled CA. Serverless runs many small instances, and the session pooler runs out of clients long before Postgres is busy |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | as in `.env` |
-| `NEXT_PUBLIC_APP_URL` | `https://<project>.vercel.app` |
-| `NEXT_PUBLIC_ADMIN_HOST` | `<project>.vercel.app` — the same host, which is what switches the admin subdomain off |
-| `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | test-mode keys (`sk_test_…`, `pk_test_…`) |
-| `STRIPE_CONNECT_WEBHOOK_SECRET` | from step 4 |
-| `CRON_SECRET` | a long random string (`openssl rand -hex 32`); Vercel Cron sends it, anyone else gets a 401 |
-
-Never paste `.env` wholesale — its `NEXT_PUBLIC_ADMIN_HOST="localhost:3000"`
-would send every admin link to localhost — and do not set `NODE_ENV` or
-`SEED_PASSWORD`. Without those variables a Preview build fails at
-`DATABASE_URL`, which keeps previews from writing to the production database.
-
-**3. Supabase Auth.** Supabase's built-in email sender only delivers to the
-members of your Supabase organization, so on its own nobody else could confirm
-a sign-up or reset a password. Give it an SMTP server: for a demo, a dedicated
-Gmail account works without a domain of your own — turn on 2-Step
-Verification, create an App Password, and under Authentication → SMTP enter
-`smtp.gmail.com`, port `465`, the Gmail address as user and the app password.
-Then:
-
-- Authentication → URL Configuration: Site URL `https://<project>.vercel.app`,
-  and redirect URLs `https://<project>.vercel.app/auth/confirm` and
-  `https://<project>.vercel.app/auth/callback`.
-- The token-hash email templates from [Local setup](#local-setup) step 2, if
-  this is a fresh project. They carry no host, so they need no change.
-- Authentication → Rate Limits: raise "emails per hour" if the default is too
-  tight for your visitors.
-- Realtime → Settings: turn off public channel access. Live order alerts use
-  private channels only.
-
-**4. Stripe webhooks** (test mode). Workbench → Webhooks → an endpoint at
-`https://<project>.vercel.app/api/webhooks/stripe`, **Events from: Connected
-accounts**, for `account.updated`, `capability.updated`,
-`account.application.deauthorized`, `payment_intent.succeeded`,
-`payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`,
-`charge.dispute.created` and `charge.dispute.closed`. Its signing secret goes
-in `STRIPE_CONNECT_WEBHOOK_SECRET`.
-
-**5. A platform admin.** The moderation page at `/dashboard/platform` is for
-users whose `platform_role` is `PLATFORM_ADMIN`. Sign up with your own address,
-then set that column on your row in `users` (Prisma Studio, or the Supabase
-table editor) rather than relying on the shared demo admin account.
-
-**6. Smoke test.** Sign up with an address outside your Supabase organization
-and confirm it from the email; open a store, add a product with a photo and
-feature it from `/dashboard/platform`; pay with `4242 4242 4242 4242` and see
-the order turn Paid, fulfil it, refund it in Stripe and see it come back;
-place a cash-on-delivery order and mark it paid; reset a password; check
-`/terms`, `/privacy` and the demo notice; and confirm
-`curl https://<project>.vercel.app/api/cron/sweep` answers 401.
-
-**Accepted for the demo.** There is no rate limiting or CAPTCHA in the app
-(SECURITY_AUDIT.md TND-07): a script can place cash-on-delivery orders and run a
-demo store's stock down (TND-01). A Vercel Firewall rate-limit rule on `POST`s
-to `/s/*/checkout*` blunts it, and a reseed restocks. The remaining audit
-findings that matter only once real money moves — discount eligibility keyed
-on a typed email (TND-04–06), a nonce-based CSP (TND-16), staff roles (TND-17)
-and a least-privilege database role (TND-21) — are open in the audit report.
-
-#### With a custom domain
-
-| | |
-|---|---|
-| `NEXT_PUBLIC_APP_URL` | `https://your-domain.com` — the apex, made the primary domain in Vercel, with `www` redirecting to it |
-| `NEXT_PUBLIC_ADMIN_HOST` | empty, so the admin host is derived as `admin.your-domain.com` |
-| Vercel → Domains | `your-domain.com` and `admin.your-domain.com` on the same project; no wildcard needed |
-| Supabase → Authentication → URL Configuration | `https://your-domain.com/auth/confirm` and `/auth/callback` |
-| Stripe webhook | the same endpoint on `https://your-domain.com` |
-| Stripe keys | live `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, once Stripe has reviewed the platform profile — and only with a business in a country where Stripe takes platforms |
-
-The auth cookie's `Domain` is derived from the host (`your-domain.com`), so one
-session covers the platform and the admin. A real domain has a real parent, so
-the public-suffix problem that rules out `localhost` does not arise. A
-custom domain also lets you send auth email from your own address instead of
-Gmail.
+| `DATABASE_URL` | Postgres connection, used by the app and the migration CLI |
+| `SHADOW_DATABASE_URL` | Scratch database for `prisma migrate dev` (local only) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase secret key — **server-only**; uploads, seeding, account deletion |
+| `NEXT_PUBLIC_APP_URL` | Public URL of the app |
+| `NEXT_PUBLIC_ADMIN_HOST` | Host of the seller admin; set it to the app's own host to keep the admin on `/dashboard/<slug>` |
+| `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` | Optional override for the auth cookie's domain |
+| `STRIPE_SECRET_KEY` | Stripe secret key — **server-only** |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | Signing secret for connected-account webhooks — **server-only** |
+| `CRON_SECRET` | Bearer token Vercel Cron sends to `/api/cron/sweep` — **server-only** |
+| `SEED_PASSWORD` | Password for the seeded demo accounts — **local only**, never deployed |
 
 ### Scripts
 
-| | |
+| Command | Does |
 |---|---|
-| `npm run dev` | Dev server |
-| `npm run build` | Generate Prisma client, then production build |
-| `npm test` | Vitest |
-| `npm run typecheck` | `tsc --noEmit` (run `npm run build` first — Next generates route types) |
-| `npm run db:migrate` | Create and apply a migration (local `prisma dev` database) |
-| `npm run db:deploy` | Apply existing migrations — hosted Postgres, CI, production |
+| `npm run dev` | Start the dev server |
+| `npm run build` | Generate the Prisma client, then build for production |
+| `npm start` | Serve the production build |
+| `npm test` / `npm run test:watch` | Run the Vitest suite once / in watch mode |
+| `npm run typecheck` | `tsc --noEmit` (run `npm run build` first; Next.js generates route types) |
+| `npm run lint` | ESLint |
+| `npm run db:generate` | Regenerate the Prisma client after a schema change |
+| `npm run db:migrate` | Create and apply a migration against a local database |
+| `npm run db:deploy` | Apply existing migrations to a hosted database |
 | `npm run db:seed` | Seed the demo stores and their orders (idempotent) |
-| `npm run seed:images` | Refresh seed photography from Openverse |
-| `npm run seed:passwords` | Move every seeded demo account onto `SEED_PASSWORD`, without reseeding |
-| `npm run stripe:listen` | Forward connected-account webhooks from Stripe to the dev server (needs the Stripe CLI, logged in) |
+| `npm run db:studio` | Open Prisma Studio |
+| `npm run storage:setup` | Create the public `product-images` bucket (idempotent) |
+| `npm run seed:images` | Refresh the seed photography from Openverse and Wikimedia Commons |
+| `npm run seed:passwords` | Move every seeded demo account onto `SEED_PASSWORD` |
+| `npm run stripe:listen` | Forward connected-account webhooks to the dev server (needs the Stripe CLI) |
 
 ---
 
-## Roadmap
+## Project structure
 
-| Milestone | Ships | |
-|---|---|---|
-| Foundation | Scaffold, multi-tenant schema, auth, store creation, slug routing, seed | ✅ |
-| Data layer | Product CRUD with images and variants ✅; scoped data-access layer + isolation tests still to come | ◐ |
-| Storefront | Listing, search, filters, detail, cart | |
-| Connect | Stripe-hosted onboarding (Account Links), `account.updated` webhook, activation gating | ✅ |
-| Checkout | Order placement with discounts, Payment Element with direct charges and application fee, `payment_intent.succeeded`, inventory, a daily sweep for abandoned unpaid orders, refund and dispute sync ✅; order emails still to come | ◐ |
-| Discounts | Discount engine + tests, discount admin, cart and checkout integration | ✅ |
-| Surfaces | Seller dashboard and fulfilment ✅, platform admin (store moderation ✅), buyer order history, mobile pass | ◐ |
+```
+src/
+  app/
+    (marketing)/       landing page, store directory, terms, privacy
+    (auth)/  auth/     sign-up, login, password reset, email-link callbacks
+    dashboard/         account settings, store creation, platform admin,
+                       and the seller admin at dashboard/[storeSlug]
+    s/[storeSlug]/     storefronts, cart and checkout
+    api/               Stripe webhooks, daily cron sweep
+  lib/                 domain logic: stores, products, checkout, discounts,
+                       payments, shipping, orders, theme, i18n, db access
+  components/          UI for the storefront, seller admin, account settings
+                       and theme editor
+  proxy.ts             host routing for the admin subdomain
+prisma/                schema, migrations and seed data
+scripts/               storage setup and seed helpers
+tests/                 Vitest unit tests
+docs/                  setup, deployment, architecture, features
+```
+
+---
+
+## Testing
+
+```bash
+npm test             # unit tests (Vitest)
+npm run build        # also generates the route types typecheck needs
+npm run typecheck
+npm run lint
+```
+
+The tests cover the pure logic: the discount engine, checkout pricing and
+shipping rates, money parsing, admin host routing, refunds, the cleanup sweep,
+form parsing and translations.
+
+---
+
+## Deployment
+
+Tender deploys to Vercel as it is. The demo runs on a single `*.vercel.app`
+host, with Stripe in test mode and the seller admin at `/dashboard/<slug>`.
+With a custom domain the admin moves to `admin.<your-domain>`. Migrations are
+applied with `npm run db:deploy`, never by the build.
+
+Step-by-step instructions are in **[docs/deployment.md](docs/deployment.md)**,
+covering environment variables, Supabase SMTP and auth URLs, the Stripe
+webhook endpoint, the platform admin role and a smoke test.
+
+---
+
+## Project status
+
+Tender is a working demo and a portfolio project, not a production service.
+Not built yet:
+
+- Order confirmation emails (auth emails work)
+- Automated tenant-isolation tests
+- Order history for shoppers
+- Application-level rate limiting or CAPTCHA
+- Live-mode payments
+
+Some things are deliberately out of scope, such as cross-store carts, tax
+calculation and custom domains per store. See
+[docs/architecture.md](docs/architecture.md#out-of-scope) for why.
+
+---
+
+## Security
+
+A white-box security review of the codebase is published in
+[SECURITY_AUDIT.md](SECURITY_AUDIT.md). It includes the findings still open and
+accepted for the demo.
+
+If you find a vulnerability, please **don't open a public issue**. Report it
+privately through GitHub's
+[Report a vulnerability](https://github.com/keraa00/Tender-ecommerce/security/advisories/new)
+form on the Security tab.
 
 ---
 
 ## Credits
 
-Demo photography is openly licensed and pulled from
-[Openverse](https://openverse.org). See [CREDITS.md](CREDITS.md).
+Demo product photography is openly licensed and comes from
+[Openverse](https://openverse.org) and
+[Wikimedia Commons](https://commons.wikimedia.org). Attributions are in
+[CREDITS.md](CREDITS.md).
+
+## License
+
+Copyright © 2026 Kerim Smajlovic. All rights reserved.
+
+The source code is public for viewing and evaluation only. No licence is
+granted to use, copy, modify or distribute it. If you'd like to use any part
+of it, please get in touch.

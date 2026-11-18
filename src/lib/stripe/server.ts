@@ -34,7 +34,7 @@ export function getStripe(): Stripe {
   if (!key) {
     throw new Error(
       "Stripe is not configured. Set STRIPE_SECRET_KEY and " +
-        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env — see README → Payments.",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env — see docs/setup.md → Payments.",
     );
   }
 

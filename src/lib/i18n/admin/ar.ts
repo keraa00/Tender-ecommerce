@@ -1466,7 +1466,7 @@ export const ar: AdminMessages = {
       unconfiguredTitle: "Stripe غير مُعدّ",
       unavailable: "غير متاح",
       unconfiguredBody:
-        "لا توجد مفاتيح Stripe على هذا الخادم. اضبط {secret} و{publishable} — راجع قسم Payments في ملف README.",
+        "لا توجد مفاتيح Stripe على هذا الخادم. اضبط {secret} و{publishable} — راجع قسم Payments في ملف docs/setup.md.",
       connectTitle: "ربط Stripe",
       notConnected: "غير مرتبط",
       connectBody:

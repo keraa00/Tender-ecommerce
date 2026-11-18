@@ -1388,7 +1388,7 @@ export const en = {
       unconfiguredTitle: "Stripe isn’t configured",
       unavailable: "Unavailable",
       unconfiguredBody:
-        "This server has no Stripe keys. Set {secret} and {publishable} — see the README’s Payments section.",
+        "This server has no Stripe keys. Set {secret} and {publishable} — see the Payments section of docs/setup.md.",
       connectTitle: "Connect Stripe",
       notConnected: "Not connected",
       connectBody:

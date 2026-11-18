@@ -1289,7 +1289,7 @@ export const zh: AdminMessages = {
       ownerOnly: "只有店主才能连接或更改 Stripe 账户。",
       unconfiguredTitle: "Stripe 未配置",
       unavailable: "不可用",
-      unconfiguredBody: "此服务器没有 Stripe 密钥。请设置 {secret} 和 {publishable}——参见 README 中的 Payments 部分。",
+      unconfiguredBody: "此服务器没有 Stripe 密钥。请设置 {secret} 和 {publishable}——参见 docs/setup.md 中的 Payments 部分。",
       connectTitle: "连接 Stripe",
       notConnected: "未连接",
       connectBody:

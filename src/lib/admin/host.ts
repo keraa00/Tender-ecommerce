@@ -57,7 +57,7 @@ export function deriveAdminHost(rootHost: string, label = "admin"): string {
  * hides the problem: the seller signs in on the root host and then loops
  * between the login page and an admin that cannot see the session. Sharing a
  * session across the split needs a dev host with a dot in it — see
- * README → Local setup.
+ * docs/setup.md → Running the admin subdomain locally.
  */
 export function sharedCookieDomain(
   rootHost: string,

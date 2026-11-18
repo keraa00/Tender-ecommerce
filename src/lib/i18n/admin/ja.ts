@@ -1337,7 +1337,7 @@ export const ja: AdminMessages = {
       unconfiguredTitle: "Stripe が設定されていません",
       unavailable: "利用不可",
       unconfiguredBody:
-        "このサーバーには Stripe のキーがありません。{secret} と {publishable} を設定してください。詳しくは README の Payments セクションをご覧ください。",
+        "このサーバーには Stripe のキーがありません。{secret} と {publishable} を設定してください。詳しくは docs/setup.md の Payments セクションをご覧ください。",
       connectTitle: "Stripe を連携する",
       notConnected: "未連携",
       connectBody:

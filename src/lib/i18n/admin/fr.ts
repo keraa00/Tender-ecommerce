@@ -1387,7 +1387,7 @@ export const fr: AdminMessages = {
       unconfiguredTitle: "Stripe n’est pas configuré",
       unavailable: "Indisponible",
       unconfiguredBody:
-        "Ce serveur n’a pas de clés Stripe. Définissez {secret} et {publishable} — voir la section Payments du README.",
+        "Ce serveur n’a pas de clés Stripe. Définissez {secret} et {publishable} — voir la section Payments de docs/setup.md.",
       connectTitle: "Connecter Stripe",
       notConnected: "Non connecté",
       connectBody:

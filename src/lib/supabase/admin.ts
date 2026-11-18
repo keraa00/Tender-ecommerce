@@ -27,7 +27,7 @@ export function createSupabaseAdminClient() {
   if (!serviceRoleKey) {
     throw new Error(
       "SUPABASE_SERVICE_ROLE_KEY is not set. Image uploads and account " +
-        "deletion need it — see README → Local setup.",
+        "deletion need it — see docs/setup.md.",
     );
   }
 

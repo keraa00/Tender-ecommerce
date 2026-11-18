@@ -1499,7 +1499,7 @@ export const ru: AdminMessages = {
       unconfiguredTitle: "Stripe не настроен",
       unavailable: "Недоступно",
       unconfiguredBody:
-        "На этом сервере нет ключей Stripe. Задайте {secret} и {publishable} — см. раздел Payments в README.",
+        "На этом сервере нет ключей Stripe. Задайте {secret} и {publishable} — см. раздел Payments в docs/setup.md.",
       connectTitle: "Подключите Stripe",
       notConnected: "Не подключено",
       connectBody:

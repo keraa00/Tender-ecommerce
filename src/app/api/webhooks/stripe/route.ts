@@ -7,7 +7,7 @@ import { getStripe } from "@/lib/stripe/server";
  * Stripe → Tender, for events from connected accounts. Registered in Stripe
  * with "Events from: Connected accounts"; locally, `stripe listen
  * --events-from @accounts --events … --forward-connect-to
- * localhost:3000/api/webhooks/stripe` (README → Local setup → Payments).
+ * localhost:3000/api/webhooks/stripe` (docs/setup.md → Payments).
  *
  * The body is read raw: the signature is over the exact bytes Stripe sent,
  * and parsing then re-serialising JSON would not reproduce them.

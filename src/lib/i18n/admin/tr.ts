@@ -1387,7 +1387,7 @@ export const tr: AdminMessages = {
       unconfiguredTitle: "Stripe yapılandırılmadı",
       unavailable: "Kullanılamıyor",
       unconfiguredBody:
-        "Bu sunucuda Stripe anahtarları yok. {secret} ve {publishable} değerlerini ayarlayın — README'deki Payments bölümüne bakın.",
+        "Bu sunucuda Stripe anahtarları yok. {secret} ve {publishable} değerlerini ayarlayın — docs/setup.md dosyasındaki Payments bölümüne bakın.",
       connectTitle: "Stripe'ı bağlayın",
       notConnected: "Bağlı değil",
       connectBody:
